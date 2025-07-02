@@ -1,90 +1,88 @@
 package cn.sast.dataflow.interprocedural.analysis
 
 import cn.sast.dataflow.interprocedural.analysis.IValue.Kind
-import java.util.LinkedHashMap
 import kotlinx.collections.immutable.PersistentList
 import soot.SootMethod
 import soot.Type
+import java.util.LinkedHashMap
 
-public open class EntryParam(type: Type, method: SootMethod, paramIndex: Int) : IValue, IFieldManager<EntryParam> {
-   public open val type: Type
-   public final val method: SootMethod
-   public final val paramIndex: Int
-   private final val fieldObjects: MutableMap<PersistentList<JFieldType>, PhantomField<EntryParam>>
+/**
+ * 表示“分析入口参数”这一特殊语义值。
+ *
+ * @param type       参数类型；`-1` 代表 `this`
+ * @param method     所属方法
+ * @param paramIndex 形参下标，`-1` 表示 `this`
+ */
+open class EntryParam(
+   override val type: Type,
+   val method: SootMethod,
+   val paramIndex: Int
+) : IValue,
+   IFieldManager<EntryParam> {
 
-   init {
-      this.type = type;
-      this.method = method;
-      this.paramIndex = paramIndex;
-      this.fieldObjects = new LinkedHashMap<>();
-   }
+   /** 伴随字段映射（惰性创建） */
+   private val fieldObjects: MutableMap<
+           PersistentList<JFieldType>,
+           PhantomField<EntryParam>
+           > = LinkedHashMap()
 
-   public constructor(method: SootMethod, paramIndex: Int)  {
-      val var3: Type = if (paramIndex != -1) method.getParameterType(paramIndex) else method.getDeclaringClass().getType() as Type;
-      this(var3, method, paramIndex);
-   }
+   /* ---------------- 辅助次构造 ---------------- */
 
-   public override fun getPhantomFieldMap(): MutableMap<PersistentList<JFieldType>, PhantomField<EntryParam>> {
-      return this.fieldObjects;
-   }
+   constructor(method: SootMethod, paramIndex: Int) : this(
+      if (paramIndex != -1)
+         method.getParameterType(paramIndex)
+      else
+         method.declaringClass.type,
+      method,
+      paramIndex
+   )
 
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other == null) {
-         return false;
-      } else if (other !is EntryParam) {
-         return false;
-      } else if (!(this.method == (other as EntryParam).method)) {
-         return false;
-      } else if (this.paramIndex != (other as EntryParam).paramIndex) {
-         return false;
-      } else {
-         return this.getType() == (other as EntryParam).getType();
-      }
-   }
+   /* ---------------- IFieldManager ---------------- */
 
-   public override fun hashCode(): Int {
-      return 31 * (31 * (31 * 1 + this.method.hashCode()) + Integer.hashCode(this.paramIndex)) + this.getType().hashCode();
-   }
+   fun getPhantomFieldMap():
+           MutableMap<PersistentList<JFieldType>, PhantomField<EntryParam>> = fieldObjects
 
-   public override fun typeIsConcrete(): Boolean {
-      return false;
-   }
+   /* ---------------- Object 基础 ---------------- */
 
-   public override fun copy(type: Type): IValue {
-      return new EntryParam(type, this.method, this.paramIndex);
-   }
+   override fun equals(other: Any?): Boolean =
+      this === other ||
+              (other is EntryParam &&
+                      method == other.method &&
+                      paramIndex == other.paramIndex &&
+                      type == other.type)
 
-   public override fun isNullConstant(): Boolean {
-      return false;
-   }
+   override fun hashCode(): Int =
+      31 * (31 * (31 + method.hashCode()) + paramIndex) + type.hashCode()
 
-   public override fun getKind(): Kind {
-      return IValue.Kind.Entry;
-   }
+   override fun toString(): String = "param<$paramIndex>_$type"
 
-   public override fun toString(): String {
-      return "param<${this.paramIndex}>_${this.getType()}";
-   }
+   /* ---------------- IValue ---------------- */
 
-   override fun isNormal(): Boolean {
-      return IValue.DefaultImpls.isNormal(this);
-   }
+   override fun typeIsConcrete(): Boolean = false
 
-   override fun objectEqual(b: IValue): java.lang.Boolean? {
-      return IValue.DefaultImpls.objectEqual(this, b);
-   }
+   override fun isNullConstant(): Boolean = false
 
-   override fun clone(): IValue {
-      return IValue.DefaultImpls.clone(this);
-   }
+   override fun getKind(): Kind = Kind.Entry
 
-   override fun getPhantomField(field: JFieldType): PhantomField<EntryParam> {
-      return IFieldManager.DefaultImpls.getPhantomField(this, field);
-   }
+   override fun copy(type: Type): IValue =
+      EntryParam(type, method, paramIndex)
 
-   override fun getPhantomField(ap: PersistentList<? extends JFieldType>): PhantomField<EntryParam> {
-      return IFieldManager.DefaultImpls.getPhantomField(this, ap);
-   }
+   /* ---------- 默认实现转发 ---------- */
+
+   override fun isNormal(): Boolean = IValue.DefaultImpls.isNormal(this)
+
+   override fun objectEqual(b: IValue): Boolean? =
+      IValue.DefaultImpls.objectEqual(this, b)
+
+   override fun clone(): IValue = IValue.DefaultImpls.clone(this)
+
+   /* ---------- IFieldManager 默认 ---------- */
+
+   fun getPhantomField(field: JFieldType): PhantomField<EntryParam> =
+      IFieldManager.DefaultImpls.getPhantomField(this, field)
+
+   fun getPhantomField(
+      ap: PersistentList<out JFieldType>
+   ): PhantomField<EntryParam> =
+      IFieldManager.DefaultImpls.getPhantomField(this, ap)
 }

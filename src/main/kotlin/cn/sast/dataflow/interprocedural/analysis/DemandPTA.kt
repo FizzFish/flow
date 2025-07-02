@@ -2,103 +2,117 @@ package cn.sast.dataflow.interprocedural.analysis
 
 import cn.sast.idfa.analysis.Context
 import cn.sast.idfa.analysis.InterproceduralCFG
-import java.util.LinkedHashSet
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.jvm.internal.SourceDebugExtension
 import mu.KLogger
-import soot.Local
-import soot.PointsToAnalysis
-import soot.PointsToSet
-import soot.SootMethod
-import soot.Unit
+import mu.KotlinLogging
+import soot.*
 import soot.jimple.infoflow.data.AccessPath
 import soot.jimple.spark.pag.PAG
 import soot.jimple.spark.sets.PointsToSetInternal
+import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean
 
-@SourceDebugExtension(["SMAP\nDemandPTA.kt\nKotlin\n*S Kotlin\n*F\n+ 1 DemandPTA.kt\ncn/sast/dataflow/interprocedural/analysis/DemandPTA\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n+ 3 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,152:1\n1863#2:153\n1864#2:155\n1557#2:156\n1628#2,3:157\n808#2,11:160\n1#3:154\n*S KotlinDebug\n*F\n+ 1 DemandPTA.kt\ncn/sast/dataflow/interprocedural/analysis/DemandPTA\n*L\n70#1:153\n70#1:155\n115#1:156\n115#1:157,3\n115#1:160,11\n*E\n"])
-public abstract class DemandPTA<V, CTX extends Context<SootMethod, Unit, IFact<V>>> : AJimpleInterProceduralAnalysis<V, CTX> {
-   public final val pta: PointsToAnalysis
+/**
+ * **按需指针分析** 基类：在运行前先把关联对象与 PTS 缓存好，加速后续查询。
+ *
+ * @param pta 传入的全程序指针分析结果（通常是 Spark[PAG]）
+ */
+abstract class DemandPTA<
+        V,
+        CTX : Context<SootMethod, Unit, IFact<V>>
+        >(
+   val pta: PointsToAnalysis,
+   hf: AbstractHeapFactory<V>,
+   icfg: InterproceduralCFG
+) : AJimpleInterProceduralAnalysis<V, CTX>(hf, icfg) {
 
-   public final var associationPTS: PointsToSetInternal?
-      internal set
+   /** 含 *field* 访问的 PTS 并集 */
+   var associationPTS: PointsToSetInternal? = null
+      protected set
 
-   public final var associationInstance: PointsToSetInternal?
-      internal set
+   /** 仅 base/实例本身的 PTS 并集 */
+   var associationInstance: PointsToSetInternal? = null
+      protected set
 
-   public final var associationStmt: MutableSet<Unit>
-      internal set
+   /** 出现关联访问的语句列表 */
+   val associationStmt: MutableSet<Unit> = LinkedHashSet()
 
-   open fun DemandPTA(pta: PointsToAnalysis, hf: AbstractHeapFactory<V>, icfg: InterproceduralCFG) {
-      super(hf, icfg);
-      this.pta = pta;
-      this.associationStmt = new LinkedHashSet<>();
-   }
+   /* ------------------------------------------------------------------ */
+   /*  子类需提供：所有待关注 (Unit?, AccessPath)                      */
+   /* ------------------------------------------------------------------ */
+   abstract fun getLocals(): Set<Pair<Unit?, AccessPath>>
 
-   public abstract fun getLocals(): Set<Pair<Unit?, AccessPath>> {
-   }
+   /* ------------------------------------------------------------------ */
+   /*  预处理：收集 PTS 并调用父类分析                                   */
+   /* ------------------------------------------------------------------ */
+   override fun doAnalysis(
+      entries: Collection<SootMethod>,
+      methodsMustAnalyze: Collection<SootMethod>
+   ) {
+      if (pta is PAG) {
+         val pag = pta
+         val factory = pag.setFactory
 
-   public override fun doAnalysis(entries: Collection<SootMethod>) {
-      if (this.pta is PAG) {
-         val associationInstance: PointsToSetInternal = (this.pta as PAG).getSetFactory().newSet(null, this.pta as PAG);
-         val associationPTS: PointsToSetInternal = (this.pta as PAG).getSetFactory().newSet(null, this.pta as PAG);
+         val instSet: PointsToSetInternal = factory.newSet(null, pag)
+         val ptsSet: PointsToSetInternal  = factory.newSet(null, pag)
 
-         val `$this$forEach$iv`: java.lang.Iterable;
-         for (Object element$iv : $this$forEach$iv) {
-            val u: Unit = (`element$iv` as Pair).component1() as Unit;
-            val accessPath: AccessPath = (`element$iv` as Pair).component2() as AccessPath;
-            if (u != null) {
-               this.associationStmt.add(u);
-            }
+         for ((u, ap) in getLocals()) {
+            u?.let { associationStmt += it }
 
-            val var10000: PointsToSet;
-            if (accessPath.getFirstFragment() != null) {
-               val instance: PointsToSet = (this.pta as PAG).reachingObjects(accessPath.getPlainValue());
-               if (instance != null && instance is PointsToSetInternal) {
-                  associationInstance.addAll(instance as PointsToSetInternal, null);
-               }
+            // base 对象 PTS
+            pag.reachingObjects(ap.plainValue)
+               .takeIf { it is PointsToSetInternal }
+               ?.let { instSet.addAll(it as PointsToSetInternal, null) }
 
-               var10000 = (this.pta as PAG).reachingObjects(accessPath.getPlainValue(), accessPath.getFirstFragment().getField());
-            } else {
-               var10000 = (this.pta as PAG).reachingObjects(accessPath.getPlainValue());
-            }
+            // base.field() PTS
+            val fieldPts: PointsToSet = if (ap.firstFragment != null)
+               pag.reachingObjects(ap.plainValue, ap.firstFragment.field)
+            else
+               pag.reachingObjects(ap.plainValue)
 
-            if (var10000 != null && var10000 is PointsToSetInternal) {
-               associationPTS.addAll(var10000 as PointsToSetInternal, null);
-            }
+            (fieldPts as? PointsToSetInternal)
+               ?.let { ptsSet.addAll(it, null) }
          }
 
-         this.associationInstance = associationInstance;
-         this.associationPTS = associationPTS;
+         associationInstance = instSet
+         associationPTS = ptsSet
       } else {
-         logger.error(DemandPTA::doAnalysis$lambda$2);
+         logger.error { "error pta type: ${pta::class.java}" }
       }
 
-      super.doAnalysis(entries);
+      // 调用父类继续做数据流分析
+      super.doAnalysis(entries, methodsMustAnalyze)
    }
 
-   public fun isAssociation(l: Local): Boolean {
-      return this.associationPTS == null || this.associationPTS.hasNonEmptyIntersection(this.pta.reachingObjects(l));
-   }
+   /* ------------------------------------------------------------------ */
+   /*  查询工具                                                           */
+   /* ------------------------------------------------------------------ */
 
-   public fun isAssociationInstance(l: Local): Boolean {
-      return this.associationInstance == null || this.associationInstance.hasNonEmptyIntersection(this.pta.reachingObjects(l));
-   }
+   /** `l` 的 PTS 与关联字段 PTS 是否有交集 */
+   fun isAssociation(l: Local): Boolean =
+      associationPTS == null ||
+              associationPTS!!.hasNonEmptyIntersection(pta.reachingObjects(l))
 
-   public override suspend fun normalFlowFunction(context: Any, node: Unit, succ: Unit, inValue: IFact<Any>, isNegativeBranch: AtomicBoolean): IFact<Any> {
-      return normalFlowFunction$suspendImpl(this, (CTX)context, node, succ, inValue, isNegativeBranch, `$completion`);
-   }
+   /** `l` 的 PTS 与关联 **实例** PTS 是否有交集 */
+   fun isAssociationInstance(l: Local): Boolean =
+      associationInstance == null ||
+              associationInstance!!.hasNonEmptyIntersection(pta.reachingObjects(l))
 
-   @JvmStatic
-   fun `doAnalysis$lambda$2`(`this$0`: DemandPTA): Any {
-      return "error pta type: ${`this$0`.pta.getClass()}";
-   }
+   /* ------------------------------------------------------------------ */
+   /*  normalFlowFunction 继续交给具体分析实现                           */
+   /* ------------------------------------------------------------------ */
 
-   @JvmStatic
-   fun `logger$lambda$4`(): kotlin.Unit {
-      return kotlin.Unit.INSTANCE;
-   }
+   abstract override suspend fun normalFlowFunction(
+      context: CTX,
+      node: Unit,
+      succ: Unit,
+      inValue: IFact<V>,
+      isNegativeBranch: AtomicBoolean
+   ): IFact<V>
 
-   public companion object {
-      private final var logger: KLogger
+   /* ------------------------------------------------------------------ */
+   /*  日志                                                               */
+   /* ------------------------------------------------------------------ */
+   companion object {
+      private val logger: KLogger = KotlinLogging.logger {}
    }
 }

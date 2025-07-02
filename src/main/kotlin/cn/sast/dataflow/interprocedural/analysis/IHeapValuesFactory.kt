@@ -1,22 +1,14 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-import cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder
+/** 创建 [IHeapValues] 及其 Builder 的抽象工厂 */
+interface IHeapValuesFactory<V> {
 
-public interface IHeapValuesFactory<V> {
-   public abstract fun empty(): IHeapValues<Any> {
-   }
+   /** 返回一个 *空* 不可变集合 */
+   fun empty(): IHeapValues<V>
 
-   public open fun emptyBuilder(): Builder<Any> {
-   }
+   /** 返回 “空集合” 的可变 Builder */
+   fun emptyBuilder(): IHeapValues.Builder<V> = empty().builder()
 
-   public abstract fun single(v: CompanionV<Any>): IHeapValues<Any> {
-   }
-
-   // $VF: Class flags could not be determined
-   internal class DefaultImpls {
-      @JvmStatic
-      fun <V> emptyBuilder(`$this`: IHeapValuesFactory<V>): IHeapValuesBuilder<V> {
-         return `$this`.empty().builder();
-      }
-   }
+   /** 构造只含单元素的不可变集合 */
+   fun single(v: CompanionV<V>): IHeapValues<V>
 }

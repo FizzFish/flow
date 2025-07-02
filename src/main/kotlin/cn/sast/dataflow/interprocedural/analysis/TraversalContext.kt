@@ -1,84 +1,51 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-import soot.jimple.DefinitionStmt
-import soot.jimple.ReturnStmt
-import soot.jimple.Stmt
-import soot.jimple.SwitchStmt
-import soot.jimple.internal.JAssignStmt
-import soot.jimple.internal.JIdentityStmt
-import soot.jimple.internal.JIfStmt
-import soot.jimple.internal.JInvokeStmt
-import soot.jimple.internal.JRetStmt
-import soot.jimple.internal.JReturnStmt
-import soot.jimple.internal.JReturnVoidStmt
-import soot.jimple.internal.JThrowStmt
+import soot.jimple.*
+import soot.jimple.internal.*
 
-public interface TraversalContext<V, A> {
-   public val voidValue: Any
+/**
+ * 语句遍历回调接口，`V` 为值类型，`A` 为用户附带状态类型。
+ */
+interface TraversalContext<V, A> {
 
-   public abstract fun traverseAssignStmt(current: JAssignStmt) {
-   }
+   val voidValue: V
 
-   public abstract fun traverseIdentityStmt(current: JIdentityStmt) {
-   }
+   /* ---------- 各类语句 ---------- */
 
-   public abstract fun traverseIfStmt(current: JIfStmt) {
-   }
+   fun traverseAssignStmt(current: JAssignStmt)
+   fun traverseIdentityStmt(current: JIdentityStmt)
+   fun traverseIfStmt(current: JIfStmt)
+   fun traverseInvokeStmt(current: JInvokeStmt)
+   fun traverseSwitchStmt(current: SwitchStmt)
+   fun traverseThrowStmt(current: JThrowStmt)
 
-   public abstract fun traverseInvokeStmt(current: JInvokeStmt) {
-   }
+   /* ---------- 产生结果 ---------- */
 
-   public abstract fun traverseSwitchStmt(current: SwitchStmt) {
-   }
+   fun processResult(current: MethodResult<V>)
+   fun symbolicSuccess(stmt: ReturnStmt): MethodResult<V>
 
-   public abstract fun traverseThrowStmt(current: JThrowStmt) {
-   }
+   /* ---------- 状态 ---------- */
 
-   public abstract fun processResult(current: MethodResult<Any>) {
-   }
+   fun offerState(state: A)
 
-   public abstract fun symbolicSuccess(stmt: ReturnStmt): MethodResult<Any> {
-   }
+   /* ---------- 通用分发 ---------- */
 
-   public abstract fun offerState(state: Any) {
-   }
-
-   public open fun traverseStmt(current: Stmt) {
-   }
-
-   // $VF: Class flags could not be determined
-   internal class DefaultImpls {
-      @JvmStatic
-      fun <V, A> traverseStmt(`$this`: TraversalContext<V, A>, current: Stmt) {
-         if (current is JAssignStmt) {
-            `$this`.traverseAssignStmt(current as JAssignStmt);
-         } else if (current is JIdentityStmt) {
-            `$this`.traverseIdentityStmt(current as JIdentityStmt);
-         } else if (current is JIfStmt) {
-            `$this`.traverseIfStmt(current as JIfStmt);
-         } else if (current is JInvokeStmt) {
-            `$this`.traverseInvokeStmt(current as JInvokeStmt);
-         } else if (current is SwitchStmt) {
-            `$this`.traverseSwitchStmt(current as SwitchStmt);
-         } else if (current is JReturnStmt) {
-            `$this`.processResult(`$this`.symbolicSuccess(current as ReturnStmt));
-         } else if (current is JReturnVoidStmt) {
-            `$this`.processResult(new SymbolicSuccess<>(`$this`.getVoidValue()));
-         } else {
-            if (current is JRetStmt) {
-               throw new IllegalStateException(("This one should be already removed by Soot: $current").toString());
-            }
-
-            if (current !is JThrowStmt) {
-               if (current is DefinitionStmt) {
-                  throw new NotImplementedError("An operation is not implemented: ${java.lang.String.valueOf(current)}");
-               }
-
-               throw new IllegalStateException(("Unsupported: ${current.getClass()::class}").toString());
-            }
-
-            `$this`.traverseThrowStmt(current as JThrowStmt);
-         }
+   fun traverseStmt(current: Stmt) {
+      when (current) {
+         is JAssignStmt       -> traverseAssignStmt(current)
+         is JIdentityStmt     -> traverseIdentityStmt(current)
+         is JIfStmt           -> traverseIfStmt(current)
+         is JInvokeStmt       -> traverseInvokeStmt(current)
+         is SwitchStmt        -> traverseSwitchStmt(current)
+         is JReturnStmt       -> processResult(symbolicSuccess(current))
+         is JReturnVoidStmt   -> processResult(SymbolicSuccess(voidValue))
+         is JThrowStmt        -> traverseThrowStmt(current)
+         is JRetStmt ->
+            error("should be removed by Soot: $current")
+         is DefinitionStmt ->
+            error("unhandled DefinitionStmt: $current")
+         else ->
+            error("Unsupported stmt: ${current::class}")
       }
    }
 }

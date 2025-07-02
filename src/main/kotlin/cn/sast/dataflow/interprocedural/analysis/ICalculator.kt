@@ -1,17 +1,19 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-import cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder
 import soot.Type
 
-public interface ICalculator<V> {
-   public val res: Builder<Any>
+/** 表达式求值器 —— 将多个 [IHeapValues] 合并到 [res] 里 */
+interface ICalculator<V : Any> {
 
-   public abstract fun isFullySimplified(): Boolean {
-   }
+   /** 结果累积的可变集合 */
+   val res: IHeapValues.Builder<V>
 
-   public abstract fun putSummaryValue(type: Type, special: Any) {
-   }
+   /** 是否已化简到不可再继续 */
+   fun isFullySimplified(): Boolean
 
-   public abstract fun putSummaryIfNotConcrete(type: Type, special: Any) {
-   }
+   /** 写入摘要值 */
+   fun putSummaryValue(type: Type, special: Any)
+
+   /** 若 [type] 不是具体类型时才写入摘要值 */
+   fun putSummaryIfNotConcrete(type: Type, special: Any)
 }

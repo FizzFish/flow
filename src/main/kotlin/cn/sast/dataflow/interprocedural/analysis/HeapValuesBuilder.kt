@@ -1,15 +1,13 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-import kotlinx.collections.immutable.PersistentMap.Builder
+import kotlinx.collections.immutable.PersistentMap
 
-internal class HeapValuesBuilder(orig: HeapValues, map: Builder<IValue, CompanionV<IValue>> = orig.getMap().builder()) : AbstractHeapValuesBuilder(orig, map) {
-   public open val orig: HeapValues
+/** 具体实现的可变 Builder */
+class HeapValuesBuilder(
+   val orig: HeapValues,
+   map: PersistentMap<IValue, CompanionV<IValue>>.Builder
+) : AbstractHeapValuesBuilder<IValue>(orig, map) {
 
-   init {
-      this.orig = orig;
-   }
-
-   public override fun build(): IHeapValues<IValue> {
-      return if (this.getMap().build() === this.getOrig().getMap()) this.getOrig() else new HeapValues(this.getMap().build());
-   }
+   override fun build(): IHeapValues<IValue> =
+      if (map.build() === orig.map) orig else HeapValues(map.build())
 }

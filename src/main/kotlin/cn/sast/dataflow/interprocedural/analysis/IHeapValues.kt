@@ -2,80 +2,48 @@ package cn.sast.dataflow.interprocedural.analysis
 
 import kotlinx.collections.immutable.ImmutableSet
 
-public interface IHeapValues<V> : IDiffAble<V> {
-   public val size: Int
-   public val values: ImmutableSet<Any>
-   public val valuesCompanion: ImmutableSet<CompanionV<Any>>
-   public val single: CompanionV<Any>
+/** 堆值集合 */
+interface IHeapValues<V> : IDiffAble<V>, Iterable<CompanionV<V>> {
 
-   public abstract fun reference(res: MutableCollection<Any>) {
-   }
+   val size: Int
+   val values: ImmutableSet<V>
+   val valuesCompanion: ImmutableSet<CompanionV<V>>
+   val single: CompanionV<V>
 
-   public abstract operator fun plus(rhs: IHeapValues<Any>): IHeapValues<Any> {
-   }
+   fun reference(res: MutableCollection<Any>)
 
-   public abstract operator fun plus(rhs: CompanionV<Any>): IHeapValues<Any> {
-   }
+   operator fun plus(rhs: IHeapValues<V>): IHeapValues<V>
+   operator fun plus(rhs: CompanionV<V>): IHeapValues<V>
 
-   public abstract fun isNotEmpty(): Boolean {
-   }
+   fun isNotEmpty(): Boolean
+   fun isEmpty(): Boolean = !isNotEmpty()
 
-   public abstract fun isEmpty(): Boolean {
-   }
+   fun builder(): Builder<V>
 
-   public abstract fun builder(): cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder<Any> {
-   }
+   fun map(c: Builder<V>, transform: (CompanionV<V>) -> CompanionV<V>)
+   fun flatMap(
+      c: Builder<V>,
+      transform: (CompanionV<V>) -> Collection<CompanionV<V>>
+   )
 
-   public abstract fun map(c: cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder<Any>, transform: (CompanionV<Any>) -> CompanionV<Any>) {
-   }
+   fun isSingle(): Boolean
+   fun getAllIntValue(must: Boolean): MutableSet<Int>?
+   fun getMaxInt(must: Boolean): Int? =
+      getAllIntValue(must)?.maxOrNull()
 
-   public abstract fun flatMap(
-      c: cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder<Any>,
-      transform: (CompanionV<Any>) -> Collection<CompanionV<Any>>
-   ) {
-   }
+   override fun iterator(): Iterator<CompanionV<V>>
+   fun cloneAndReNewObjects(re: IReNew<V>): IHeapValues<V>
 
-   public abstract fun isSingle(): Boolean {
-   }
+   /* ---------- Builder ---------- */
 
-   public abstract fun getAllIntValue(must: Boolean): MutableSet<Int>? {
-   }
+   interface Builder<V> {
+      fun isEmpty(): Boolean
+      fun isNotEmpty(): Boolean
 
-   public open fun getMaxInt(must: Boolean): Int? {
-   }
+      fun add(elements: IHeapValues<V>): Builder<V>
+      fun add(element: CompanionV<V>): Builder<V>
 
-   public abstract operator fun iterator(): Iterator<CompanionV<Any>> {
-   }
-
-   public abstract fun cloneAndReNewObjects(re: IReNew<Any>): IHeapValues<Any> {
-   }
-
-   public interface Builder<V> {
-      public abstract fun isEmpty(): Boolean {
-      }
-
-      public abstract fun isNotEmpty(): Boolean {
-      }
-
-      public abstract fun add(elements: IHeapValues<Any>): cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder<Any> {
-      }
-
-      public abstract fun add(element: CompanionV<Any>): cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder<Any> {
-      }
-
-      public abstract fun build(): IHeapValues<Any> {
-      }
-
-      public abstract fun cloneAndReNewObjects(re: IReNew<Any>) {
-      }
-   }
-
-   // $VF: Class flags could not be determined
-   internal class DefaultImpls {
-      @JvmStatic
-      fun <V> getMaxInt(`$this`: IHeapValues<V>, must: Boolean): Int? {
-         val var10000: java.util.Set = `$this`.getAllIntValue(must);
-         return if (var10000 != null) CollectionsKt.maxOrNull(var10000) as Int else null;
-      }
+      fun build(): IHeapValues<V>
+      fun cloneAndReNewObjects(re: IReNew<V>)
    }
 }

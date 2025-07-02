@@ -1,26 +1,31 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-public interface IData<V> : IDiffAble<V> {
-   public abstract fun reference(res: MutableCollection<Any>) {
-   }
+/** 所有可差分、可引用、可克隆的数据对象顶层接口 */
+interface IData<V> : IDiffAble<V> {
 
-   public abstract fun builder(): cn.sast.dataflow.interprocedural.analysis.IData.Builder<Any> {
-   }
+   /** 收集内部引用 */
+   fun reference(res: MutableCollection<Any>)
 
-   public abstract fun computeHash(): Int {
-   }
+   /** 返回 *可变* Builder */
+   fun builder(): Builder<V>
 
-   public abstract fun cloneAndReNewObjects(re: IReNew<Any>): IData<Any> {
-   }
+   /** 用于依赖缓存的散列 */
+   fun computeHash(): Int
 
-   public interface Builder<V> {
-      public abstract fun union(hf: AbstractHeapFactory<Any>, that: IData<Any>) {
-      }
+   /** 克隆并在克隆过程中对对象做重映射 */
+   fun cloneAndReNewObjects(re: IReNew<Any>): IData<V>
 
-      public abstract fun cloneAndReNewObjects(re: IReNew<Any>) {
-      }
+   /* ---------- Builder ---------- */
 
-      public abstract fun build(): IData<Any> {
-      }
+   interface Builder<V> {
+
+      /** 与另一个数据对象并集 */
+      fun union(hf: AbstractHeapFactory<Any>, that: IData<Any>)
+
+      /** 克隆并重映射内部对象 */
+      fun cloneAndReNewObjects(re: IReNew<Any>)
+
+      /** 构建为不可变实例 */
+      fun build(): IData<V>
    }
 }

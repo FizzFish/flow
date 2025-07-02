@@ -2,14 +2,11 @@ package cn.sast.dataflow.interprocedural.analysis
 
 import soot.Unit
 
-public abstract class HeapValuesEnv {
-   public final val node: Unit
+/**
+ * 绑定到某条 Jimple 语句的环境，供运算时存取附加信息。
+ */
+abstract class HeapValuesEnv(val node: Unit) {
 
-   open fun HeapValuesEnv(node: Unit) {
-      this.node = node;
-   }
-
-   public override fun toString(): String {
-      return "Env *${this.node.getJavaSourceStartLineNumber()} ${this.node}";
-   }
+   override fun toString(): String =
+      "Env *${node.javaSourceStartLineNumber} $node"
 }

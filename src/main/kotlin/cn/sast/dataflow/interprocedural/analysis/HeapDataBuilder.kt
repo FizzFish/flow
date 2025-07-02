@@ -1,126 +1,67 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-import java.util.Map.Entry
 import kotlinx.collections.immutable.PersistentMap
-import kotlinx.collections.immutable.PersistentMap.Builder
-import mu.KLogger
+import kotlinx.collections.immutable.toPersistentMap
+import mu.KotlinLogging
 
-public abstract class HeapDataBuilder<K, V> : IHeapKVData.Builder<K, V> {
-   public final val map: Builder<Any, IHeapValues<Any>>
+/**
+ * 可变 KV-堆对象的通用构建器。
+ */
+abstract class HeapDataBuilder<K, V>(
+   protected val map: PersistentMap<K, IHeapValues<V>>.Builder,
+   protected var unreferenced: IHeapValuesBuilder<V>? = null
+) : IHeapKVData.Builder<K, V> {
 
-   public final var unreferenced: cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder<Any>?
-      internal set
+   /* ---------- 读取 ---------- */
 
-   open fun HeapDataBuilder(map: Builder<K, IHeapValues<V>>, unreferenced: IHeapValuesBuilder<V>?) {
-      this.map = map;
-      this.unreferenced = unreferenced;
-   }
+   protected fun getValue(key: K): IHeapValues<V>? = map[key]
 
-   public open fun getValue(hf: IHeapValuesFactory<Any>, key: Any): IHeapValues<Any>? {
-      return this.map.get(key) as IHeapValues<V>;
-   }
+   /* ---------- 写入 ---------- */
 
-   public override fun set(hf: IHeapValuesFactory<Any>, env: HeapValuesEnv, key: Any?, update: IHeapValues<Any>?, append: Boolean) {
-      if (update != null && !update.isEmpty()) {
-         if (key == null) {
-            if (this.unreferenced != null) {
-               val var10000: IHeapValues.Builder = this.unreferenced;
-               var10000.add(update);
-            } else {
-               this.unreferenced = update.builder();
-            }
-         } else {
-            val exist: IHeapValues = this.getValue(hf, (K)key);
-            (this.map as java.util.Map).put(key, if (append && exist != null) update.plus(exist) else update);
-         }
-      } else {
-         logger.debug(HeapDataBuilder::set$lambda$0);
+   override fun set(
+      hf: IHeapValuesFactory<Any>,
+      env: HeapValuesEnv,
+      key: K?,
+      update: IHeapValues<Any>?,
+      append: Boolean
+   ) {
+      if (update == null || update.isEmpty()) {
+         logger.debug { "ignore update is $update" }
+         return
       }
+
+      if (key == null) {
+         unreferenced = (unreferenced ?: hf.emptyBuilder()).apply { add(update) }
+         return
+      }
+
+      val exist = getValue(key)
+      map[key] = if (append && exist != null) update.plus(exist) else update as IHeapValues<V>
    }
 
-   public override fun union(hf: AbstractHeapFactory<Any>, that: IData<Any>) {
-      if (that !is HeapKVData) {
-         throw new IllegalArgumentException("Failed requirement.".toString());
-      } else {
-         if (this.unreferenced == null) {
-            if ((that as HeapKVData).getUnreferenced() != null) {
-               val var10001: IHeapValues = (that as HeapKVData).getUnreferenced();
-               this.unreferenced = var10001.builder();
-            }
-         } else if ((that as HeapKVData).getUnreferenced() != null) {
-            val var10000: IHeapValues.Builder = this.unreferenced;
-            val var10: IHeapValues = (that as HeapKVData).getUnreferenced();
-            var10000.add(var10);
-         }
+   /* ---------- 合并 ---------- */
 
-         if (this.map != (that as HeapKVData).getMap()) {
-            val var9: PersistentMap = (that as HeapKVData).getMap();
+   override fun union(hf: AbstractHeapFactory<Any>, that: IData<Any>) {
+      require(that is HeapKVData<*, *>) { "Failed requirement." }
 
-            for (Entry var4 : ((java.util.Map)var9).entrySet()) {
-               val k: Any = var4.getKey();
-               val v: IHeapValues = var4.getValue() as IHeapValues;
-               val exist: IHeapValues = this.map.get(k) as IHeapValues;
-               if (exist == null) {
-                  (this.map as java.util.Map).put(k, v);
-               } else {
-                  (this.map as java.util.Map).put(k, v.plus(exist));
-               }
-            }
+      // unreferenced
+      that.unreferenced?.let { v ->
+         unreferenced = (unreferenced ?: v.builder()).apply { add(v) }
+      }
+
+      // map
+      if (map !== that.map) {
+         that.map.forEach { (k, v) ->
+            val exist = map[k]
+            map[k] = if (exist == null) v as IHeapValues<V> else (v as IHeapValues<V>).plus(exist)
          }
       }
    }
 
-   public fun updateFrom(hf: AbstractHeapFactory<Any>, that: IData<Any>) {
-      if (that !is HeapKVData) {
-         throw new IllegalArgumentException("Failed requirement.".toString());
-      } else {
-         if (this.unreferenced == null) {
-            if ((that as HeapKVData).getUnreferenced() != null) {
-               val var10001: IHeapValues = (that as HeapKVData).getUnreferenced();
-               this.unreferenced = var10001.builder();
-            }
-         } else if ((that as HeapKVData).getUnreferenced() != null) {
-            val var10000: IHeapValues.Builder = this.unreferenced;
-            val var9: IHeapValues = (that as HeapKVData).getUnreferenced();
-            var10000.add(var9);
-         }
+   /* ---------- toString ---------- */
+   override fun toString(): String = build().toString()
 
-         if (this.map != (that as HeapKVData).getMap()) {
-            val var8: PersistentMap = (that as HeapKVData).getMap();
-
-            for (Entry var4 : ((java.util.Map)var8).entrySet()) {
-               (this.map as java.util.Map).put(var4.getKey(), var4.getValue() as IHeapValues);
-            }
-         }
-      }
-   }
-
-   public override fun toString(): String {
-      return this.build().toString();
-   }
-
-   public override fun cloneAndReNewObjects(re: IReNew<Any>) {
-      for (Entry var4 : ((java.util.Map)this.map.build()).entrySet()) {
-         val k: Any = var4.getKey();
-         (this.map as java.util.Map).put(k, (var4.getValue() as IHeapValues).cloneAndReNewObjects(re.context(new ReferenceContext.KVPosition(k))));
-      }
-
-      if (this.unreferenced != null) {
-         this.unreferenced.cloneAndReNewObjects(re.context(ReferenceContext.KVUnreferenced.INSTANCE));
-      }
-   }
-
-   @JvmStatic
-   fun `set$lambda$0`(`$update`: IHeapValues): Any {
-      return "ignore update is $`$update`";
-   }
-
-   @JvmStatic
-   fun `logger$lambda$1`(): Unit {
-      return Unit.INSTANCE;
-   }
-
-   public companion object {
-      public final val logger: KLogger
+   companion object {
+      private val logger = KotlinLogging.logger {}
    }
 }

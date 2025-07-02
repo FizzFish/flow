@@ -1,12 +1,11 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-public interface JOperatorC<V> : JOperator<V> {
-   public abstract fun markEntry(): JOperatorC<Any> {
-   }
+/** 单值栈顶返回型 Operator */
+interface JOperatorC<V> : JOperator<V> {
 
-   public abstract fun pop(): CompanionV<Any> {
-   }
+   fun markEntry(): JOperatorC<V>
 
-   public abstract fun popHV(): IHeapValues<Any> {
-   }
+   fun pop(): CompanionV<V>
+
+   fun popHV(): IHeapValues<V>
 }

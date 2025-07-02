@@ -1,42 +1,38 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-public abstract class CompanionV<V> {
-   public final val value: Any
-   private final var hashCode: Int?
+/**
+ * 堆模型中 “元素 + 伴随数据” 的抽象基类。
+ *
+ * @param V 伴随值的实际类型
+ * @property value 元素自身的值
+ */
+abstract class CompanionV<V : Any?>(
+   val value: V
+) {
 
-   open fun CompanionV(value: V) {
-      this.value = (V)value;
-   }
+   /** 懒缓存的哈希值（不可参与 equals 判断） */
+   private var _hashCode: Int? = null
 
-   public abstract fun union(other: CompanionV<Any>): CompanionV<Any> {
-   }
+   /* ---------- 扩展点（子类实现） ---------- */
 
-   public override fun toString(): String {
-      return java.lang.String.valueOf(this.value);
-   }
+   /** 与 [other] 合并，返回新的 `CompanionV` */
+   abstract fun union(other: CompanionV<*>): CompanionV<*>
 
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else {
-         return other is CompanionV && this.value == (other as CompanionV).value;
-      }
-   }
+   /** 复制一个 *value 被替换* 的副本 */
+   abstract fun copy(updateValue: V): CompanionV<V>
 
-   public open fun computeHash(): Int {
-      return (if (this.value != null) this.value.hashCode() else 0) + 23342879;
-   }
+   /* ---------- 可覆写：计算哈希 ---------- */
 
-   public override fun hashCode(): Int {
-      var h: Int = this.hashCode;
-      if (this.hashCode == null) {
-         h = this.computeHash();
-         this.hashCode = h;
-      }
+   protected open fun computeHash(): Int =
+      (value?.hashCode() ?: 0) + 23_342_879
 
-      return h;
-   }
+   /* ---------- Object 基础 ---------- */
 
-   public abstract fun copy(updateValue: Any): CompanionV<Any> {
-   }
+   override fun toString(): String = value.toString()
+
+   override fun equals(other: Any?): Boolean =
+      this === other || (other is CompanionV<*> && value == other.value)
+
+   override fun hashCode(): Int =
+      _hashCode ?: computeHash().also { _hashCode = it }
 }

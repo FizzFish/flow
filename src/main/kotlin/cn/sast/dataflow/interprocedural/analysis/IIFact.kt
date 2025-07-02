@@ -3,117 +3,64 @@ package cn.sast.dataflow.interprocedural.analysis
 import cn.sast.dataflow.interprocedural.analysis.heapimpl.IArrayHeapKV
 import cn.sast.dataflow.interprocedural.check.BuiltInModelT
 import kotlinx.collections.immutable.ImmutableSet
-import mu.KLogger
 import mu.KotlinLogging
-import soot.Local
-import soot.RefLikeType
-import soot.SootMethod
-import soot.Type
-import soot.Value
+import soot.*
 import soot.jimple.Constant
 
-public interface IIFact<V> {
-   public val hf: AbstractHeapFactory<Any>
-   public val callStack: CallStackContext
+/**
+ * 在 *数据流分析* 中跨方法传播的“事实”最小抽象接口。
+ */
+interface IIFact<V> {
 
-   public abstract fun getValueData(v: Any, mt: Any): IData<Any>? {
-   }
+   val hf: AbstractHeapFactory<Any>
+   val callStack: CallStackContext
 
-   public open fun getTargets(slot: Any): IHeapValues<Any> {
-   }
+   /* ---------- 业务数据 ---------- */
 
-   public abstract fun getTargetsUnsafe(slot: Any): IHeapValues<Any>? {
-   }
+   fun getValueData(v: Any, mt: Any): IData<Any>?
 
-   public abstract fun getSlots(): Set<Any> {
-   }
+   /** 安全(空)包装版本 */
+   fun getTargets(slot: Any): IHeapValues<Any> =
+      getTargetsUnsafe(slot) ?: hf.empty()
 
-   public abstract fun getCalledMethods(): ImmutableSet<SootMethod> {
-   }
+   fun getTargetsUnsafe(slot: Any): IHeapValues<Any>?
+   fun getSlots(): Set<Any>
+   fun getCalledMethods(): ImmutableSet<SootMethod>
 
-   public abstract fun isBottom(): Boolean {
-   }
+   /* ---------- 状态 ---------- */
 
-   public abstract fun isTop(): Boolean {
-   }
+   fun isBottom(): Boolean
+   fun isTop(): Boolean
+   fun isValid(): Boolean = !isTop() && !isBottom()
 
-   public open fun isValid(): Boolean {
-   }
+   /* ---------- 查询 ---------- */
 
-   public abstract fun getOfSlot(env: HeapValuesEnv, slot: Any): IHeapValues<Any>? {
-   }
+   fun getOfSlot(env: HeapValuesEnv, slot: Any): IHeapValues<Any>?
+   fun getArrayLength(array: Any): IHeapValues<Any>? =
+      getArray(array)?.getArrayLength()
 
-   public open fun getArrayLength(array: Any): IHeapValues<Any>? {
-   }
+   fun getArray(array: Any): IArrayHeapKV<Int, Any>? =
+      (getValueData(array, BuiltInModelT.Array) as? IArrayHeapKV<*, *>)
+              as? IArrayHeapKV<Int, Any>
 
-   public open fun getArray(array: Any): IArrayHeapKV<Int, Any>? {
-   }
-
-   public open fun getOfSootValue(env: HeapValuesEnv, value: Value, valueType: Type): IHeapValues<Any> {
-   }
-
-   public companion object {
-      public final val logger: KLogger = KotlinLogging.INSTANCE.logger(IIFact.Companion::logger$lambda$0)
-
-      @JvmStatic
-      fun `logger$lambda$0`(): Unit {
-         return Unit.INSTANCE;
+   /**
+    * 根据 [Value] 与其 [valueType] 推导出目标集合
+    */
+   fun getOfSootValue(
+      env: HeapValuesEnv, value: Value, valueType: Type
+   ): IHeapValues<Any> = when (value) {
+      is Constant -> {
+         val ty = if (value.type is RefLikeType) value.type else valueType
+         hf.push(env, hf.newConstVal(value, ty))
+            .markOfConstant(value)
+            .popHV()
       }
+      is Local   -> getTargets(value)
+      else -> error("Unsupported soot.Value: $value")
    }
 
-   // $VF: Class flags could not be determined
-   internal class DefaultImpls {
-      @JvmStatic
-      fun <V> getTargets(`$this`: IIFact<V>, slot: Any): IHeapValues<V> {
-         var var10000: IHeapValues = `$this`.getTargetsUnsafe(slot);
-         if (var10000 == null) {
-            var10000 = `$this`.getHf().empty();
-         }
-
-         return var10000;
-      }
-
-      @JvmStatic
-      fun <V> isValid(`$this`: IIFact<V>): Boolean {
-         return !`$this`.isTop() && !`$this`.isBottom();
-      }
-
-      @JvmStatic
-      fun <V> getArrayLength(`$this`: IIFact<V>, array: V): IHeapValues<V>? {
-         val var10000: IArrayHeapKV = `$this`.getArray(array);
-         return if (var10000 != null) var10000.getArrayLength() else null;
-      }
-
-      @JvmStatic
-      fun <V> getArray(`$this`: IIFact<V>, array: V): IArrayHeapKV<Integer, V>? {
-         val var2: IData = `$this`.getValueData(array, BuiltInModelT.Array);
-         return var2 as? IArrayHeapKV;
-      }
-
-      @JvmStatic
-      fun <V> getOfSootValue(`$this`: IIFact<V>, env: HeapValuesEnv, value: Value, valueType: Type): IHeapValues<V> {
-         val var6: IHeapValues;
-         if (value is Constant) {
-            val type: Type = if ((value as Constant).getType() is RefLikeType) (value as Constant).getType() else valueType;
-            val var10000: AbstractHeapFactory = `$this`.getHf();
-            val var10002: AbstractHeapFactory = `$this`.getHf();
-            val var10003: Constant = value as Constant;
-            var6 = JOperatorV.DefaultImpls.markOfConstant$default(var10000.push(env, var10002.newConstVal(var10003, type)), value as Constant, null, 2, null)
-               .popHV();
-         } else {
-            if (value !is Local) {
-               throw new IllegalStateException((IIFact.DefaultImpls::getOfSootValue$lambda$0).toString());
-            }
-
-            var6 = `$this`.getTargets(value);
-         }
-
-         return var6;
-      }
-
-      @JvmStatic
-      fun `getOfSootValue$lambda$0`(`$value`: Value): java.lang.String {
-         return "error soot.Value: $`$value`";
-      }
+   /* ---------- 默认静态代理 ---------- */
+   companion object {
+      @JvmField val logger = KotlinLogging.logger {}
    }
 }

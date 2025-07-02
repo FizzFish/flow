@@ -1,69 +1,35 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-import cn.sast.dataflow.interprocedural.analysis.IValue.Kind
-import java.util.LinkedHashMap
 import kotlinx.collections.immutable.PersistentList
+import soot.Scene
 import soot.Type
+import java.util.LinkedHashMap
 
-public open class GlobalStaticObject : IValue, IFieldManager<GlobalStaticObject> {
-   private final val fieldObjects: MutableMap<PersistentList<JFieldType>, PhantomField<GlobalStaticObject>> = (new LinkedHashMap()) as java.util.Map
-   public open val type: Type
+/**
+ * 用于表示“单例全局变量”的抽象值。
+ */
+open class GlobalStaticObject(
+   override val type: Type = Scene.v().objectType
+) : IValue, IFieldManager<GlobalStaticObject> {
 
-   public override fun getPhantomFieldMap(): MutableMap<PersistentList<JFieldType>, PhantomField<GlobalStaticObject>> {
-      return this.fieldObjects;
-   }
+   private val fieldObjects: MutableMap<PersistentList<JFieldType>, PhantomField<GlobalStaticObject>> =
+      LinkedHashMap()
 
-   public override fun toString(): String {
-      return "GlobalStaticObject";
-   }
+   /* ---------- IFieldManager ---------- */
 
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other == null) {
-         return false;
-      } else {
-         return other is GlobalStaticObject;
-      }
-   }
+   override fun getPhantomFieldMap():
+           MutableMap<PersistentList<JFieldType>, PhantomField<GlobalStaticObject>> = fieldObjects
 
-   public override fun hashCode(): Int {
-      return 30864;
-   }
+   /* ---------- IValue ---------- */
 
-   public override fun typeIsConcrete(): Boolean {
-      return true;
-   }
+   override fun typeIsConcrete(): Boolean = true
+   override fun isNullConstant(): Boolean = false
+   override fun getKind(): IValue.Kind = IValue.Kind.Entry
 
-   public override fun isNullConstant(): Boolean {
-      return false;
-   }
+   /* ---------- 基础 ---------- */
 
-   public override fun getKind(): Kind {
-      return IValue.Kind.Entry;
-   }
+   override fun toString(): String = "GlobalStaticObject"
 
-   override fun isNormal(): Boolean {
-      return IValue.DefaultImpls.isNormal(this);
-   }
-
-   override fun objectEqual(b: IValue): java.lang.Boolean? {
-      return IValue.DefaultImpls.objectEqual(this, b);
-   }
-
-   override fun clone(): IValue {
-      return IValue.DefaultImpls.clone(this);
-   }
-
-   override fun copy(type: Type): IValue {
-      return IValue.DefaultImpls.copy(this, type);
-   }
-
-   override fun getPhantomField(field: JFieldType): PhantomField<GlobalStaticObject> {
-      return IFieldManager.DefaultImpls.getPhantomField(this, field);
-   }
-
-   override fun getPhantomField(ap: PersistentList<? extends JFieldType>): PhantomField<GlobalStaticObject> {
-      return IFieldManager.DefaultImpls.getPhantomField(this, ap);
-   }
+   override fun equals(other: Any?): Boolean = other is GlobalStaticObject
+   override fun hashCode(): Int = 30_864
 }

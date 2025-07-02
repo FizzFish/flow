@@ -1,21 +1,17 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-public interface JOperatorHV<V> : JOperator<V> {
-   public abstract fun pop(): IHeapValues<Any> {
-   }
+/** Heap-values 栈顶返回型 Operator */
+interface JOperatorHV<V> : JOperator<V> {
 
-   public abstract fun <K> setKVValue(mt: Any, lhs: CompanionV<Any>, key: K?): JOperatorHV<Any> {
-   }
+   fun pop(): IHeapValues<V>
 
-   public abstract fun <K> getKVValue(mt: Any, rhs: CompanionV<Any>, key: K?): JOperatorHV<Any> {
-   }
+   fun <K> setKVValue(mt: Any, lhs: CompanionV<V>, key: K?): JOperatorHV<V>
 
-   public abstract fun assignLocal(lhs: Any, rhsValue: IHeapValues<Any>): JOperatorHV<Any> {
-   }
+   fun <K> getKVValue(mt: Any, rhs: CompanionV<V>, key: K?): JOperatorHV<V>
 
-   public abstract fun markOfArrayLength(rhs: CompanionV<Any>): JOperatorHV<Any> {
-   }
+   fun assignLocal(lhs: Any, rhsValue: IHeapValues<V>): JOperatorHV<V>
 
-   public abstract fun dataElementCopyToSequenceElement(sourceElement: IHeapValues<IValue>): JOperatorHV<Any> {
-   }
+   fun markOfArrayLength(rhs: CompanionV<V>): JOperatorHV<V>
+
+   fun dataElementCopyToSequenceElement(sourceElement: IHeapValues<IValue>): JOperatorHV<V>
 }

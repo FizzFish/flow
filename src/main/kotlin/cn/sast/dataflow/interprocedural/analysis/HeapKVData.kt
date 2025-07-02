@@ -1,133 +1,84 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-import java.util.Map.Entry
-import kotlin.jvm.internal.SourceDebugExtension
 import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.toPersistentMap
 
-@SourceDebugExtension(["SMAP\nHeapKVData.kt\nKotlin\n*S Kotlin\n*F\n+ 1 HeapKVData.kt\ncn/sast/dataflow/interprocedural/analysis/HeapKVData\n+ 2 PointsToGraphAbstract.kt\ncn/sast/dataflow/interprocedural/analysis/PointsToGraphAbstractKt\n*L\n1#1,248:1\n380#2,3:249\n*S KotlinDebug\n*F\n+ 1 HeapKVData.kt\ncn/sast/dataflow/interprocedural/analysis/HeapKVData\n*L\n111#1:249,3\n*E\n"])
-public abstract class HeapKVData<K, V> : IHeapKVData<K, V> {
-   public final val map: PersistentMap<Any, IHeapValues<Any>>
-   public final val unreferenced: IHeapValues<Any>?
-   private final var hashCode: Int?
+/**
+ * 不可变 KV-堆对象基类。
+ */
+abstract class HeapKVData<K, V>(
+   protected val map: PersistentMap<K, IHeapValues<V>>,
+   protected val unreferenced: IHeapValues<V>? = null
+) : IHeapKVData<K, V> {
 
-   open fun HeapKVData(map: PersistentMap<K, ? extends IHeapValues<V>>, unreferenced: IHeapValues<V>?) {
-      this.map = map;
-      this.unreferenced = unreferenced;
-      if (this.unreferenced != null) {
-         this.unreferenced.isNotEmpty();
-      }
+   private var _hashCode: Int? = null
+
+   /* ---------- 引用收集 ---------- */
+
+   override fun reference(res: MutableCollection<Any>) {
+      map.values.forEach { it.reference(res) }
+      unreferenced?.reference(res)
    }
 
-   public override fun reference(res: MutableCollection<Any>) {
-      for (Entry f : ((java.util.Map)this.map).entrySet()) {
-         (f.getValue() as IHeapValues).reference(res);
-      }
+   /* ---------- Diff ---------- */
 
-      if (this.unreferenced != null) {
-         this.unreferenced.reference(res);
+   override fun diff(cmp: IDiff<Any>, that: IDiffAble<out Any?>) {
+      if (that !is HeapKVData<*, *>) return
+
+      map.keys.intersect(that.map.keys).forEach { k ->
+         map[k]!!.diff(cmp, that.map[k]!!)
       }
+      if (unreferenced != null && that.unreferenced != null)
+         unreferenced.diff(cmp, that.unreferenced)
    }
 
-   public override fun diff(cmp: IDiff<Any>, that: IDiffAble<out Any?>) {
-      if (that is HeapKVData) {
-         for (Object k : CollectionsKt.intersect(this.map.keySet(), ((HeapKVData)that).map.keySet())) {
-            var var10000: IHeapValues = (IHeapValues)(this.map as java.util.Map).get(k);
-            var10000 = var10000;
-            val var10002: Any = ((that as HeapKVData).map as java.util.Map).get(k);
-            var10000.diff(cmp, var10002 as IDiffAble<? extends Object>);
+   /* ---------- equals / hash ---------- */
+
+   override fun equals(other: Any?): Boolean =
+      other is HeapKVData<*, *> &&
+              hashCode() == other.hashCode() &&
+              map == other.map &&
+              unreferenced == other.unreferenced
+
+   override fun computeHash(): Int =
+      31 * map.hashCode() + (unreferenced?.hashCode() ?: 0)
+
+   override fun hashCode(): Int =
+      _hashCode ?: computeHash().also { _hashCode = it }
+
+   /* ---------- 读取 ---------- */
+
+   protected abstract fun isValidKey(key: K?): Boolean?
+
+   protected open fun fromNullKey(hf: IHeapValuesFactory<Any>): IHeapValues<Any> {
+      val b = hf.emptyBuilder()
+      map.values.forEach { b.add(it as IHeapValues<Any>) }
+      unreferenced?.let { b.add(it as IHeapValues<Any>) }
+      return b.build()
+   }
+
+   override fun get(hf: IHeapValuesFactory<V>, key: K?): Iterable<CompanionV<out Any?>>? {
+      return if (key != null) {
+         val exist = map[key] as IHeapValues<Any>?
+         when {
+            exist != null && unreferenced != null -> exist.plus(unreferenced)
+            exist != null -> exist
+            else -> unreferenced
          }
+      } else fromNullKey(hf)
+   }
 
-         if (this.unreferenced != null && (that as HeapKVData).unreferenced != null) {
-            this.unreferenced.diff(cmp, (that as HeapKVData).unreferenced);
-         }
+   /* ---------- pretty print ---------- */
+
+   protected open fun ppKey(key: K): String = key.toString()
+   protected open fun ppValue(v: IHeapValues<Any>): String = v.toString()
+
+   override fun toString(): String = buildString {
+      append(getName()).append(' ')
+      if (map.isEmpty()) append("unreferenced: $unreferenced")
+      else map.forEach { (k, v) ->
+         val merged = if (unreferenced != null) v.plus(unreferenced) else v
+         append(ppKey(k)).append("->").append(ppValue(merged as IHeapValues<Any>)).append(" ; ")
       }
-   }
-
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is HeapKVData) {
-         return false;
-      } else if (this.hashCode() != (other as HeapKVData).hashCode()) {
-         return false;
-      } else {
-         return this.map == (other as HeapKVData).map && this.unreferenced == (other as HeapKVData).unreferenced;
-      }
-   }
-
-   public override fun computeHash(): Int {
-      return 31 * (31 * 1 + this.map.hashCode()) + (if (this.unreferenced != null) this.unreferenced.hashCode() else 0);
-   }
-
-   public override fun hashCode(): Int {
-      var hash: Int = this.hashCode;
-      if (this.hashCode == null) {
-         hash = this.computeHash();
-         this.hashCode = hash;
-      }
-
-      return hash;
-   }
-
-   public abstract fun isValidKey(key: Any?): Boolean? {
-   }
-
-   public open fun getFromNullKey(hf: IHeapValuesFactory<Any>): IHeapValues<Any> {
-      val b: IHeapValues.Builder = hf.emptyBuilder();
-
-      for (Entry item$iv : ((java.util.Map)this.map).entrySet()) {
-         b.add(`item$iv`.getValue() as IHeapValues<V>);
-      }
-
-      if (this.unreferenced != null) {
-         b.add(this.unreferenced);
-      }
-
-      return b.build();
-   }
-
-   public open fun getValue(hf: IHeapValuesFactory<Any>, key: Any): IHeapValues<Any>? {
-      return this.map.get(key) as IHeapValues<V>;
-   }
-
-   public override fun get(hf: IHeapValuesFactory<Any>, key: Any?): IHeapValues<Any>? {
-      val var10000: IHeapValues;
-      if (key != null) {
-         val exist: IHeapValues = this.getValue(hf, (K)key);
-         var10000 = if (exist != null) (if (this.unreferenced != null) exist.plus(this.unreferenced) else exist) else this.unreferenced;
-      } else {
-         var10000 = this.getFromNullKey(hf);
-      }
-
-      return var10000;
-   }
-
-   public open fun ppKey(key: Any): String {
-      return key.toString();
-   }
-
-   public open fun ppValue(value: IHeapValues<Any>): String {
-      return value.toString();
-   }
-
-   public override fun toString(): String {
-      val sb: StringBuilder = new StringBuilder(this.getName()).append(" ");
-
-      for (Entry var3 : ((java.util.Map)this.map).entrySet()) {
-         val k: Any = var3.getKey();
-         val v: IHeapValues = var3.getValue() as IHeapValues;
-         val value: IHeapValues = if (this.unreferenced == null) v else v.plus(this.unreferenced);
-         sb.append(this.ppKey((K)k)).append("->").append(this.ppValue(value)).append(" ; ");
-      }
-
-      if (this.map.isEmpty()) {
-         sb.append("unreferenced: ${this.unreferenced}");
-      }
-
-      val var10000: java.lang.String = sb.toString();
-      return var10000;
-   }
-
-   public abstract fun getName(): String {
    }
 }

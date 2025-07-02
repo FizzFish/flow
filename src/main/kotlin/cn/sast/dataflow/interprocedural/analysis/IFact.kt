@@ -1,148 +1,135 @@
 package cn.sast.dataflow.interprocedural.analysis
 
 import cn.sast.dataflow.interprocedural.analysis.heapimpl.IArrayHeapKV
-import soot.ArrayType
-import soot.Context
-import soot.SootMethod
-import soot.Type
-import soot.Unit
-import soot.Value
+import soot.*
+import cn.sast.idfa.analysis.Context as Ctx
 
-public interface IFact<V> : IProblemIteratorTerminal<V>, IIFact<V> {
-   public abstract fun builder(): cn.sast.dataflow.interprocedural.analysis.IFact.Builder<Any> {
-   }
+/**
+ * **单帧数据流事实** 接口。
+ */
+interface IFact<V> : IProblemIteratorTerminal<V>, IIFact<V> {
 
-   public abstract fun diff(cmp: IDiff<Any>, that: IFact<Any>) {
-   }
+   /* ---------- 差分 ---------- */
 
-   public interface Builder<V> : IIFact<V> {
-      public abstract fun copyValueData(from: Any, to: Any) {
-      }
+   fun diff(cmp: IDiff<Any>, that: IFact<Any>)
 
-      public abstract fun setValueData(env: HeapValuesEnv, v: Any, mt: Any, data: IData<Any>?) {
-      }
+   /* ---------- 可变 Builder ---------- */
 
-      public abstract fun assignLocal(env: HeapValuesEnv, lhs: Any, rhs: Any) {
-      }
+   fun builder(): Builder<V>
 
-      public abstract fun assignLocalSootValue(env: HeapValuesEnv, lhs: Any, rhs: Value, valueType: Type) {
-      }
+   /* ---------- Builder 定义 ---------- */
 
-      public abstract fun assignNewExpr(env: HeapValuesEnv, lhs: Any, allocSite: IHeapValues<Any>, append: Boolean = ...) {
-      }
+   interface Builder<V> : IIFact<V> {
 
-      public abstract fun assignNewArray(env: HeapValuesEnv, lhs: Any, allocSite: IHeapValues<Any>, type: ArrayType, size: Value) {
-      }
+      fun copyValueData(from: V, to: V)
+      fun setValueData(env: HeapValuesEnv, v: V, mt: Any, data: IData<V>?)
 
-      public abstract fun assignFieldSootValue(env: HeapValuesEnv, lhs: Any, field: JFieldType, rhs: Value, valueType: Type, append: Boolean = ...) {
-      }
+      /* ----------- 基本赋值 ----------- */
 
-      public abstract fun setField(env: HeapValuesEnv, lhs: Any, field: JFieldType, rhs: Any, append: Boolean = ...) {
-      }
+      fun assignLocal(env: HeapValuesEnv, lhs: V, rhs: V)
+      fun assignLocalSootValue(env: HeapValuesEnv, lhs: V, rhs: Value, valueType: Type)
 
-      public abstract fun setFieldNew(env: HeapValuesEnv, lhs: Any, field: JFieldType, allocSite: IHeapValues<Any>) {
-      }
+      /* ----------- new / newArray ----------- */
 
-      public abstract fun getField(env: HeapValuesEnv, lhs: Any, rhs: Any, field: JFieldType, newSummaryField: Boolean = ...) {
-      }
+      fun assignNewExpr(
+         env: HeapValuesEnv,
+         lhs: V,
+         allocSite: IHeapValues<V>,
+         append: Boolean = false
+      )
 
-      public abstract fun summarizeTargetFields(lhs: Any) {
-      }
+      fun assignNewArray(
+         env: HeapValuesEnv,
+         lhs: V,
+         allocSite: IHeapValues<V>,
+         type: ArrayType,
+         size: Value
+      )
 
-      public abstract fun union(that: IFact<Any>) {
-      }
+      /* ----------- field ----------- */
 
-      public abstract fun updateIntraEdge(env: HeapValuesEnv, ctx: Context, calleeCtx: Context, callEdgeValue: IFact<Any>, hasReturnValue: Boolean): IHeapValues<
-            Any
-         >? {
-      }
+      fun assignFieldSootValue(
+         env: HeapValuesEnv,
+         lhs: V,
+         field: JFieldType,
+         rhs: Value,
+         valueType: Type,
+         append: Boolean = false
+      )
 
-      public abstract fun kill(slot: Any) {
-      }
+      fun setField(env: HeapValuesEnv, lhs: V, field: JFieldType, rhs: V, append: Boolean = false)
+      fun setFieldNew(env: HeapValuesEnv, lhs: V, field: JFieldType, allocSite: IHeapValues<V>)
 
-      public abstract fun build(): IFact<Any> {
-      }
+      fun getField(
+         env: HeapValuesEnv, lhs: V, rhs: V, field: JFieldType,
+         newSummaryField: Boolean = false
+      )
 
-      public abstract fun addCalledMethod(sm: SootMethod) {
-      }
+      fun summarizeTargetFields(lhs: V)
 
-      public abstract fun setArraySootValue(env: HeapValuesEnv, lhs: Any, index: Value, rhs: Value, valueType: Type) {
-      }
+      /* ----------- union / kill ----------- */
 
-      public abstract fun setArrayValueNew(env: HeapValuesEnv, lhs: Any, index: Value?, allocSite: IHeapValues<Any>) {
-      }
+      fun union(that: IFact<V>)
+      fun kill(slot: V)
 
-      public abstract fun getArrayValue(env: HeapValuesEnv, lhs: Any, rhs: Any, index: Value?): Boolean {
-      }
+      /* ----------- intra-procedural更新 ----------- */
 
-      public abstract fun getArrayValue(env: HeapValuesEnv, lhs: Any, rhs: Value, index: Value?): Boolean {
-      }
+      fun updateIntraEdge(
+         env: HeapValuesEnv,
+         ctx: Ctx<SootMethod, Unit, IFact<V>>,
+         calleeCtx: Ctx<SootMethod, Unit, IFact<V>>,
+         callEdgeValue: IFact<V>,
+         hasReturnValue: Boolean
+      ): IHeapValues<V>?
 
-      public abstract fun callEntryFlowFunction(
-         context: cn.sast.idfa.analysis.Context<SootMethod, Unit, IFact<Any>>,
+      /* ----------- 数组 ----------- */
+
+      fun setArraySootValue(
+         env: HeapValuesEnv,
+         lhs: V, index: Value, rhs: Value, valueType: Type
+      )
+
+      fun setArrayValueNew(
+         env: HeapValuesEnv,
+         lhs: V, index: Value?, allocSite: IHeapValues<V>
+      )
+
+      fun getArrayValue(env: HeapValuesEnv, lhs: V, rhs: V, index: Value?): Boolean
+      fun getArrayValue(env: HeapValuesEnv, lhs: V, rhs: Value, index: Value?): Boolean
+
+      fun getArrayLength(array: V): IHeapValues<V>? =
+         IIFact.DefaultImpls.getArrayLength(this, array)
+
+      fun getArray(array: V): IArrayHeapKV<Int, V>? =
+         IIFact.DefaultImpls.getArray(this, array)
+
+      /* ----------- 调用 ----------- */
+
+      fun addCalledMethod(sm: SootMethod)
+      fun callEntryFlowFunction(
+         context: Ctx<SootMethod, Unit, IFact<V>>,
          callee: SootMethod,
          node: Unit,
          succ: Unit
-      ) {
-      }
+      )
 
-      public abstract fun gc() {
-      }
+      /* ----------- GC / Build ----------- */
 
-      // $VF: Class flags could not be determined
-      internal class DefaultImpls {
-         @JvmStatic
-         fun <V> getTargets(`$this`: IFactBuilder<V>, slot: Any): IHeapValues<V> {
-            return IIFact.DefaultImpls.getTargets(`$this`, slot);
-         }
+      fun gc()
+      fun build(): IFact<V>
 
-         @JvmStatic
-         fun <V> isValid(`$this`: IFactBuilder<V>): Boolean {
-            return IIFact.DefaultImpls.isValid(`$this`);
-         }
+      /* ----------- 默认代理 ----------- */
 
-         @JvmStatic
-         fun <V> getArrayLength(`$this`: IFactBuilder<V>, array: V): IHeapValues<V>? {
-            return IIFact.DefaultImpls.getArrayLength(`$this`, (V)array);
-         }
-
-         @JvmStatic
-         fun <V> getArray(`$this`: IFactBuilder<V>, array: V): IArrayHeapKV<Integer, V>? {
-            return IIFact.DefaultImpls.getArray(`$this`, (V)array);
-         }
-
-         @JvmStatic
-         fun <V> getOfSootValue(`$this`: IFactBuilder<V>, env: HeapValuesEnv, value: Value, valueType: Type): IHeapValues<V> {
-            return IIFact.DefaultImpls.getOfSootValue(`$this`, env, value, valueType);
-         }
+      companion object {
+         fun <V> IHeapValues<V>.targets(slot: V): IHeapValues<V> =
+            IIFact.DefaultImpls.getTargets(this, slot)
       }
    }
 
-   // $VF: Class flags could not be determined
-   internal class DefaultImpls {
-      @JvmStatic
-      fun <V> getTargets(`$this`: IFact<V>, slot: Any): IHeapValues<V> {
-         return IIFact.DefaultImpls.getTargets(`$this`, slot);
-      }
+   /* ---------- 默认代理 ---------- */
 
-      @JvmStatic
-      fun <V> isValid(`$this`: IFact<V>): Boolean {
-         return IIFact.DefaultImpls.isValid(`$this`);
-      }
-
-      @JvmStatic
-      fun <V> getArrayLength(`$this`: IFact<V>, array: V): IHeapValues<V>? {
-         return IIFact.DefaultImpls.getArrayLength(`$this`, (V)array);
-      }
-
-      @JvmStatic
-      fun <V> getArray(`$this`: IFact<V>, array: V): IArrayHeapKV<Integer, V>? {
-         return IIFact.DefaultImpls.getArray(`$this`, (V)array);
-      }
-
-      @JvmStatic
-      fun <V> getOfSootValue(`$this`: IFact<V>, env: HeapValuesEnv, value: Value, valueType: Type): IHeapValues<V> {
-         return IIFact.DefaultImpls.getOfSootValue(`$this`, env, value, valueType);
-      }
+   companion object {
+      fun <V> IFact<V>.targets(slot: V): IHeapValues<V> =
+         IIFact.DefaultImpls.getTargets(this, slot)
    }
 }

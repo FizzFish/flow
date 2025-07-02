@@ -1,18 +1,23 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-import cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder
-import kotlin.collections.Map.Entry
+import kotlinx.collections.immutable.persistentHashMapOf
 
-public inline fun <V> IHeapValues<V>.foreach(transform: (CompanionV<V>) -> Unit) {
-   for (CompanionV e : $this$foreach) {
-      transform.invoke(e);
-   }
+/* ---------- 扩展：遍历 / 映射 ---------- */
+
+inline fun <V> IHeapValues<V>.forEachCompanion(
+   action: (CompanionV<V>) -> Unit
+) {
+   for (e in this) action(e)
 }
 
-public inline fun <K, V> Map<out K, IHeapValues<V>>.mapTo(destination: Builder<V>, transform: (Entry<K, IHeapValues<V>>) -> IHeapValues<V>): Builder<V> {
-   for (java.util.Map.Entry item : $this$mapTo.entrySet()) {
-      destination.add(transform.invoke(item) as IHeapValues);
-   }
-
-   return destination;
+inline fun <K, V> Map<out K, IHeapValues<V>>.mapTo(
+   destination: IHeapValues.Builder<V>,
+   transform: (Map.Entry<K, IHeapValues<V>>) -> IHeapValues<V>
+): IHeapValues.Builder<V> {
+   for (item in entries) destination.add(transform(item))
+   return destination
 }
+
+/** 空的 PersistentMap 工具，避免 import clutter */
+internal fun <K, V> emptyPersistentMap(): PersistentMap<K, V> =
+   persistentHashMapOf()

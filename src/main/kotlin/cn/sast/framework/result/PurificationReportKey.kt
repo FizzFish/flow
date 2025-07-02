@@ -2,6 +2,10 @@ package cn.sast.framework.result
 
 import cn.sast.api.report.BugPathEvent
 import cn.sast.api.report.IBugResInfo
+import org.utbot.common.Maybe
+import java.time.LocalDateTime
+import kotlin.jvm.functions.Function0
+import kotlin.jvm.internal.Ref.ObjectRef
 
 public data class PurificationReportKey(bugResFile: IBugResInfo, line: Int, checkName: String, firstEvent: BugPathEvent) {
    public final val bugResFile: IBugResInfo

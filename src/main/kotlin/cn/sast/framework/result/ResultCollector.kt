@@ -47,12 +47,16 @@ import kotlinx.coroutines.Job
 import mu.KLogger
 import org.jetbrains.annotations.NotNull
 import org.jetbrains.annotations.Nullable
+import org.utbot.common.Maybe
 import soot.SootMethod
 import soot.jimple.infoflow.collect.ConcurrentHashSet
 import soot.jimple.infoflow.data.AbstractionAtSink
 import soot.jimple.infoflow.results.DataFlowResult
 import soot.jimple.infoflow.results.InfoflowResults
 import soot.jimple.infoflow.solver.cfg.IInfoflowCFG
+import java.time.LocalDateTime
+import kotlin.jvm.functions.Function0
+import kotlin.jvm.internal.Ref.ObjectRef
 
 @SourceDebugExtension(["SMAP\nResultCollector.kt\nKotlin\n*S Kotlin\n*F\n+ 1 ResultCollector.kt\ncn/sast/framework/result/ResultCollector\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n+ 3 fake.kt\nkotlin/jvm/internal/FakeKt\n+ 4 MapsJVM.kt\nkotlin/collections/MapsKt__MapsJVMKt\n*L\n1#1,284:1\n808#2,11:285\n808#2,11:296\n808#2,11:307\n808#2,11:318\n808#2,11:329\n808#2,11:340\n808#2,11:351\n1863#2,2:362\n1863#2,2:364\n1863#2,2:370\n1557#2:372\n1628#2,3:373\n1863#2,2:376\n1863#2,2:378\n1755#2,3:380\n1863#2,2:383\n1863#2,2:385\n1863#2,2:387\n1557#2:389\n1628#2,3:390\n1#3:366\n1#3:369\n72#4,2:367\n*S KotlinDebug\n*F\n+ 1 ResultCollector.kt\ncn/sast/framework/result/ResultCollector\n*L\n90#1:285,11\n91#1:296,11\n92#1:307,11\n93#1:318,11\n94#1:329,11\n95#1:340,11\n97#1:351,11\n118#1:362,2\n123#1:364,2\n150#1:370,2\n158#1:372\n158#1:373,3\n166#1:376,2\n172#1:378,2\n180#1:380,3\n187#1:383,2\n196#1:385,2\n205#1:387,2\n231#1:389\n231#1:390,3\n132#1:369\n132#1:367,2\n*E\n"])
 public class ResultCollector(mainConfig: MainConfig,
@@ -1118,5 +1122,91 @@ public class ResultCollector(mainConfig: MainConfig,
             }
          };
       }
+   }
+}
+
+
+internal class `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$1` : Function0<Object> {
+   fun `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$1`(`$msg`: java.lang.String) {
+      this.$msg = `$msg`;
+   }
+
+   fun invoke(): Any {
+      return "Started: ${this.$msg}";
+   }
+}
+
+internal class `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$2` : Function0<Object> {
+   fun `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$2`(`$startTime`: LocalDateTime, `$msg`: java.lang.String, `$res`: ObjectRef) {
+      this.$startTime = `$startTime`;
+      this.$msg = `$msg`;
+      this.$res = `$res`;
+   }
+
+   fun invoke(): Any {
+      val var1: LocalDateTime = this.$startTime;
+      val var10000: java.lang.String = LoggingKt.elapsedSecFrom(var1);
+      val var10001: java.lang.String = this.$msg;
+      val it: Any = Result.constructor-impl((this.$res.element as Maybe).getOrThrow());
+      return "Finished (in $var10000): $var10001 ";
+   }
+}
+
+internal class `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$3` : Function0<Object> {
+   fun `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$3`(`$startTime`: LocalDateTime, `$msg`: java.lang.String) {
+      this.$startTime = `$startTime`;
+      this.$msg = `$msg`;
+   }
+
+   fun invoke(): Any {
+      val var1: LocalDateTime = this.$startTime;
+      return "Finished (in ${LoggingKt.elapsedSecFrom(var1)}): ${this.$msg} <Nothing>";
+   }
+}
+
+
+internal class `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$4` : Function0<Object> {
+   fun `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$4`(
+      `$startTime`: LocalDateTime, `$msg`: java.lang.String, `$t`: java.lang.Throwable
+   ) {
+      this.$startTime = `$startTime`;
+      this.$msg = `$msg`;
+      this.$t = `$t`;
+   }
+
+   fun invoke(): Any {
+      val var1: LocalDateTime = this.$startTime;
+      val var10000: java.lang.String = LoggingKt.elapsedSecFrom(var1);
+      val var10001: java.lang.String = this.$msg;
+      val it: Any = Result.constructor-impl(ResultKt.createFailure(this.$t));
+      return "Finished (in $var10000): $var10001 :: EXCEPTION :: ";
+   }
+}
+
+internal class `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$5` : Function0<Object> {
+   fun `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$5`(`$startTime`: LocalDateTime, `$msg`: java.lang.String, `$res`: ObjectRef) {
+      this.$startTime = `$startTime`;
+      this.$msg = `$msg`;
+      this.$res = `$res`;
+   }
+
+   fun invoke(): Any {
+      val var1: LocalDateTime = this.$startTime;
+      val var10000: java.lang.String = LoggingKt.elapsedSecFrom(var1);
+      val var10001: java.lang.String = this.$msg;
+      val it: Any = Result.constructor-impl((this.$res.element as Maybe).getOrThrow());
+      return "Finished (in $var10000): $var10001 ";
+   }
+}
+
+internal class `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$6` : Function0<Object> {
+   fun `ResultCollector$getCoverageReportWriter$1$run$$inlined$bracket$default$6`(`$startTime`: LocalDateTime, `$msg`: java.lang.String) {
+      this.$startTime = `$startTime`;
+      this.$msg = `$msg`;
+   }
+
+   fun invoke(): Any {
+      val var1: LocalDateTime = this.$startTime;
+      return "Finished (in ${LoggingKt.elapsedSecFrom(var1)}): ${this.$msg} <Nothing>";
    }
 }

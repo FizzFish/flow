@@ -1,3 +1,11 @@
+@file:Suppress(
+   "UNCHECKED_CAST",
+   "ReplacePutWithAssignment",
+   "MoveVariableDeclarationIntoWhen",
+   "CascadeIf",
+   "NAME_SHADOWING"
+)
+
 package cn.sast.dataflow.interprocedural.analysis
 
 import cn.sast.dataflow.interprocedural.analysis.heapimpl.ArrayHeapKV
@@ -5,96 +13,104 @@ import cn.sast.dataflow.interprocedural.analysis.heapimpl.IArrayHeapKV
 import cn.sast.dataflow.interprocedural.check.BuiltInModelT
 import cn.sast.dataflow.interprocedural.check.heapimpl.FieldHeapKV
 import cn.sast.dataflow.util.Printer
-import java.util.HashSet
-import java.util.LinkedList
-import java.util.Map.Entry
-import kotlin.jvm.internal.SourceDebugExtension
-import kotlinx.collections.immutable.ExtensionsKt
-import kotlinx.collections.immutable.ImmutableSet
-import kotlinx.collections.immutable.PersistentMap
-import kotlinx.collections.immutable.PersistentMap.Builder
-import soot.ArrayType
-import soot.G
-import soot.IntType
-import soot.Local
-import soot.RefType
-import soot.SootMethod
-import soot.Type
-import soot.Value
+import kotlinx.collections.immutable.*
+import kotlinx.collections.immutable.extensions.*
+import mu.KotlinLogging
+import soot.*
 import soot.jimple.Constant
 import soot.jimple.IntConstant
+import java.lang.StringBuilder
+import java.util.*
 
-@SourceDebugExtension(["SMAP\nPointsToGraphAbstract.kt\nKotlin\n*S Kotlin\n*F\n+ 1 PointsToGraphAbstract.kt\ncn/sast/dataflow/interprocedural/analysis/PointsToGraphBuilderAbstract\n+ 2 PointsToGraphAbstract.kt\ncn/sast/dataflow/interprocedural/analysis/PointsToGraphAbstractKt\n*L\n1#1,1045:1\n119#2,3:1046\n119#2,3:1049\n119#2,3:1052\n119#2,3:1055\n119#2,3:1058\n*S KotlinDebug\n*F\n+ 1 PointsToGraphAbstract.kt\ncn/sast/dataflow/interprocedural/analysis/PointsToGraphBuilderAbstract\n*L\n580#1:1046,3\n610#1:1049,3\n650#1:1052,3\n865#1:1055,3\n979#1:1058,3\n*E\n"])
-public abstract class PointsToGraphBuilderAbstract<V> : IFact.Builder<V> {
-   public final val orig: PointsToGraphAbstract<Any>
-   public open val hf: AbstractHeapFactory<Any>
-   protected final val vg: IVGlobal
+/**
+ * 可变 **Points-to Graph** 构建器基类。
+ *
+ * @param orig          原始不可变 PTG
+ * @param hf            抽象堆工厂
+ * @param vg            全局常量表
+ * @param callStack     调用栈上下文
+ * @param slots         slot → pointees 可变映射
+ * @param heap          对象 → modelType → IData 可变映射
+ * @param calledMethods 已调用方法集合
+ */
+abstract class PointsToGraphBuilderAbstract<V>(
+   val orig: PointsToGraphAbstract<Any>,
+   override val hf: AbstractHeapFactory<Any>,
+   protected val vg: IVGlobal,
+   override var callStack: CallStackContext,
+   protected val slots: PersistentMap.Builder<Any, IHeapValues<Any>>,
+   protected val heap: PersistentMap.Builder<Any, PersistentMap<Any, IData<Any>>>,
+   val calledMethods: PersistentSet.Builder<SootMethod>
+) : IFact.Builder<V> {
 
-   public open var callStack: CallStackContext
-      internal final set
+   /* -------------------------------------------------- */
+   /*  log                                               */
+   /* -------------------------------------------------- */
+   private val logger = KotlinLogging.logger {}
 
-   protected final val slots: Builder<Any, IHeapValues<Any>>
-   protected final val heap: Builder<Any, PersistentMap<Any, IData<Any>>>
-   public final val calledMethods: kotlinx.collections.immutable.PersistentSet.Builder<SootMethod>
+   /* -------------------------------------------------- */
+   /*  #region IFact.Builder 实现                        */
+   /* -------------------------------------------------- */
 
-   open fun PointsToGraphBuilderAbstract(
-      orig: PointsToGraphAbstract<V>,
-      hf: AbstractHeapFactory<V>,
-      vg: IVGlobal,
-      callStack: CallStackContext,
-      slots: Builder<Object, IHeapValues<V>>,
-      heap: Builder<V, PersistentMap<Object, IData<V>>>,
-      calledMethods: kotlinx.collections.immutable.PersistentSetBuilder<SootMethod>
-   ) {
-      this.orig = orig;
-      this.hf = hf;
-      this.vg = vg;
-      this.callStack = callStack;
-      this.slots = slots;
-      this.heap = heap;
-      this.calledMethods = calledMethods;
-   }
-
-   public override fun assignLocal(env: HeapValuesEnv, lhs: Any, rhs: Any) {
-      val rhsValue: IHeapValues = this.slots.get(rhs) as IHeapValues;
+   /** 把 `rhs` 的值直接赋给 `lhs` */
+   override fun assignLocal(env: HeapValuesEnv, lhs: Any, rhs: Any) {
+      val rhsValue = slots[rhs]
       if (rhsValue != null && !rhsValue.isEmpty()) {
-         IFact.Builder.DefaultImpls.assignNewExpr$default(this, env, lhs, rhsValue, false, 8, null);
+         assignNewExpr(env, lhs, rhsValue, append = false)
       } else {
-         IIFact.Companion.getLogger().debug(PointsToGraphBuilderAbstract::assignLocal$lambda$0);
-         IFact.Builder.DefaultImpls.assignNewExpr$default(this, env, lhs, this.getHf().empty(), false, 8, null);
+         logger.debug { "$env assignLocal rhs: $rhs is $rhsValue" }
+         assignNewExpr(env, lhs, hf.empty(), append = false)
       }
    }
 
-   public override fun assignNewExpr(env: HeapValuesEnv, lhs: Any, allocSite: IHeapValues<Any>, append: Boolean) {
-      val var10000: IHeapValues;
-      if (append) {
-         var var10001: IHeapValues = this.slots.get(lhs) as IHeapValues;
-         if (var10001 == null) {
-            var10001 = this.getHf().empty();
-         }
+   /** new / merge-new */
+   override fun assignNewExpr(
+      env: HeapValuesEnv,
+      lhs: Any,
+      allocSite: IHeapValues<Any>,
+      append: Boolean
+   ) {
+      val finalValue =
+         if (append) allocSite + (slots[lhs] ?: hf.empty())
+         else allocSite
 
-         var10000 = allocSite.plus(var10001);
-      } else {
-         var10000 = allocSite;
-      }
+      slots[lhs] = hf.push(env, finalValue)
+         .assignLocal(lhs, finalValue)
+         .pop()
 
-      (this.slots as java.util.Map).put(lhs, this.getHf().push(env, var10000).assignLocal(lhs, var10000).pop());
-      if (var10000.isEmpty()) {
-         IIFact.Companion.getLogger().debug(PointsToGraphBuilderAbstract::assignNewExpr$lambda$1);
-      }
+      if (finalValue.isEmpty())
+         logger.debug { "$env allocSite is empty" }
    }
 
-   public abstract fun newSummary(env: HeapValuesEnv, src: CompanionV<Any>, mt: Any, key: Any?): IHeapValues<Any>? {
+   /* -------------------------------------------------- */
+   /*  ↓↓↓ 各类 Field / Array 操作 ↓↓↓                    */
+   /* -------------------------------------------------- */
+
+   /** 创建新的摘要对象（由子类实现） */
+   abstract fun newSummary(
+      env: HeapValuesEnv,
+      src: CompanionV<Any>,
+      mt: Any,
+      key: Any?
+   ): IHeapValues<Any>?
+
+   override fun kill(slot: Any) {
+      slots.remove(slot)
    }
 
-   public override fun kill(slot: Any) {
-      this.slots.remove(slot);
-   }
+   /** 获取常量池补偿对象（由子类实现） */
+   abstract fun getConstantPoolObjectData(
+      env: HeapValuesEnv,
+      cv: CompanionV<Any>,
+      mt: Any
+   ): IData<Any>?
 
-   public abstract fun getConstantPoolObjectData(env: HeapValuesEnv, cv: CompanionV<Any>, mt: Any): IData<Any>? {
-   }
+   /* -------------------------------------------------- */
+   /*  get / set Heap-KV 通用模板                        */
+   /* -------------------------------------------------- */
 
-   public fun <K : Any> getHeapKVData(
+   /** helper: 取出 KV-model 数据，并按需补全 Summary */
+   fun <K : Any> getHeapKVData(
       env: HeapValuesEnv,
       mt: Any,
       oldHeap: PersistentMap<Any, PersistentMap<Any, IData<Any>>>,
@@ -103,49 +119,36 @@ public abstract class PointsToGraphBuilderAbstract<V> : IFact.Builder<V> {
       newSummary: Boolean,
       emptyIData: (CompanionV<Any>) -> IHeapKVData<K, Any>?
    ): IHeapValues<Any>? {
-      if (this.getTargetsUnsafe(rhs) == null) {
-         return null;
-      } else {
-         val rhsValue: IHeapValues.Builder = this.getHf().empty().builder();
 
-         val rhsPointees: IHeapValues;
-         for (CompanionV e$iv : rhsPointees) {
-            var var21: IData;
-            label52: {
-               val heapData: PersistentMap = this.heap.get(`e$iv`.getValue()) as PersistentMap;
-               if (heapData != null) {
-                  var21 = heapData.get(mt) as IData;
-                  if (var21 != null) {
-                     break label52;
-                  }
-               }
+      val rhsPointees = getTargets(rhs) ?: return null
+      val rhsBuilder = hf.empty().builder()
 
-               var21 = this.getConstantPoolObjectData(env, `e$iv`, mt);
-            }
+      for (cp in rhsPointees) {
+         val heapData = heap[cp.value] ?: oldHeap[cp.value]
+         val iData = heapData?.get(mt) ?: getConstantPoolObjectData(env, cp, mt)
 
-            val edges: IHeapKVData = var21 as IHeapKVData;
-            if (var21 as IHeapKVData == null) {
-               IIFact.Companion.getLogger().debug(PointsToGraphBuilderAbstract::getHeapKVData$lambda$4$lambda$2);
-            }
-
-            val targets: IHeapValues = if (edges != null) edges.get(this.getHf(), key) else null;
-            if (targets != null && targets.isNotEmpty()) {
-               rhsValue.add(this.getHf().push(env, targets).getKVValue(mt, `e$iv`, key).pop());
-            } else if (newSummary) {
-               val var22: IHeapValues = this.newSummary(env, `e$iv`, mt, key);
-               if (var22 != null) {
-                  if (this.setHeapKVData(env, mt, oldHeap, `e$iv`, key, var22, false, emptyIData)) {
-                     rhsValue.add(this.getHf().push(env, var22).getKVValue(mt, `e$iv`, key).pop());
-                  }
-               }
-            }
+         val edges = iData as? IHeapKVData<K, Any>
+         if (edges == null) {
+            logger.debug { "get modelT: $mt map: $cp [$key] is not exist" }
          }
 
-         return rhsValue.build();
+         val targets = edges?.get(hf, key)
+         if (targets != null && targets.isNotEmpty()) {
+            rhsBuilder.add(hf.push(env, targets).getKVValue(mt, cp, key).pop())
+         } else if (newSummary) {
+            val summary = newSummary(env, cp, mt, key)
+            if (summary != null &&
+               setHeapKVData(env, mt, oldHeap, cp, key, summary, append = false, emptyIData)
+            ) {
+               rhsBuilder.add(hf.push(env, summary).getKVValue(mt, cp, key).pop())
+            }
+         }
       }
+      return rhsBuilder.build()
    }
 
-   public fun <K : Any> setHeapKVData(
+   /** helper: 写 KV-model */
+   fun <K : Any> setHeapKVData(
       env: HeapValuesEnv,
       mt: Any,
       oldHeap: PersistentMap<Any, PersistentMap<Any, IData<Any>>>,
@@ -155,470 +158,354 @@ public abstract class PointsToGraphBuilderAbstract<V> : IFact.Builder<V> {
       append: Boolean,
       emptyIData: (CompanionV<Any>) -> IHeapKVData<K, Any>?
    ): Boolean {
-      var var10000: PersistentMap = oldHeap.get(lhs.getValue()) as PersistentMap;
-      if (var10000 == null) {
-         var10000 = ExtensionsKt.persistentHashMapOf();
+
+      var modelMap = heap[lhs.value] ?: oldHeap[lhs.value] ?: persistentHashMapOf()
+      var kvData = modelMap[mt] as? IHeapKVData<K, Any>
+      if (kvData == null) {
+         kvData = emptyIData(lhs) ?: return false
       }
 
-      var var14: IData = var10000.get(mt) as IData;
-      if (var14 == null) {
-         val var15: IHeapKVData = emptyIData.invoke(lhs) as IHeapKVData;
-         if (var15 == null) {
-            return false;
-         }
+      val builder = kvData.builder()
+      val writeValue =
+         if (update == null) update
+         else hf.push(env, update).setKVValue(mt, lhs, key).pop()
 
-         var14 = var15;
+      builder.set(hf, env, key, writeValue, append)
+
+      val newData = builder.build()
+      if (newData != kvData) {
+         modelMap = modelMap.put(mt, newData)
+         heap[lhs.value] = modelMap
       }
-
-      val oldKV: IHeapKVData = var14 as IHeapKVData;
-      val bdr: IHeapKVData.Builder = (var14 as IHeapKVData).builder();
-      if (update == null) {
-         bdr.set(this.getHf(), env, key, update, append);
-      } else {
-         bdr.set(this.getHf(), env, key, this.getHf().push(env, update).setKVValue(mt, lhs, key).pop(), append);
-      }
-
-      val var13: IData = bdr.build();
-      if (var13 != oldKV) {
-         (this.heap as java.util.Map).put(lhs.getValue(), var10000.put(mt, var13));
-      }
-
-      return true;
+      return true
    }
 
-   public abstract fun getEmptyFieldSpace(type: RefType): FieldHeapKV<Any> {
-   }
+   /* -------------------------------------------------- */
+   /*  Field helpers (empty stubs供子类实现)             */
+   /* -------------------------------------------------- */
 
-   public abstract fun getEmptyArraySpace(env: HeapValuesEnv, allocSite: IHeapValues<Any>, type: ArrayType, arrayLength: IHeapValues<Any>?): ArrayHeapKV<Any> {
-   }
+   abstract fun getEmptyFieldSpace(type: RefType): FieldHeapKV<Any>
 
-   public fun assignField(env: HeapValuesEnv, lhsPointees: IHeapValues<Any>, field: JFieldType, update: IHeapValues<Any>?, append: Boolean) {
-      val oldHeap: PersistentMap = this.heap.build();
-      val finalAppend: Boolean = append || !lhsPointees.isSingle();
+   abstract fun getEmptyArraySpace(
+      env: HeapValuesEnv,
+      allocSite: IHeapValues<Any>,
+      type: ArrayType,
+      arrayLength: IHeapValues<Any>? = null
+   ): ArrayHeapKV<Any>
 
-      for (CompanionV e$iv : lhsPointees) {
-         this.setHeapKVData(env, BuiltInModelT.Field, oldHeap, `e$iv`, field, update, finalAppend, this.emptyFieldFx());
-      }
-   }
-
-   public fun assignField(env: HeapValuesEnv, lhs: Any, field: JFieldType, update: IHeapValues<Any>?, append: Boolean) {
-      val var10000: IHeapValues = this.slots.get(lhs) as IHeapValues;
-      if (var10000 != null) {
-         this.assignField(env, var10000, field, update, append);
+   /* lambda for empty Field / Array model */
+   fun emptyArrayFx(env: HeapValuesEnv):
+              (CompanionV<Any>) -> ArrayHeapKV<Any>? = { lhsV ->
+      val tp = getType(lhsV)
+      (tp as? ArrayType)?.let {
+         getEmptyArraySpace(env, hf.single(lhsV), it, null)
       }
    }
 
-   public override fun setField(env: HeapValuesEnv, lhs: Any, field: JFieldType, rhs: Any, append: Boolean) {
-      this.assignField(env, lhs, field, this.slots.get(rhs) as IHeapValues<V>, append);
+   fun emptyFieldFx(): (CompanionV<Any>) -> FieldHeapKV<Any>? = { lhsV ->
+      val tp = getType(lhsV)
+      (tp as? RefType)?.let(::getEmptyFieldSpace)
    }
 
-   public override fun setFieldNew(env: HeapValuesEnv, lhs: Any, field: JFieldType, allocSite: IHeapValues<Any>) {
-      this.assignField(env, lhs, field, allocSite, false);
-   }
+   /* -------------------------------------------------- */
+   /*  assign / get / set field                         */
+   /* -------------------------------------------------- */
 
-   public override fun summarizeTargetFields(lhs: Any) {
-   }
-
-   public override fun getField(env: HeapValuesEnv, lhs: Any, rhs: Any, field: JFieldType, newSummaryField: Boolean) {
-      val res: IHeapValues = this.getHeapKVData(env, BuiltInModelT.Field, this.heap.build(), rhs, field, newSummaryField, this.emptyFieldFx());
-      if (res != null) {
-         IFact.Builder.DefaultImpls.assignNewExpr$default(this, env, lhs, res, false, 8, null);
-      } else {
-         IFact.Builder.DefaultImpls.assignNewExpr$default(this, env, lhs, this.getHf().empty(), false, 8, null);
-      }
-   }
-
-   public override fun toString(): String {
-      val sb: StringBuffer = new StringBuffer();
-      var currCtx: CallStackContext = this.getCallStack();
-      sb.append("call stack: ${if (currCtx != null) currCtx.getDeep() else null}\n");
-
-      while (currCtx != null) {
-         sb.append(currCtx);
-         currCtx = currCtx.getCaller();
-      }
-
-      sb.append("\nslot:\n");
-
-      for (Object slot : this.slots.keySet()) {
-         sb.append(slot).append(" -> ").append(java.lang.String.valueOf(this.slots.get(slot)));
-         sb.append("\n");
-      }
-
-      sb.append("\nheap:\n");
-
-      for (Entry var12 : ((java.util.Map)this.heap).entrySet()) {
-         val data: PersistentMap = var12.getValue() as PersistentMap;
-         sb.append(Printer.Companion.node2String(var12.getKey())).append(":\n");
-
-         for (Entry var8 : ((java.util.Map)data).entrySet()) {
-            sb.append("\t").append(var8.getKey()).append(": ").append(var8.getValue() as IData).append("\n");
-         }
-      }
-
-      val var10000: java.lang.String = sb.toString();
-      return var10000;
-   }
-
-   public override fun union(that: IFact<Any>) {
-      if (that !is PointsToGraphAbstract) {
-         throw new IllegalArgumentException("union error of fact type: ${that.getClass()} \n$that");
-      } else {
-         for (Entry var3 : ((java.util.Map)((PointsToGraphAbstract)that).getSlots()).entrySet()) {
-            val thatSource: Any = var3.getKey();
-            val thatData: IHeapValues = var3.getValue() as IHeapValues;
-            var var10000: IHeapValues = this.slots.get(thatSource) as IHeapValues;
-            if (var10000 == null) {
-               var10000 = this.getHf().empty();
-            }
-
-            (this.slots as java.util.Map).put(thatSource, var10000.plus(thatData));
-         }
-
-         for (Entry var15 : ((java.util.Map)((PointsToGraphAbstract)that).getHeap()).entrySet()) {
-            val var16: Any = var15.getKey();
-
-            for (Entry var7 : ((java.util.Map)((PersistentMap)var15.getValue())).entrySet()) {
-               val kind: Any = var7.getKey();
-               val valuesR: IData = var7.getValue() as IData;
-               var var19: PersistentMap = this.heap.get(var16) as PersistentMap;
-               if (var19 == null) {
-                  var19 = ExtensionsKt.persistentHashMapOf();
-               }
-
-               val valuesL: IData = var19.get(kind) as IData;
-               if (valuesL == null) {
-                  (this.heap as java.util.Map).put(var16, var19.put(kind, valuesR));
-               } else if (valuesL != valuesR) {
-                  val bdr: IData.Builder = valuesL.builder();
-                  bdr.union(this.getHf(), valuesR);
-                  (this.heap as java.util.Map).put(var16, var19.put(kind, bdr.build()));
-               }
-            }
-         }
+   fun assignField(
+      env: HeapValuesEnv,
+      lhsPointees: IHeapValues<Any>,
+      field: JFieldType,
+      update: IHeapValues<Any>?,
+      append: Boolean
+   ) {
+      val oldHeap = heap.build()
+      val finalAppend = append || !lhsPointees.isSingle()
+      for (cp in lhsPointees) {
+         setHeapKVData(
+            env, BuiltInModelT.Field, oldHeap, cp, field,
+            update, finalAppend, emptyFieldFx()
+         )
       }
    }
 
-   public override fun gc() {
-      val workList: LinkedList = new LinkedList();
+   fun assignField(
+      env: HeapValuesEnv,
+      lhs: Any,
+      field: JFieldType,
+      update: IHeapValues<Any>?,
+      append: Boolean
+   ) {
+      slots[lhs]?.let { assignField(env, it, field, update, append) }
+   }
 
-      for (IHeapValues nodes : this.slots.values()) {
-         heapOld.reference(workList);
-      }
+   override fun setField(
+      env: HeapValuesEnv,
+      lhs: Any,
+      field: JFieldType,
+      rhs: Any,
+      append: Boolean
+   ) = assignField(env, lhs, field, slots[rhs], append)
 
-      val var7: HashSet = new HashSet();
-      val var8: PersistentMap = this.heap.build();
+   override fun setFieldNew(
+      env: HeapValuesEnv,
+      lhs: Any,
+      field: JFieldType,
+      allocSite: IHeapValues<Any>
+   ) = assignField(env, lhs, field, allocSite, append = false)
 
-      while (!workList.isEmpty()) {
-         val v: Any = workList.remove();
-         if (!var7.contains(v)) {
-            var7.add(v);
-            val var10000: PersistentMap = var8.get(v) as PersistentMap;
-            if (var10000 != null) {
-               val k: java.util.Iterator = (var10000 as java.util.Map).entrySet().iterator();
+   override fun summarizeTargetFields(lhs: Any) {
+      /* no-op: 实现留给子类，如有需要 */
+   }
 
-               while (k.hasNext()) {
-                  ((k.next() as Entry).getValue() as IData).reference(workList);
-               }
-            }
-         }
-      }
+   override fun getField(
+      env: HeapValuesEnv,
+      lhs: Any,
+      rhs: Any,
+      field: JFieldType,
+      newSummaryField: Boolean
+   ) {
+      val res = getHeapKVData(
+         env, BuiltInModelT.Field, heap.build(), rhs, field,
+         newSummaryField, emptyFieldFx()
+      )
+      assignNewExpr(env, lhs, res ?: hf.empty(), append = false)
+   }
 
-      for (Object k : (ImmutableSet)heapOld.keySet()) {
-         if (!var7.contains(var10)) {
-            this.heap.remove(var10);
+   /* -------------------------------------------------- */
+   /*  Array helpers                                    */
+   /* -------------------------------------------------- */
+
+   private fun getAllIndex(index: Value?): MutableSet<Int>? = when (index) {
+      null -> null
+      is IntConstant -> mutableSetOf(index.value)
+      is Local -> slots[index]?.getAllIntValue(true)
+      else -> null
+   }
+
+   fun setArray(
+      env: HeapValuesEnv,
+      lhs: Any,
+      index: Value?,
+      update: IHeapValues<Any>?,
+      append: Boolean
+   ) {
+      val lhsValues = slots[lhs] ?: return
+      val oldHeap = heap.build()
+      val allIdx = getAllIndex(index)
+      val finalAppend = append || !lhsValues.isSingle()
+
+      fun write(cp: CompanionV<Any>, key: Int?) =
+         setHeapKVData(
+            env, BuiltInModelT.Array, oldHeap, cp, key, update,
+            finalAppend, emptyArrayFx(env)
+         )
+
+      for (cp in lhsValues) {
+         when {
+            allIdx == null || allIdx.isEmpty() -> write(cp, null)
+            allIdx.size == 1 -> write(cp, allIdx.first())
+            else -> allIdx.forEach { write(cp, it) }
          }
       }
    }
 
-   public override fun getSlots(): Set<Any> {
-      return new HashSet<>(this.slots.keySet());
-   }
+   override fun setArraySootValue(
+      env: HeapValuesEnv,
+      lhs: Any,
+      index: Value,
+      rhs: Value,
+      valueType: Type
+   ) = setArray(env, lhs, index, getOfSootValue(env, rhs, valueType), append = false)
 
-   public override fun addCalledMethod(sm: SootMethod) {
-      this.calledMethods.add(sm);
-   }
+   override fun setArrayValueNew(
+      env: HeapValuesEnv,
+      lhs: Any,
+      index: Value?,
+      allocSite: IHeapValues<Any>
+   ) = setArray(env, lhs, index, allocSite, append = false)
 
-   public override fun getCalledMethods(): ImmutableSet<SootMethod> {
-      return this.calledMethods.build() as ImmutableSet<SootMethod>;
-   }
+   override fun getArrayValue(
+      env: HeapValuesEnv,
+      lhs: Any,
+      rhs: Any,
+      index: Value?
+   ): Boolean {
 
-   public override fun getTargetsUnsafe(slot: Any): IHeapValues<Any>? {
-      if (slot !is java.lang.String && slot !is Local && slot !is java.lang.Number) {
-         IIFact.Companion.getLogger().error(PointsToGraphBuilderAbstract::getTargetsUnsafe$lambda$7);
+      val rhsBuilder = hf.empty().builder()
+      val oldHeap = heap.build()
+      val allIdx = getAllIndex(index)
+
+      fun collect(key: Int?) {
+         val res = getHeapKVData(
+            env, BuiltInModelT.Array, oldHeap, rhs, key,
+            newSummary = false, emptyArrayFx(env)
+         )
+         res?.let { rhsBuilder.add(it) }
       }
 
-      return this.slots.get(slot) as IHeapValues<V>;
-   }
-
-   public override fun isBottom(): Boolean {
-      return false;
-   }
-
-   public override fun isTop(): Boolean {
-      return false;
-   }
-
-   public abstract fun getType(value: CompanionV<Any>): Type? {
-   }
-
-   public fun emptyArrayFx(env: HeapValuesEnv): (CompanionV<Any>) -> ArrayHeapKV<Any>? {
-      return PointsToGraphBuilderAbstract::emptyArrayFx$lambda$8;
-   }
-
-   public fun emptyFieldFx(): (CompanionV<Any>) -> FieldHeapKV<Any>? {
-      return PointsToGraphBuilderAbstract::emptyFieldFx$lambda$9;
-   }
-
-   public fun setArray(env: HeapValuesEnv, lhs: Any, index: Value?, update: IHeapValues<Any>?, append: Boolean) {
-      val var10000: IHeapValues = this.slots.get(lhs) as IHeapValues;
-      if (var10000 != null) {
-         val oldHeap: PersistentMap = this.heap.build();
-         val allIndex: java.util.Set = this.getAllIndex(index);
-         val finalAppend: Boolean = append || !var10000.isSingle();
-
-         val lhsPointees: IHeapValues;
-         for (CompanionV e$iv : lhsPointees) {
-            val lhsV: CompanionV = `e$iv`;
-            if (allIndex != null && !allIndex.isEmpty()) {
-               if (allIndex.size() == 1) {
-                  this.setHeapKVData(env, BuiltInModelT.Array, oldHeap, `e$iv`, CollectionsKt.first(allIndex), update, finalAppend, this.emptyArrayFx(env));
-               } else {
-                  val var17: java.util.Iterator = allIndex.iterator();
-
-                  while (var17.hasNext()) {
-                     this.setHeapKVData(
-                        env, BuiltInModelT.Array, oldHeap, lhsV, (var17.next() as java.lang.Number).intValue(), update, true, this.emptyArrayFx(env)
-                     );
-                  }
-               }
-            } else {
-               this.setHeapKVData(env, BuiltInModelT.Array, oldHeap, `e$iv`, null, update, true, this.emptyArrayFx(env));
-            }
-         }
-      }
-   }
-
-   public override fun setArraySootValue(env: HeapValuesEnv, lhs: Any, index: Value, rhs: Value, valueType: Type) {
-      this.setArray(env, lhs, index, this.getOfSootValue(env, rhs, valueType), false);
-   }
-
-   public override fun setArrayValueNew(env: HeapValuesEnv, lhs: Any, index: Value?, allocSite: IHeapValues<Any>) {
-      this.setArray(env, lhs, index, allocSite, false);
-   }
-
-   private fun getAllIndex(index: Value?): MutableSet<Int>? {
-      if (index == null) {
-         return null;
-      } else if (index is IntConstant) {
-         return SetsKt.mutableSetOf(new Integer[]{(index as IntConstant).value});
-      } else {
-         label15:
-         if (index is Local) {
-            val var10000: IHeapValues = this.slots.get(index) as IHeapValues;
-            return if (var10000 == null) null else var10000.getAllIntValue(true);
-         } else {
-            return null;
-         }
-      }
-   }
-
-   public override fun getArrayValue(env: HeapValuesEnv, lhs: Any, rhs: Any, index: Value?): Boolean {
-      val rhsValues: IHeapValues.Builder = this.getHf().empty().builder();
-      val allIndex: java.util.Set = if (index == null) null else this.getAllIndex(index);
-      val oldHeap: PersistentMap = this.heap.build();
-      if (allIndex != null && !allIndex.isEmpty()) {
-         if (allIndex.size() == 1) {
-            val var18: IHeapValues = this.getHeapKVData(env, BuiltInModelT.Array, oldHeap, rhs, CollectionsKt.first(allIndex), false, this.emptyArrayFx(env));
-            if (var18 != null) {
-               rhsValues.add(var18);
-            }
-         } else {
-            val var8: java.util.Iterator = allIndex.iterator();
-
-            while (var8.hasNext()) {
-               val var19: IHeapValues = this.getHeapKVData(
-                  env, BuiltInModelT.Array, oldHeap, rhs, (var8.next() as java.lang.Number).intValue(), false, this.emptyArrayFx(env)
-               );
-               if (var19 != null) {
-                  rhsValues.add(var19);
-               }
-            }
-         }
-      } else {
-         val var10000: IHeapValues = this.getHeapKVData(env, BuiltInModelT.Array, oldHeap, rhs, null, false, this.emptyArrayFx(env));
-         if (var10000 != null) {
-            rhsValues.add(var10000);
-         }
+      when {
+         allIdx == null || allIdx.isEmpty() -> collect(null)
+         allIdx.size == 1 -> collect(allIdx.first())
+         else -> allIdx.forEach(::collect)
       }
 
-      IFact.Builder.DefaultImpls.assignNewExpr$default(this, env, lhs, rhsValues.build(), false, 8, null);
-      return rhsValues.isNotEmpty();
+      assignNewExpr(env, lhs, rhsBuilder.build(), append = false)
+      return rhsBuilder.isNotEmpty()
    }
 
-   public override fun getArrayValue(env: HeapValuesEnv, lhs: Any, rhs: Value, index: Value?): Boolean {
-      val var10000: Boolean;
-      if (rhs is Constant) {
-         var10000 = false;
-      } else {
-         if (rhs !is Local) {
-            throw new IllegalStateException((PointsToGraphBuilderAbstract::getArrayValue$lambda$14).toString());
-         }
+   override fun getArrayValue(
+      env: HeapValuesEnv,
+      lhs: Any,
+      rhs: Value,
+      index: Value?
+   ): Boolean {
+      if (rhs is Constant) return false
+      require(rhs is Local) { "unsupported soot.Value: $rhs" }
+      return getArrayValue(env, lhs, rhs, index)
+   }
 
-         var10000 = this.getArrayValue(env, lhs, rhs, index);
+   /* -------------------------------------------------- */
+   /*  Other helper                                     */
+   /* -------------------------------------------------- */
+
+   /** 返回 lhs 的静态类型（子类决定如何解析） */
+   abstract fun getType(value: CompanionV<Any>): Type?
+
+   /* builder: assign array */
+   override fun assignNewArray(
+      env: HeapValuesEnv,
+      lhs: Any,
+      allocSite: IHeapValues<Any>,
+      type: ArrayType,
+      size: Value
+   ) {
+      val arrModel = getEmptyArraySpace(
+         env, allocSite, type,
+         getOfSootValue(env, size, G.v().soot_IntType())
+      )
+      for (cp in allocSite) {
+         heap[cp.value] = persistentHashMapOf<Any, IData<Any>>()
+            .put(BuiltInModelT.Array, arrModel)
       }
-
-      return var10000;
+      assignNewExpr(env, lhs, allocSite, append = false)
    }
 
-   private fun setIData(value: CompanionV<Any>, bindData: IData<Any>) {
-      var var10000: PersistentMap = this.heap.get(value.getValue()) as PersistentMap;
-      if (var10000 == null) {
-         var10000 = ExtensionsKt.persistentHashMapOf();
-      }
+   /* -------------------------------------------------- */
+   /*  数据存取                                         */
+   /* -------------------------------------------------- */
 
-      (this.heap as java.util.Map).put(value.getValue(), var10000.put(BuiltInModelT.Field, bindData));
-   }
+   override fun getValueData(v: Any, mt: Any): IData<Any>? =
+      heap[v]?.get(mt)
 
-   public override fun assignFieldSootValue(env: HeapValuesEnv, lhs: Any, field: JFieldType, rhs: Value, valueType: Type, append: Boolean) {
-      this.assignField(env, lhs, field, this.getOfSootValue(env, rhs, valueType), append);
-   }
-
-   public override fun assignLocalSootValue(env: HeapValuesEnv, lhs: Any, rhs: Value, valueType: Type) {
-      IFact.Builder.DefaultImpls.assignNewExpr$default(this, env, lhs, this.getOfSootValue(env, rhs, valueType), false, 8, null);
-   }
-
-   public override fun assignNewArray(env: HeapValuesEnv, lhs: Any, allocSite: IHeapValues<Any>, type: ArrayType, size: Value) {
-      val var10003: IntType = G.v().soot_IntType();
-      val res: ArrayHeapKV = this.getEmptyArraySpace(env, allocSite, type, this.getOfSootValue(env, size, var10003 as Type));
-
-      for (CompanionV e$iv : allocSite) {
-         (this.heap as java.util.Map).put(`e$iv`.getValue(), ExtensionsKt.persistentHashMapOf().put(BuiltInModelT.Array, res));
-      }
-
-      IFact.Builder.DefaultImpls.assignNewExpr$default(this, env, lhs, allocSite, false, 8, null);
-   }
-
-   public override fun getValueData(v: Any, mt: Any): IData<Any>? {
-      val var10000: PersistentMap = this.heap.get(v) as PersistentMap;
-      return if (var10000 != null) var10000.get(mt) as IData else null;
-   }
-
-   public override fun setValueData(env: HeapValuesEnv, v: Any, mt: Any, data: IData<Any>?) {
+   override fun setValueData(env: HeapValuesEnv, v: Any, mt: Any, data: IData<Any>?) {
+      val map = heap[v]
       if (data == null) {
-         val var10000: PersistentMap = this.heap.get(v) as PersistentMap;
-         val map: PersistentMap = if (var10000 != null) var10000.remove(mt) else null;
-         if (map != null) {
-            (this.heap as java.util.Map).put(v, map);
-         }
+         map?.remove(mt)?.let { heap[v] = map }
       } else {
-         var var9: PersistentMap = this.heap.get(v) as PersistentMap;
-         if (var9 == null) {
-            var9 = ExtensionsKt.persistentHashMapOf();
-         }
-
-         (this.heap as java.util.Map).put(v, var9.put(mt, this.getHf().getPathFactory().setModelData(env, (V)v, mt, data)));
+         val newData = hf.pathFactory.setModelData(env, v as V, mt, data)
+         heap[v] = (map ?: persistentHashMapOf()).put(mt, newData)
       }
    }
 
-   public override fun copyValueData(from: Any, to: Any) {
-      val var3: java.util.Map = this.heap as java.util.Map;
-      val var10000: PersistentMap = this.heap.get(from) as PersistentMap;
-      if (var10000 != null) {
-         var3.put(to, var10000);
-      }
+   override fun copyValueData(from: Any, to: Any) {
+      heap[from]?.let { heap[to] = it }
    }
 
-   public fun apply(re: IReNew<Any>) {
-      for (Entry var4 : ((java.util.Map)this.heap.build()).entrySet()) {
-         val v: Any = var4.getKey();
-         val l: PersistentMap = var4.getValue() as PersistentMap;
-         val vx: Builder = l.builder();
+   /* -------------------------------------------------- */
+   /*  GC                                              */
+   /* -------------------------------------------------- */
 
-         for (Entry rpVal : ((java.util.Map)dataMap).entrySet()) {
-            val mt: Any = rpVal.getKey();
-            val data: IData = rpVal.getValue() as IData;
-            val var12: IData = data.cloneAndReNewObjects(re.context(new ReferenceContext.PTG(v, mt)));
-            if (var12 != data) {
-               (vx as java.util.Map).put(mt, var12);
-            }
-         }
+   override fun gc() {
+      val workList: Queue<Any> = LinkedList()
+      val visited = HashSet<Any>()
 
-         val var18: Any = re.checkNeedReplace(v);
-         if (var18 == null) {
-            (this.heap as java.util.Map).put(v, vx.build());
-         } else if (!(v == var18)) {
-            (this.heap as java.util.Map).put(var18, vx.build());
-            this.heap.remove(v);
+      // seed from slots
+      slots.values.forEach { it.reference(workList) }
+
+      val heapSnapshot = heap.build()
+
+      while (workList.isNotEmpty()) {
+         val v = workList.remove()
+         if (visited.add(v)) {
+            heapSnapshot[v]?.values?.forEach { it.reference(workList) }
          }
       }
 
-      for (Entry var15 : ((java.util.Map)this.slots.build()).entrySet()) {
-         val var16: Any = var15.getKey();
-         val var17: IHeapValues = var15.getValue() as IHeapValues;
-         val var19: IHeapValues.Builder = var17.builder();
-         var19.cloneAndReNewObjects(re.context(new ReferenceContext.Slot(var16)));
-         val var20: IHeapValues = var19.build();
-         if (var20 != var17) {
-            (this.slots as java.util.Map).put(var16, var20);
+      // remove unreachable
+      heap.keys.toList().filterNot { it in visited }.forEach { heap.remove(it) }
+   }
+
+   /* -------------------------------------------------- */
+   /*  union / targets / status                         */
+   /* -------------------------------------------------- */
+
+   override fun union(that: IFact<Any>) {
+      require(that is PointsToGraphAbstract<*>)
+      // merge slots
+      for ((k, vR) in that.slots) {
+         val vL = slots[k] ?: hf.empty()
+         slots[k] = vL + (vR as IHeapValues<Any>)
+      }
+
+      // merge heap
+      for ((obj, mapR) in that.heap) {
+         var mapL = heap[obj] ?: persistentHashMapOf()
+         for ((mt, dataR) in mapR) {
+            val dataL = mapL[mt]
+            mapL = if (dataL == null) {
+               mapL.put(mt, dataR)
+            } else if (dataL != dataR) {
+               val builder = dataL.builder()
+               builder.union(hf, dataR)
+               mapL.put(mt, builder.build())
+            } else mapL
          }
+         heap[obj] = mapL
       }
    }
 
-   override fun getTargets(slot: Any): IHeapValues<V> {
-      return IFact.Builder.DefaultImpls.getTargets(this, slot);
+   override fun getSlots(): Set<Any> = HashSet(slots.keys)
+
+   override fun addCalledMethod(sm: SootMethod) {
+      calledMethods.add(sm)
    }
 
-   override fun isValid(): Boolean {
-      return IFact.Builder.DefaultImpls.isValid(this);
+   override fun getCalledMethods(): ImmutableSet<SootMethod> =
+      calledMethods.build()
+
+   override fun getTargetsUnsafe(slot: Any): IHeapValues<Any>? {
+      if (slot !is String && slot !is Local && slot !is Number) {
+         logger.error { "error slot value: $slot" }
+      }
+      return slots[slot]
    }
 
-   override fun getArrayLength(array: V): IHeapValues<V>? {
-      return IFact.Builder.DefaultImpls.getArrayLength(this, (V)array);
-   }
+   override fun isBottom() = false
+   override fun isTop() = false
 
-   override fun getArray(array: V): IArrayHeapKV<Integer, V>? {
-      return IFact.Builder.DefaultImpls.getArray(this, (V)array);
-   }
+   /* -------------------------------------------------- */
+   /*  builders helpers                                 */
+   /* -------------------------------------------------- */
 
-   override fun getOfSootValue(env: HeapValuesEnv, value: Value, valueType: Type): IHeapValues<V> {
-      return IFact.Builder.DefaultImpls.getOfSootValue(this, env, value, valueType);
-   }
+   override fun toString(): String = buildString {
+      append("call stack: ").append(callStack.deep).append('\n')
+      var ctx: CallStackContext? = callStack
+      while (ctx != null) {
+         append(ctx)
+         ctx = ctx.caller
+      }
 
-   @JvmStatic
-   fun `assignLocal$lambda$0`(`$env`: HeapValuesEnv, `$rhs`: Any, `$rhsValue`: IHeapValues): Any {
-      return "$`$env` assignLocal rhs: $`$rhs` is $`$rhsValue`";
-   }
+      append("\nslot:\n")
+      slots.forEach { (k, v) ->
+         append(k).append(" -> ").append(v).append('\n')
+      }
 
-   @JvmStatic
-   fun `assignNewExpr$lambda$1`(`$env`: HeapValuesEnv): Any {
-      return "$`$env` allocSite is empty";
-   }
-
-   @JvmStatic
-   fun `getHeapKVData$lambda$4$lambda$2`(`$mt`: Any, `$o`: CompanionV, `$key`: Any): Any {
-      return "get modelT: $`$mt` map: $`$o` [$`$key`] is not exist";
-   }
-
-   @JvmStatic
-   fun `getTargetsUnsafe$lambda$7`(`$slot`: Any): Any {
-      return "error slot value: $`$slot`";
-   }
-
-   @JvmStatic
-   fun `emptyArrayFx$lambda$8`(`this$0`: PointsToGraphBuilderAbstract, `$env`: HeapValuesEnv, lhsV: CompanionV): ArrayHeapKV {
-      val allocSite: Type = `this$0`.getType(lhsV);
-      return if ((allocSite as? ArrayType) != null) `this$0`.getEmptyArraySpace(`$env`, `this$0`.getHf().single(lhsV), allocSite as? ArrayType, null) else null;
-   }
-
-   @JvmStatic
-   fun `emptyFieldFx$lambda$9`(`this$0`: PointsToGraphBuilderAbstract, lhsV: CompanionV): FieldHeapKV {
-      val var3: Type = `this$0`.getType(lhsV);
-      return if ((var3 as? RefType) != null) `this$0`.getEmptyFieldSpace(var3 as? RefType) else null;
-   }
-
-   @JvmStatic
-   fun `getArrayValue$lambda$14`(`$rhs`: Value): java.lang.String {
-      return "error soot.Value: $`$rhs`";
+      append("\nheap:\n")
+      heap.forEach { (obj, mp) ->
+         append(Printer.node2String(obj)).append(":\n")
+         mp.forEach { (mt, data) ->
+            append('\t').append(mt).append(": ").append(data).append('\n')
+         }
+      }
    }
 }

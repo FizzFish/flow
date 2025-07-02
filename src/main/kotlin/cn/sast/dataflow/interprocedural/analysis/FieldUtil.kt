@@ -1,36 +1,25 @@
 package cn.sast.dataflow.interprocedural.analysis
 
 import com.feysh.corax.config.api.ClassField
-import kotlin.jvm.internal.SourceDebugExtension
 import soot.Scene
 import soot.SootField
 import soot.Type
 
-@SourceDebugExtension(["SMAP\nIFact.kt\nKotlin\n*S Kotlin\n*F\n+ 1 IFact.kt\ncn/sast/dataflow/interprocedural/analysis/FieldUtil\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,507:1\n1#2:508\n*E\n"])
-public object FieldUtil {
-   public inline fun of(field: SootField): JSootFieldType {
-      return new JSootFieldType(field);
+/** 字段工具：在 Soot / Corax 类型之间做轻量转换 */
+object FieldUtil {
+
+   /** Soot 字段 → JSootFieldType */
+   fun of(field: SootField): JSootFieldType =
+      JSootFieldType(field)
+
+   /** Corax ClassField → JFieldNameType（可能取不到类型则返回 null） */
+   fun of(field: ClassField): JFieldNameType? {
+      val typeStr = field.fieldType
+      val sootType: Type = typeStr?.let { Scene.v().getTypeUnsafe(it, true) }
+         ?: Scene.v().objectType
+      return JFieldNameType(field.fieldName, sootType)
    }
 
-   public inline fun of(field: ClassField): JFieldNameType? {
-      val var10000: java.lang.String = field.getFieldType();
-      val var7: Type = if (var10000 != null) Scene.v().getTypeUnsafe(var10000, true) else null;
-      val var8: JFieldNameType = new JFieldNameType;
-      val var10002: java.lang.String = field.getFieldName();
-      var var10003: Type = var7;
-      if (var7 == null) {
-         var10003 = Scene.v().getObjectType() as Type;
-      }
-
-      var8./* $VF: Unable to resugar constructor */<init>(var10002, var10003);
-      return var8;
-   }
-
-   public inline fun typeOf(field: JFieldType): Type {
-      return field.getType();
-   }
-
-   public inline fun nameOf(field: JFieldType): String {
-      return field.getName();
-   }
+   fun typeOf(field: JFieldType): Type = field.type
+   fun nameOf(field: JFieldType): String = field.name
 }

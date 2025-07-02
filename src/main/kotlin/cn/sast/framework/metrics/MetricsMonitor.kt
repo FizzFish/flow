@@ -35,6 +35,7 @@ import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.Transient
 import kotlinx.serialization.modules.SerializersModuleBuilder
 import org.eclipse.microprofile.metrics.Gauge
+import java.util.Comparator
 
 @Serializable
 @SourceDebugExtension(["SMAP\nMetricsMonitor.kt\nKotlin\n*S Kotlin\n*F\n+ 1 MetricsMonitor.kt\ncn/sast/framework/metrics/MetricsMonitor\n+ 2 MapsJVM.kt\nkotlin/collections/MapsKt__MapsJVMKt\n+ 3 fake.kt\nkotlin/jvm/internal/FakeKt\n+ 4 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n+ 5 Maps.kt\nkotlin/collections/MapsKt__MapsKt\n+ 6 SerializersModuleBuilders.kt\nkotlinx/serialization/modules/SerializersModuleBuildersKt\n*L\n1#1,249:1\n72#2,2:250\n1#3:252\n1#3:253\n1485#4:254\n1510#4,3:255\n1513#4,3:265\n1246#4,4:270\n1246#4,4:276\n808#4,11:280\n1863#4,2:291\n381#5,7:258\n462#5:268\n412#5:269\n477#5:274\n423#5:275\n31#6,3:293\n*S KotlinDebug\n*F\n+ 1 MetricsMonitor.kt\ncn/sast/framework/metrics/MetricsMonitor\n*L\n92#1:250,2\n92#1:252\n159#1:254\n159#1:255,3\n159#1:265,3\n159#1:270,4\n160#1:276,4\n165#1:280,11\n218#1:291,2\n159#1:258,7\n159#1:268\n159#1:269\n160#1:274\n160#1:275\n228#1:293,3\n*E\n"])
@@ -575,5 +576,13 @@ public class MetricsMonitor : IMonitor {
             return MetricsMonitor.PhaseTimer.$serializer.INSTANCE as KSerializer<MetricsMonitor.PhaseTimer>;
          }
       }
+   }
+}
+
+@SourceDebugExtension(["SMAP\nComparisons.kt\nKotlin\n*S Kotlin\n*F\n+ 1 Comparisons.kt\nkotlin/comparisons/ComparisonsKt__ComparisonsKt$compareBy$2\n+ 2 MetricsMonitor.kt\ncn/sast/framework/metrics/MetricsMonitor\n*L\n1#1,102:1\n196#2:103\n*E\n"])
+internal class `MetricsMonitor$serialize$lambda$15$$inlined$compareBy$1`<T> : Comparator {
+   // QF: local property
+   internal fun <T> `<anonymous>`(a: T, b: T): Int {
+      return ComparisonsKt.compareValues((a as MetricsMonitor.PhaseTimer).getName(), (b as MetricsMonitor.PhaseTimer).getName());
    }
 }
