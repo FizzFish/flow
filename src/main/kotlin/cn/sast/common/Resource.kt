@@ -1028,8 +1028,8 @@ public object Resource {
       }
 
       public override fun resolve(name: String): IResource {
-         if (this.isFile() && this.getZipLike()) {
-            return new Resource.ResourceBasic(Resource.INSTANCE.archivePath(this.path, name));
+         if (this.isFile() && this.zipLike) {
+             return new Resource.ResourceBasic(Resource.INSTANCE.archivePath(this.path, name));
          } else {
             val var10002: Path = this.path.resolve(name);
             return new Resource.ResourceBasic(var10002);
@@ -1082,19 +1082,7 @@ public object Resource {
          }
       }
 
-      override fun getZipLike(): Boolean {
-         return IResource.DefaultImpls.getZipLike(this);
-      }
 
-      @Throws(java/io/IOException::class)
-      override fun deleteDirectoryRecursively() {
-         IResource.DefaultImpls.deleteDirectoryRecursively(this);
-      }
-
-      @Throws(java/io/IOException::class)
-      override fun deleteDirectoryContents() {
-         IResource.DefaultImpls.deleteDirectoryContents(this);
-      }
 
       @JvmStatic
       fun `uri_delegate$lambda$0`(`this$0`: Resource.ResourceBasic): URI {
