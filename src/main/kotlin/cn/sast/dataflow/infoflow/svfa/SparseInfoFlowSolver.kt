@@ -1,173 +1,141 @@
+@file:Suppress("UNCHECKED_CAST", "UNUSED_VARIABLE")
+
 package cn.sast.dataflow.infoflow.svfa
 
-import java.util.ArrayList
-import kotlin.jvm.internal.SourceDebugExtension
+import cn.sast.dataflow.infoflow.svfa.activationUnitsToCallSites
 import soot.SootMethod
-import soot.Unit
+import soot.Unit as SootUnit
 import soot.jimple.IfStmt
 import soot.jimple.infoflow.data.Abstraction
 import soot.jimple.infoflow.problems.AbstractInfoflowProblem
 import soot.jimple.infoflow.solver.cfg.BackwardsInfoflowCFG
-import soot.jimple.infoflow.solver.cfg.IInfoflowCFG.UnitContainer
 import soot.jimple.infoflow.solver.executors.InterruptableExecutor
 import soot.jimple.infoflow.solver.fastSolver.FastSolverLinkedNode
 import soot.jimple.infoflow.solver.fastSolver.InfoflowSolver
 import soot.jimple.infoflow.solver.fastSolver.IFDSSolver.ScheduleTarget
 import soot.jimple.toolkits.ide.icfg.BiDiInterproceduralCFG
-import soot.toolkits.graph.DirectedGraph
 import soot.toolkits.graph.UnitGraph
 
-@SourceDebugExtension(["SMAP\nSparseInfoflowSolver.kt\nKotlin\n*S Kotlin\n*F\n+ 1 SparseInfoflowSolver.kt\ncn/sast/dataflow/infoflow/svfa/SparseInfoFlowSolver\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n*L\n1#1,232:1\n1557#2:233\n1628#2,2:234\n1755#2,3:236\n1630#2:239\n1557#2:240\n1628#2,3:241\n1557#2:244\n1628#2,3:245\n*S KotlinDebug\n*F\n+ 1 SparseInfoflowSolver.kt\ncn/sast/dataflow/infoflow/svfa/SparseInfoFlowSolver\n*L\n184#1:233\n184#1:234,2\n192#1:236,3\n184#1:239\n200#1:240\n200#1:241,3\n203#1:244\n203#1:245,3\n*E\n"])
-public open class SparseInfoFlowSolver(problem: AbstractInfoflowProblem, executor: InterruptableExecutor?) : InfoflowSolver(problem, executor) {
-   private final val sparseCache: CacheFlowGuide by LazyKt.lazy(SparseInfoFlowSolver::sparseCache_delegate$lambda$0)
-      private final get() {
-         return this.sparseCache$delegate.getValue() as CacheFlowGuide;
-      }
+/**
+ * 在标准 InfoflowSolver 基础上引入 **Sparse** 优化：
+ * - 使用 [CacheFlowGuide] 加速 def-use 查询
+ * - 对前向 / 后向分析分别处理
+ */
+open class SparseInfoFlowSolver(
+   problem: AbstractInfoflowProblem<*, *, *, *, *, *>,
+   executor: InterruptableExecutor? = null
+) : InfoflowSolver<Any?, Any?, Any?, Any?, Any?, Any?>(problem, executor) {
 
+   /** def-use 缓存（按配置决定是否跟踪控制依赖） */
+   private val sparseCache by lazy {
+      CacheFlowGuide(
+         problem.manager.config.implicitFlowMode.trackControlFlowDependencies
+      )
+   }
 
-   private final val isForward: Boolean
-      private final get() {
-         return this.icfg !is BackwardsInfoflowCFG;
-      }
+   private val isForward get() = icfg !is BackwardsInfoflowCFG<*, *>
+   private val isBackward get() = icfg  is BackwardsInfoflowCFG<*, *>
 
-
-   private final val isBackward: Boolean
-      private final get() {
-         return this.icfg is BackwardsInfoflowCFG;
-      }
-
-
-   protected open fun propagate(
+   /* ------------------------------------------------------------------ */
+   /*  重写核心 propagate                                                  */
+   /* ------------------------------------------------------------------ */
+   override fun propagate(
       sourceVal: Abstraction,
-      target: Unit,
+      target: SootUnit,
       targetVal: Abstraction,
-      relatedCallSite: Unit?,
+      relatedCallSite: SootUnit?,
       isUnbalancedReturn: Boolean,
-      scheduleTarget: ScheduleTarget
+      scheduleTarget: ScheduleTarget?
    ) {
-      if (targetVal.getAccessPath().getPlainValue() != null && !(targetVal.getAccessPath() == (this.zeroValue as Abstraction).getAccessPath())) {
-         val var10000: DirectedGraph = this.icfg.getOrCreateUnitGraph(this.icfg.getMethodOf(target) as SootMethod);
-         val unitGraph: UnitGraph = var10000 as UnitGraph;
-         val ap: AP = AP.Companion.get(targetVal);
-         val uses: java.util.Set = CollectionsKt.toSet(
-            if (this.icfg is BackwardsInfoflowCFG)
-               this.getSparseCache().getSuccess(false, ap, target, unitGraph)
-               else
-               this.getSparseCache().getSuccess(true, ap, target, unitGraph)
-         );
-         val var58: java.util.List;
-         if (!targetVal.isAbstractionActive()) {
-            if (this.isForward()) {
-               val `$this$map$iv`: java.lang.Iterable = uses;
-               val toVal: java.util.Collection = new ArrayList(CollectionsKt.collectionSizeOrDefault(uses, 10));
+      // 若目标是 zero-value 或 plainValue 为 null，直接走父类
+      if (targetVal.accessPath.plainValue == null ||
+         targetVal.accessPath == (zeroValue as Abstraction).accessPath
+      ) {
+         super.propagate(
+            sourceVal as FastSolverLinkedNode<*>,
+            target,
+            targetVal as FastSolverLinkedNode<*>,
+            relatedCallSite,
+            isUnbalancedReturn,
+            scheduleTarget
+         )
+         return
+      }
 
-               for (Object item$iv$iv : $this$map$iv) {
-                  val it: Unit = newAbs as Unit;
-                  var toValx: Abstraction = targetVal;
-                  val var54: BiDiInterproceduralCFG = this.icfg;
-                  val throughUnits: java.util.Set = SparseInfoflowSolverKt.getGoThrough$default(var54, target, it, null, 4, null);
-                  throughUnits.remove(it);
-                  if (throughUnits.contains(targetVal.getActivationUnit())) {
-                     toValx = targetVal.getActiveCopy();
-                  }
+      /* ---------- 1. 取 def-use 关系 ---------- */
+      val method: SootMethod = icfg.getMethodOf(target)
+      val unitGraph: UnitGraph = icfg.getOrCreateUnitGraph(method)
 
-                  val var55: AbstractInfoflowProblem = this.getTabulationProblem();
-                  val callSites: java.util.Set = SparseInfoflowSolverKt.getActivationUnitsToCallSites(var55).get(targetVal.getActivationUnit()) as java.util.Set;
-                  val var57: Boolean;
-                  if (callSites == null) {
-                     var57 = false;
-                  } else {
-                     val `$this$any$iv`: java.lang.Iterable = callSites;
-                     var var56: Boolean;
-                     if (callSites is java.util.Collection && (callSites as java.util.Collection).isEmpty()) {
-                        var56 = false;
-                     } else {
-                        val var26: java.util.Iterator = `$this$any$iv`.iterator();
+      val ap      = AP[targetVal]
+      val useSet: Set<SootUnit> =
+         if (isBackward)
+            sparseCache.getSuccess(false, ap, target, unitGraph)
+         else
+            sparseCache.getSuccess(true, ap, target, unitGraph)
 
-                        while (true) {
-                           if (!var26.hasNext()) {
-                              var56 = false;
-                              break;
-                           }
+      /* ---------- 2. 生成 (useUnit, toVal) 列表 ---------- */
+      val pairs = ArrayList<Pair<SootUnit, Abstraction>>()
 
-                           if (throughUnits.contains(var26.next() as Unit)) {
-                              var56 = true;
-                              break;
-                           }
-                        }
-                     }
+      if (!targetVal.isAbstractionActive) {
+         useSet.forEach { useUnit ->
+            var toVal = targetVal
+            // 路径 / Dominator / Activation 处理
+            val through = icfg.getGoThrough(target, useUnit)
+               .apply { remove(useUnit) }
 
-                     var57 = var56;
-                  }
-
-                  if (var57) {
-                     toValx = targetVal.getActiveCopy();
-                  }
-
-                  toVal.add(TuplesKt.to(it, toValx));
-               }
-
-               var58 = toVal as java.util.List;
-            } else {
-               val var31: java.lang.Iterable = uses;
-               val var37: java.util.Collection = new ArrayList(CollectionsKt.collectionSizeOrDefault(uses, 10));
-
-               for (Object item$iv$iv : $this$map$iv) {
-                  var37.add(TuplesKt.to(var47 as Unit, targetVal));
-               }
-
-               var58 = var37 as java.util.List;
-            }
-         } else {
-            val var32: java.lang.Iterable = uses;
-            val var38: java.util.Collection = new ArrayList(CollectionsKt.collectionSizeOrDefault(uses, 10));
-
-            for (Object item$iv$iv : $this$map$iv) {
-               var38.add(TuplesKt.to(var48 as Unit, targetVal));
+            if (through.contains(targetVal.activationUnit)) {
+               toVal = targetVal.activeCopy
             }
 
-            var58 = var38 as java.util.List;
-         }
+            val callSites =
+               problem.activationUnitsToCallSites[targetVal.activationUnit] ?: emptySet()
 
-         for (Pair var36 : var58) {
-            val useUnit: Unit = var36.component1() as Unit;
-            val toValx: Abstraction = var36.component2() as Abstraction;
-            val var42: Unit = toValx.getTurnUnit();
-            if (var42 != null) {
-               val var59: BiDiInterproceduralCFG = this.icfg;
-               if (!SparseInfoflowSolverKt.getGoThrough(var59, target, useUnit, SetsKt.setOf(var42)).contains(useUnit)
-                  && (!this.icfg.isCallStmt(useUnit) || !(sourceVal == targetVal))) {
-                  continue;
-               }
+            if (callSites.any { it in through }) {
+               toVal = targetVal.activeCopy
             }
-
-            if (this.isBackward()) {
-               val var60: UnitContainer = this.getTabulationProblem().getManager().getICFG().getDominatorOf(useUnit);
-               if (var60.getUnit() != null && var60.getUnit() is IfStmt) {
-                  super.propagate(
-                     sourceVal as FastSolverLinkedNode,
-                     useUnit,
-                     toValx.deriveNewAbstractionWithDominator(var60.getUnit()) as FastSolverLinkedNode,
-                     relatedCallSite,
-                     isUnbalancedReturn,
-                     scheduleTarget
-                  );
-               }
-            }
-
-            super.propagate(sourceVal as FastSolverLinkedNode, useUnit, toValx as FastSolverLinkedNode, relatedCallSite, isUnbalancedReturn, scheduleTarget);
+            pairs += useUnit to toVal
          }
       } else {
-         super.propagate(sourceVal as FastSolverLinkedNode, target, targetVal as FastSolverLinkedNode, relatedCallSite, isUnbalancedReturn, scheduleTarget);
+         useSet.forEach { pairs += it to targetVal }
+      }
+
+      /* ---------- 3. 真正向流程图中插入边 ---------- */
+      for ((useUnit, toVal) in pairs) {
+
+         // 若 turnUnit 被挡路，则跳过
+         toVal.turnUnit?.let { turn ->
+            val mustPass = icfg.getGoThrough(target, useUnit, setOf(turn))
+            if (useUnit !in mustPass && (icfg.isCallStmt(useUnit) && sourceVal == targetVal))
+               return@for
+         }
+
+         // 回向分析时带 dominator 优化
+         if (isBackward) {
+            icfg.getDominatorOf(useUnit).unit?.takeIf { it is IfStmt }?.let { domUnit ->
+               super.propagate(
+                  sourceVal as FastSolverLinkedNode<*>,
+                  useUnit,
+                  toVal.deriveNewAbstractionWithDominator(domUnit)
+                          as FastSolverLinkedNode<*>,
+                  relatedCallSite,
+                  isUnbalancedReturn,
+                  scheduleTarget
+               )
+               return@for
+            }
+         }
+
+         // 默认分支
+         super.propagate(
+            sourceVal as FastSolverLinkedNode<*>,
+            useUnit,
+            toVal as FastSolverLinkedNode<*>,
+            relatedCallSite,
+            isUnbalancedReturn,
+            scheduleTarget
+         )
       }
    }
 
-   public open fun toString(): String {
-      return if (this.isForward()) "forward" else "backward";
-   }
-
-   @JvmStatic
-   fun `sparseCache_delegate$lambda$0`(`this$0`: SparseInfoFlowSolver): CacheFlowGuide {
-      return new CacheFlowGuide(`this$0`.getTabulationProblem().getManager().getConfig().getImplicitFlowMode().trackControlFlowDependencies());
-   }
+   override fun toString(): String = if (isForward) "forward" else "backward"
 }

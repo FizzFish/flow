@@ -4,8 +4,7 @@ import soot.Scene
 import soot.SootClass
 import soot.SootMethod
 
-public fun findAllOverrideMethodsOfMethod(method: SootMethod): Set<SootMethod> {
-   val var10000: SootClass = method.getDeclaringClass();
-   val var2: java.util.Set = Scene.v().getFastHierarchy().resolveAbstractDispatch(var10000, method);
-   return var2;
+fun findAllOverrideMethodsOfMethod(method: SootMethod): Set<SootMethod> {
+   val clazz: SootClass = method.declaringClass
+   return Scene.v().fastHierarchy.resolveAbstractDispatch(clazz, method)
 }

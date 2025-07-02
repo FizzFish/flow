@@ -1,169 +1,76 @@
 package cn.sast.dataflow.analysis.constant
 
-import java.util.HashMap
-import java.util.HashSet
-import java.util.Objects
-import java.util.function.Function
 import soot.Local
 import soot.Value
-import soot.jimple.AddExpr
-import soot.jimple.BinopExpr
-import soot.jimple.DivExpr
-import soot.jimple.EqExpr
-import soot.jimple.GeExpr
-import soot.jimple.GtExpr
-import soot.jimple.IntConstant
-import soot.jimple.LeExpr
-import soot.jimple.LtExpr
-import soot.jimple.MulExpr
-import soot.jimple.NeExpr
-import soot.jimple.SubExpr
+import soot.jimple.*
+import java.util.HashMap
 
-public class FlowMap @JvmOverloads  public constructor(delegateMap: MutableMap<Local, CPValue> = (new HashMap()) as java.util.Map) {
-   public final var delegateMap: MutableMap<Local, CPValue>
-      internal set
+class FlowMap(
+    private val delegateMap: MutableMap<Local, CPValue> = HashMap()
+) {
 
-   init {
-      this.delegateMap = delegateMap;
-   }
+    operator fun get(local: Local): CPValue =
+        delegateMap.computeIfAbsent(local) { CPValue.undef }
 
-   public operator fun get(local: Local): CPValue {
-      val var3: Any = this.delegateMap.computeIfAbsent(local, new Function(FlowMap::get$lambda$0) {
-         {
-            this.function = function;
-         }
-      });
-      return var3 as CPValue;
-   }
+    fun put(local: Local, value: CPValue): CPValue? =
+        delegateMap.put(local, value)
 
-   public fun put(local: Local, value: CPValue): CPValue? {
-      return this.delegateMap.put(local, value);
-   }
+    fun keySet(): Set<Local> = delegateMap.keys
 
-   public fun keySet(): Set<Local> {
-      return this.delegateMap.keySet();
-   }
+    fun copyFrom(other: FlowMap) {
+        delegateMap.clear()
+        delegateMap.putAll(other.delegateMap)
+    }
 
-   public fun copyFrom(flowMap: FlowMap): Boolean {
-      this.delegateMap.putAll(flowMap.delegateMap);
-      return flowMap.delegateMap == this.delegateMap;
-   }
-
-   public fun computeValue(sootValue: Value): CPValue {
-      if (sootValue is Local) {
-         return this.get(sootValue as Local);
-      } else if (sootValue is IntConstant) {
-         return CPValue.Companion.makeConstant((sootValue as IntConstant).value);
-      } else if (sootValue is BinopExpr) {
-         val op1: Value = (sootValue as BinopExpr).getOp1();
-         val op1Val: CPValue = this.computeValue(op1);
-         val op2: Value = (sootValue as BinopExpr).getOp2();
-         val op2Val: CPValue = this.computeValue(op2);
-         if (op1Val === CPValue.Companion.getUndef() && op2Val === CPValue.Companion.getUndef()) {
-            return CPValue.Companion.getUndef();
-         } else if (op1Val === CPValue.Companion.getUndef() || op2Val === CPValue.Companion.getUndef()) {
-            return CPValue.Companion.getNac();
-         } else if (op1Val != CPValue.Companion.getNac() && op2Val != CPValue.Companion.getNac()) {
-            try {
-               return if (sootValue as BinopExpr is AddExpr)
-                  CPValue.Companion.makeConstant(op1Val.value() + op2Val.value())
-                  else
-                  (
-                     if (sootValue as BinopExpr is SubExpr)
-                        CPValue.Companion.makeConstant(op1Val.value() - op2Val.value())
-                        else
-                        (
-                           if (sootValue as BinopExpr is MulExpr)
-                              CPValue.Companion.makeConstant(op1Val.value() * op2Val.value())
-                              else
-                              (
-                                 if (sootValue as BinopExpr is DivExpr)
-                                    CPValue.Companion.makeConstant(op1Val.value() / op2Val.value())
-                                    else
-                                    (
-                                       if (sootValue as BinopExpr is EqExpr)
-                                          CPValue.Companion.makeConstant(op1Val.value() == op2Val.value())
-                                          else
-                                          (
-                                             if (sootValue as BinopExpr is NeExpr)
-                                                CPValue.Companion.makeConstant(op1Val.value() != op2Val.value())
-                                                else
-                                                (
-                                                   if (sootValue as BinopExpr is GeExpr)
-                                                      CPValue.Companion.makeConstant(op1Val.value() >= op2Val.value())
-                                                      else
-                                                      (
-                                                         if (sootValue as BinopExpr is GtExpr)
-                                                            CPValue.Companion.makeConstant(op1Val.value() > op2Val.value())
-                                                            else
-                                                            (
-                                                               if (sootValue as BinopExpr is LeExpr)
-                                                                  CPValue.Companion.makeConstant(op1Val.value() <= op2Val.value())
-                                                                  else
-                                                                  (
-                                                                     if (sootValue as BinopExpr is LtExpr)
-                                                                        CPValue.Companion.makeConstant(op1Val.value() < op2Val.value())
-                                                                        else
-                                                                        CPValue.Companion.getNac()
-                                                                  )
-                                                            )
-                                                      )
-                                                )
-                                          )
-                                    )
-                              )
-                        )
-                  );
-            } catch (var9: ArithmeticException) {
-               return CPValue.Companion.getNac();
+    fun computeValue(value: Value): CPValue {
+        return when (value) {
+            is Local -> get(value)
+            is IntConstant -> CPValue.makeConstant(value.value)
+            is BinopExpr -> {
+                val op1 = computeValue(value.op1)
+                val op2 = computeValue(value.op2)
+                if (op1 === CPValue.undef && op2 === CPValue.undef) CPValue.undef
+                else if (op1 === CPValue.undef || op2 === CPValue.undef) CPValue.nac
+                else if (op1 != CPValue.nac && op2 != CPValue.nac) {
+                    try {
+                        when (value) {
+                            is AddExpr -> CPValue.makeConstant(op1.value!! + op2.value!!)
+                            is SubExpr -> CPValue.makeConstant(op1.value!! - op2.value!!)
+                            is MulExpr -> CPValue.makeConstant(op1.value!! * op2.value!!)
+                            is DivExpr -> CPValue.makeConstant(op1.value!! / op2.value!!)
+                            is EqExpr -> CPValue.makeConstant(op1.value!! == op2.value!!)
+                            is NeExpr -> CPValue.makeConstant(op1.value!! != op2.value!!)
+                            is GeExpr -> CPValue.makeConstant(op1.value!! >= op2.value!!)
+                            is GtExpr -> CPValue.makeConstant(op1.value!! > op2.value!!)
+                            is LeExpr -> CPValue.makeConstant(op1.value!! <= op2.value!!)
+                            is LtExpr -> CPValue.makeConstant(op1.value!! < op2.value!!)
+                            else -> CPValue.nac
+                        }
+                    } catch (e: ArithmeticException) {
+                        CPValue.nac
+                    }
+                } else CPValue.nac
             }
-         } else {
-            return CPValue.Companion.getNac();
-         }
-      } else {
-         return CPValue.Companion.getNac();
-      }
-   }
 
-   public override operator fun equals(other: Any?): Boolean {
-      label13:
-      if (this === other) {
-         return true;
-      } else {
-         return other != null && this.getClass() == other.getClass() && this.delegateMap == (other as FlowMap).delegateMap;
-      }
-   }
+            else -> CPValue.nac
+        }
+    }
 
-   public override fun hashCode(): Int {
-      return Objects.hash(this.delegateMap);
-   }
+    override fun equals(other: Any?): Boolean =
+        other is FlowMap && this.delegateMap == other.delegateMap
 
-   public override fun toString(): String {
-      return this.delegateMap.toString();
-   }
+    override fun hashCode(): Int = delegateMap.hashCode()
 
-   @JvmOverloads
-   fun FlowMap() {
-      this(null, 1, null);
-   }
+    override fun toString(): String = delegateMap.toString()
 
-   @JvmStatic
-   fun `get$lambda$0`(l: Local): CPValue {
-      return CPValue.Companion.getUndef();
-   }
-
-   public companion object {
-      public fun meet(map1: FlowMap, map2: FlowMap): FlowMap {
-         val resultMap: FlowMap = new FlowMap(null, 1, null);
-         val localSet: java.util.Set = new HashSet();
-         localSet.addAll(map1.keySet());
-         localSet.addAll(map2.keySet());
-
-         for (Local local : localSet) {
-            resultMap.put(local, CPValue.Companion.meetValue(map1.get(local), map2.get(local)));
-         }
-
-         return resultMap;
-      }
-   }
+    companion object {
+        fun meet(map1: FlowMap, map2: FlowMap): FlowMap {
+            val result = FlowMap()
+            val locals = map1.keySet() + map2.keySet()
+            for (local in locals) {
+                result.put(local, CPValue.meetValue(map1[local], map2[local]))
+            }
+            return result
+        }
+    }
 }

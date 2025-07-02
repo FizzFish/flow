@@ -5,77 +5,42 @@ import soot.Type
 import soot.jimple.Constant
 import soot.jimple.NullConstant
 
-public class ConstVal private constructor(v: Constant, type: Type = v.getType()) : IValue {
-   public final val v: Constant
-   public open val type: Type
+/**
+ * 常量值包装。
+ */
+class ConstVal private constructor(
+   val v: Constant,
+   override val type: Type = v.type
+) : IValue {
 
-   public final var hash: Int?
-      internal set
+   /** 懒缓存的 hashCode */
+   private var _hashCode: Int? = null
 
-   init {
-      this.v = v;
-      this.type = type;
-   }
+   /* ---------- IValue ---------- */
 
-   public override fun toString(): String {
-      return "const_${this.getType()}_${this.v}";
-   }
+   override fun toString(): String = "const_${type}_${v}"
 
-   public override fun typeIsConcrete(): Boolean {
-      return true;
-   }
+   override fun typeIsConcrete(): Boolean = true
+   override fun isNullConstant(): Boolean = v is NullConstant
+   override fun getKind(): Kind = IValue.Kind.Normal
 
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other == null) {
-         return false;
-      } else if (other !is ConstVal) {
-         return false;
-      } else if (!(this.v == (other as ConstVal).v)) {
-         return false;
-      } else {
-         return this.getType() == (other as ConstVal).getType();
-      }
-   }
+   /* ---------- equals/hash ---------- */
 
-   public override fun hashCode(): Int {
-      var result: Int = this.hash;
-      if (this.hash == null) {
-         result = 31 * Integer.valueOf(this.v.hashCode()) + this.getType().hashCode();
-         this.hash = result;
-      }
+   override fun equals(other: Any?): Boolean =
+      other is ConstVal && v == other.v && type == other.type
 
-      return result;
-   }
+   override fun hashCode(): Int =
+      _hashCode ?: (31 * v.hashCode() + type.hashCode()).also { _hashCode = it }
 
-   public override fun isNullConstant(): Boolean {
-      return this.v is NullConstant;
-   }
+   /* ---------- default delegates ---------- */
 
-   public override fun getKind(): Kind {
-      return IValue.Kind.Normal;
-   }
+   override fun isNormal()               = IValue.DefaultImpls.isNormal(this)
+   override fun objectEqual(b: IValue)   = IValue.DefaultImpls.objectEqual(this, b)
+   override fun clone(): IValue          = IValue.DefaultImpls.clone(this)
+   override fun copy(type: Type): IValue = IValue.DefaultImpls.copy(this, type)
 
-   override fun isNormal(): Boolean {
-      return IValue.DefaultImpls.isNormal(this);
-   }
-
-   override fun objectEqual(b: IValue): java.lang.Boolean? {
-      return IValue.DefaultImpls.objectEqual(this, b);
-   }
-
-   override fun clone(): IValue {
-      return IValue.DefaultImpls.clone(this);
-   }
-
-   override fun copy(type: Type): IValue {
-      return IValue.DefaultImpls.copy(this, type);
-   }
-
-   public companion object {
-      public fun v(v: Constant, ty: Type): ConstVal {
-         return new ConstVal(v, ty, null);
-      }
+   /* ---------- 工厂 ---------- */
+   companion object {
+      fun v(c: Constant, ty: Type = c.type): ConstVal = ConstVal(c, ty)
    }
 }

@@ -1,46 +1,26 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-public abstract class AbstractTOP<V> : InValidFact<V> {
-   public open val hf: AbstractHeapFactory<Any>
+/**
+ * “常量” TOP；与 BOTTOM 相对。
+ */
+abstract class AbstractTOP<V>(
+   override val hf: AbstractHeapFactory<V>
+) : InValidFact<V>() {
 
-   open fun AbstractTOP(hf: AbstractHeapFactory<V>) {
-      this.hf = hf;
-   }
+   override fun isBottom() = false
+   override fun isTop()    = true
+   override fun isValid()  = false
 
-   public override fun isBottom(): Boolean {
-      return false;
-   }
+   override fun toString() = "IFact: TOP"
 
-   public override fun isTop(): Boolean {
-      return true;
-   }
+   override fun equals(other: Any?): Boolean =
+      other is IFact<*> && other.isTop()
 
-   public override fun isValid(): Boolean {
-      return false;
-   }
+   override fun hashCode(): Int = 1
 
-   public override fun toString(): String {
-      return "IFact: TOP";
-   }
+   /* 其余操作默认返回空值 / 不执行逻辑 */
+   override fun getOfSlot(env: HeapValuesEnv, slot: Any): IHeapValues<Any> =
+      hf.empty()
 
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is IFact) {
-         return false;
-      } else {
-         return this.isTop() && (other as IFact).isTop();
-      }
-   }
-
-   public override fun hashCode(): Int {
-      return 1;
-   }
-
-   public override fun getOfSlot(env: HeapValuesEnv, slot: Any): IHeapValues<Any> {
-      return this.getHf().empty();
-   }
-
-   public override fun diff(cmp: IDiff<Any>, that: IFact<Any>) {
-   }
+   override fun diff(cmp: IDiff<Any>, that: IFact<Any>) = Unit
 }

@@ -11,39 +11,41 @@ import soot.Scene
 import soot.Unit
 import soot.toolkits.graph.DirectedGraph
 import soot.toolkits.graph.UnitGraph
+import kotlin.math.max
 
-public class CacheFlowGuide(trackControlFlowDependencies: Boolean) {
-   public final val trackControlFlowDependencies: Boolean
+/**
+ * 按方法缓存 [ILocalDFA]（def-use 图），避免重复流敏分析。
+ */
+class CacheFlowGuide(private val trackControlFlowDependencies: Boolean) {
 
-   private final val initialCapacity: Int
-      private final get() {
-         return Math.max(Scene.v().getClasses().size() * 10, 500);
-      }
+   /** 依据已加载类数量估算的初始容量 */
+   private val initialCapacity: Int
+      get() = max(Scene.v().classes.size * 10, 500)
 
+   /** Guava 缓存：UnitGraph → ILocalDFA */
+   private val cache: LoadingCache<UnitGraph, ILocalDFA> =
+      CacheBuilder.newBuilder()
+         .concurrencyLevel(OS.maxThreadNum)
+         .initialCapacity(initialCapacity)
+         .maximumSize((initialCapacity * 2).toLong())
+         .softValues()
+         .build(object : CacheLoader<UnitGraph, ILocalDFA>() {
+            override fun load(ug: UnitGraph): ILocalDFA =
+               LocalVFA(ug as DirectedGraph<Unit>, trackControlFlowDependencies)
+         })
 
-   private final val flowCacheBuilder: CacheBuilder<Any, Any>
-   private final val cache: LoadingCache<UnitGraph, ILocalDFA>
-
-   init {
-      this.trackControlFlowDependencies = trackControlFlowDependencies;
-      this.flowCacheBuilder = CacheBuilder.newBuilder()
-         .concurrencyLevel(OS.INSTANCE.getMaxThreadNum())
-         .initialCapacity(this.getInitialCapacity())
-         .maximumSize((long)(this.getInitialCapacity() * 2))
-         .softValues();
-      this.cache = this.flowCacheBuilder.build(new CacheLoader<UnitGraph, ILocalDFA>(this) {
-         {
-            this.this$0 = `$receiver`;
-         }
-
-         public ILocalDFA load(UnitGraph ug) throws Exception {
-            return new LocalVFA(ug as DirectedGraph<Unit>, this.this$0.getTrackControlFlowDependencies());
-         }
-      });
-   }
-
-   public fun getSuccess(isForward: Boolean, ap: AP, unit: Unit, unitGraph: UnitGraph): List<Unit> {
-      val lu: ILocalDFA = this.cache.getUnchecked(unitGraph) as ILocalDFA;
-      return if (isForward) lu.getUsesOfAt(ap, unit) else lu.getDefUsesOfAt(ap, unit);
+   /**
+    * 获得 **前向 / 反向** def-use 结果。
+    *
+    * @param isForward `true` ⇒ *use*；`false` ⇒ *def*
+    */
+   fun getSuccess(
+      isForward: Boolean,
+      ap: AP,
+      unit: Unit,
+      unitGraph: UnitGraph
+   ): List<Unit> {
+      val dfa = cache.getUnchecked(unitGraph)
+      return if (isForward) dfa.getUsesOfAt(ap, unit) else dfa.getDefUsesOfAt(ap, unit)
    }
 }

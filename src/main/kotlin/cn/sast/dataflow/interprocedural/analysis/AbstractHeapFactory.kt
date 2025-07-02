@@ -1,105 +1,93 @@
 package cn.sast.dataflow.interprocedural.analysis
 
 import cn.sast.api.util.SootUtilsKt
-import cn.sast.dataflow.interprocedural.analysis.IFact.Builder
 import cn.sast.dataflow.interprocedural.check.PathFactory
 import cn.sast.idfa.check.ICallCB
 import com.feysh.corax.config.api.IExpr
+import kotlinx.collections.immutable.persistentHashMapOf
 import mu.KLogger
 import mu.KotlinLogging
-import soot.Type
-import soot.Unit
-import soot.jimple.AnyNewExpr
-import soot.jimple.BinopExpr
-import soot.jimple.Constant
-import soot.jimple.UnopExpr
+import soot.*
+import soot.jimple.*
 
-public abstract class AbstractHeapFactory<V> : IHeapValuesFactory<V> {
-   public final lateinit var constantPoolObjectData: Builder<Any>
-      internal set
+/**
+ * 提供 **堆对象** 与 **常量值** 的统一创建接口；各语言/运行时需实现子类。
+ */
+abstract class AbstractHeapFactory<V> : IHeapValuesFactory<V> {
 
-   public open var logger: KLogger
-      internal final set
+   /** “常量池” 对象（全局共用，故 `lateinit`） */
+   lateinit var constantPoolObjectData: IFact.Builder<Any>
 
-   public abstract val vg: IVGlobal
-   public abstract val nullConst: Any
+   /** 日志 */
+   open var logger: KLogger = KotlinLogging.logger(this::class.qualifiedName!!)
 
-   open fun AbstractHeapFactory() {
-      val var10001: KotlinLogging = KotlinLogging.INSTANCE;
-      val var10002: java.lang.String = (AbstractHeapFactory::class).getQualifiedName();
-      this.logger = var10001.logger(var10002);
-   }
+   /* ---------------------- 必须由子类实现的 API ---------------------- */
 
-   public abstract fun anyNewVal(newExprEnv: AnyNewExprEnv, newExr: AnyNewExpr): Any {
-   }
+   abstract val vg: IVGlobal
+   abstract val nullConst: V
 
-   public abstract fun newSummaryVal(env: HeapValuesEnv, type: Type, special: Any): Any {
-   }
+   abstract fun anyNewVal(newExprEnv: AnyNewExprEnv, newExpr: AnyNewExpr): V
+   abstract fun newSummaryVal(env: HeapValuesEnv, type: Type, special: Any): V
+   abstract fun canStore(receivers: IHeapValues<V>, receiverType: Type): IHeapValues<V>
+   abstract fun newConstVal(constant: Constant, type: Type): V
+   abstract fun env(node: Unit): HeapValuesEnv
+   abstract fun env(ctx: AIContext, node: Unit): HookEnv
+   abstract fun getBooleanValue(v: V, checkType: Boolean = true): Boolean?
+   abstract fun getIntValue(v: V, checkType: Boolean = true): Int?
+   abstract fun newReNewInterface(orig: MutableSet<V>): IReNew<V>
+   abstract fun push(env: HeapValuesEnv, alloc: V): JOperatorV<V>
+   abstract fun push(env: HeapValuesEnv, value: CompanionV<V>): JOperatorC<V>
+   abstract fun push(env: HeapValuesEnv, value: IHeapValues<V>): JOperatorHV<V>
+   abstract fun getPathFactory(): PathFactory<V>
 
-   public abstract fun canStore(receivers: IHeapValues<Any>, receiverType: Type): IHeapValues<Any> {
-   }
+   /** 将任意对象转为常量包装 */
+   fun toConstVal(v: Any): V =
+      SootUtilsKt.constOf(v).let { (c, t) -> newConstVal(c, t) }
 
-   public abstract fun newConstVal(constant: Constant, type: Type): Any {
-   }
+   /* ------------------------- 计算 / 求值 --------------------------- */
 
-   public abstract fun env(node: Unit): HeapValuesEnv {
-   }
+   abstract fun resolveOp(
+      env: HeapValuesEnv, vararg ops: IHeapValues<V>?
+   ): IOpCalculator<V>
 
-   public abstract fun env(ctx: AIContext, node: Unit): HookEnv {
-   }
-
-   public abstract fun getBooleanValue(v: Any, checkType: Boolean = true): Boolean? {
-   }
-
-   public abstract fun getIntValue(v: Any, checkType: Boolean = true): Int? {
-   }
-
-   public abstract fun newReNewInterface(orig: MutableSet<Any>): IReNew<Any> {
-   }
-
-   public abstract fun push(env: HeapValuesEnv, alloc: Any): JOperatorV<Any> {
-   }
-
-   public abstract fun push(env: HeapValuesEnv, value: CompanionV<Any>): JOperatorC<Any> {
-   }
-
-   public abstract fun push(env: HeapValuesEnv, value: IHeapValues<Any>): JOperatorHV<Any> {
-   }
-
-   public abstract fun getPathFactory(): PathFactory<Any> {
-   }
-
-   public fun toConstVal(v: Any): Any {
-      val var2: Pair = SootUtilsKt.constOf(v);
-      return this.newConstVal(var2.component1() as Constant, var2.component2() as Type);
-   }
-
-   public abstract fun resolveOp(env: HeapValuesEnv, vararg ops: IHeapValues<Any>?): IOpCalculator<Any> {
-   }
-
-   public abstract fun resolveCast(env: HeapValuesEnv, fact: Builder<Any>, toType: Type, fromValues: IHeapValues<Any>): IOpCalculator<Any>? {
-   }
-
-   public abstract fun resolveInstanceOf(env: HeapValuesEnv, fromValues: IHeapValues<Any>, checkType: Type): IOpCalculator<Any> {
-   }
-
-   public abstract fun resolveUnop(env: HeapValuesEnv, fact: IIFact<Any>, opValues: IHeapValues<Any>, expr: UnopExpr, resType: Type): IOpCalculator<Any> {
-   }
-
-   public abstract fun resolveBinop(
+   abstract fun resolveCast(
       env: HeapValuesEnv,
-      fact: Builder<Any>,
-      op1Values: IHeapValues<Any>,
-      op2Values: IHeapValues<Any>,
+      fact: IFact.Builder<V>,
+      toType: Type,
+      fromValues: IHeapValues<V>
+   ): IOpCalculator<V>?
+
+   abstract fun resolveInstanceOf(
+      env: HeapValuesEnv,
+      fromValues: IHeapValues<V>,
+      checkType: Type
+   ): IOpCalculator<V>
+
+   abstract fun resolveUnop(
+      env: HeapValuesEnv,
+      fact: IIFact<V>,
+      opValues: IHeapValues<V>,
+      expr: UnopExpr,
+      resType: Type
+   ): IOpCalculator<V>
+
+   abstract fun resolveBinop(
+      env: HeapValuesEnv,
+      fact: IFact.Builder<V>,
+      op1Values: IHeapValues<V>,
+      op2Values: IHeapValues<V>,
       expr: BinopExpr,
       resType: Type
-   ): IOpCalculator<Any> {
-   }
+   ): IOpCalculator<V>
 
-   public abstract fun resolve(env: HeapValuesEnv, atCall: ICallCB<IHeapValues<Any>, Builder<IValue>>, iExpr: IExpr): Sequence<Any> {
-   }
+   abstract fun resolve(
+      env: HeapValuesEnv,
+      atCall: ICallCB<IHeapValues<V>, IFact.Builder<IValue>>,
+      iExpr: IExpr
+   ): Sequence<V>
 
-   override fun emptyBuilder(): IHeapValuesBuilder<V> {
-      return IHeapValuesFactory.DefaultImpls.emptyBuilder(this);
-   }
+   /* -------------------------- 默认实现 ----------------------------- */
+
+   override fun emptyBuilder(): IHeapValuesBuilder<V> =
+      IHeapValuesFactory.DefaultImpls.emptyBuilder(this)
 }

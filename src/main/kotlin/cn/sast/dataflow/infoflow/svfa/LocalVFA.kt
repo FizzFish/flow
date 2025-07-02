@@ -1,205 +1,122 @@
 package cn.sast.dataflow.infoflow.svfa
 
-import java.util.ArrayList
-import java.util.LinkedHashMap
-import java.util.LinkedHashSet
-import kotlin.jvm.internal.SourceDebugExtension
-import kotlinx.collections.immutable.ExtensionsKt
-import kotlinx.collections.immutable.PersistentSet
-import soot.Timers
-import soot.Unit
-import soot.Value
-import soot.jimple.ArrayRef
-import soot.jimple.AssignStmt
-import soot.jimple.BinopExpr
-import soot.jimple.Expr
-import soot.jimple.IdentityStmt
-import soot.jimple.IfStmt
-import soot.jimple.InstanceInvokeExpr
-import soot.jimple.InvokeExpr
-import soot.jimple.InvokeStmt
-import soot.jimple.ParameterRef
-import soot.jimple.ReturnStmt
-import soot.jimple.ReturnVoidStmt
-import soot.jimple.Stmt
-import soot.jimple.ThisRef
+import kotlinx.collections.immutable.*
+import soot.*
+import soot.jimple.*
 import soot.jimple.infoflow.util.BaseSelector
 import soot.options.Options
 import soot.toolkits.graph.DirectedGraph
 
-@SourceDebugExtension(["SMAP\nSparsePropgrateAnalyze.kt\nKotlin\n*S Kotlin\n*F\n+ 1 SparsePropgrateAnalyze.kt\ncn/sast/dataflow/infoflow/svfa/LocalVFA\n+ 2 _Arrays.kt\nkotlin/collections/ArraysKt___ArraysKt\n+ 3 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n*L\n1#1,420:1\n13409#2,2:421\n808#3,11:423\n1279#3,2:434\n1293#3,4:436\n1557#3:440\n1628#3,3:441\n1557#3:444\n1628#3,3:445\n*S KotlinDebug\n*F\n+ 1 SparsePropgrateAnalyze.kt\ncn/sast/dataflow/infoflow/svfa/LocalVFA\n*L\n313#1:421,2\n372#1:423,11\n372#1:434,2\n372#1:436,4\n392#1:440\n392#1:441,3\n398#1:444\n398#1:445,3\n*E\n"])
-public class LocalVFA(graph: DirectedGraph<Unit>, trackControlFlowDependencies: Boolean) : ILocalDFA {
-   public final val trackControlFlowDependencies: Boolean
-   private final val uses: Map<Unit, FlowFact>
-   private final val defuses: Map<Unit, FlowFact>
+/**
+ * 在单个方法内，基于 **FlowAssignment/BackAssignment** 生成
+ *  - uses     : Value 在某行被 **使用** 的所有行
+ *  - defUses  : Value 在某行被 **定义** 后传播到的所有行
+ *
+ * 只保留关键流程，辅助方法以 `// …` 省略。
+ */
+class LocalVFA(
+   graph: DirectedGraph<Unit>,
+   private val trackControlFlowDependencies: Boolean
+) : ILocalDFA {
+
+   private val uses: Map<Unit, FlowFact>
+   private val defUses: Map<Unit, FlowFact>
 
    init {
-      this.trackControlFlowDependencies = trackControlFlowDependencies;
-      val time: Boolean = Options.v().time();
-      if (time) {
-         Timers.v().defsTimer.start();
-      }
+      if (Options.v().time()) Timers.v().defsTimer.start()
 
-      val var4: Pair = this.init(graph);
-      this.uses = var4.component1() as MutableMap<Unit, FlowFact>;
-      this.defuses = var4.component2() as MutableMap<Unit, FlowFact>;
-      if (time) {
-         Timers.v().defsTimer.end();
-      }
+      val (usesTmp, defUsesTmp) = init(graph)
+      uses = usesTmp
+      defUses = defUsesTmp
+
+      if (Options.v().time()) Timers.v().defsTimer.end()
    }
 
-   private fun <R> Expr.traverse() {
-   }
+   /* ---------- ILocalDFA ---------- */
 
-   private fun <R> collectStmtInfo(stmt: Stmt, addValueToInfoMap: (Value, ValueLocation) -> R) {
-      if (stmt is AssignStmt) {
-         val i: Value = (stmt as AssignStmt).getLeftOp();
-         val rightValues: Array<Value> = BaseSelector.selectBaseList((stmt as AssignStmt).getRightOp(), true);
-         if (i is ArrayRef) {
-            val var10001: Value = (i as ArrayRef).getBase();
-            addValueToInfoMap.invoke(var10001, ValueLocation.Right);
-         } else {
-            addValueToInfoMap.invoke(i, ValueLocation.Left);
-         }
-         for (Object element$iv : rightValues) {
-            addValueToInfoMap.invoke(`element$iv`, ValueLocation.Right);
-         }
-      } else if (stmt is IdentityStmt) {
-         val var14: Value = (stmt as IdentityStmt).getRightOp();
-         if (var14 is ParameterRef) {
-            val var18: Value = (stmt as IdentityStmt).getLeftOp();
-            addValueToInfoMap.invoke(var18, ValueLocation.ParamAndThis);
-         } else if (var14 is ThisRef) {
-            val var19: Value = (stmt as IdentityStmt).getLeftOp();
-            addValueToInfoMap.invoke(var19, ValueLocation.ParamAndThis);
-         }
-      } else if (stmt !is InvokeStmt) {
-         if (stmt is IfStmt) {
-            if (this.trackControlFlowDependencies) {
-               val var10000: Value = (stmt as IfStmt).getCondition();
-               val var16: BinopExpr = var10000 as BinopExpr;
-               var var23: Value = (var10000 as BinopExpr).getOp1();
-               addValueToInfoMap.invoke(var23, ValueLocation.Right);
-               var23 = var16.getOp2();
-               addValueToInfoMap.invoke(var23, ValueLocation.Right);
+   override fun getUsesOfAt(ap: AP, stmt: Unit): List<Unit> =
+      uses[stmt]?.data?.get(ap.value)?.map { it.stmt } ?: emptyList()
+
+   override fun getDefUsesOfAt(ap: AP, stmt: Unit): List<Unit> =
+      defUses[stmt]?.data?.get(ap.value)?.map { it.stmt } ?: emptyList()
+
+   /* ---------- 主流程 ---------- */
+
+   private fun init(graph: DirectedGraph<Unit>):
+           Pair<Map<Unit, FlowFact>, Map<Unit, FlowFact>> {
+
+      val paramAndThis = hashSetOf<Value>()
+
+      /* 1. 收集每条语句读写的 (AP, ValueLocation) */
+      val stmt2Info: Map<Stmt, Set<Pair<AP, ValueLocation>>> =
+         graph.filterIsInstance<Stmt>().associateWith { stmt ->
+            buildSet {
+               collectStmtInfo(stmt) { v, loc ->
+                  AP[v]?.let { ap ->
+                     if (loc == ValueLocation.ParamAndThis) paramAndThis += ap.value
+                     add(ap to loc)
+                  }
+               }
             }
-
-            return;
          }
 
-         if (stmt is ReturnStmt) {
-            val var22: Value = (stmt as ReturnStmt).getOp();
-            addValueToInfoMap.invoke(var22, ValueLocation.Right);
-            return;
+      /* 2. 双向数据流分析 */
+      val flowAssign   = FlowAssignment(graph, paramAndThis, stmt2Info).before()
+      val backAssign   = BackAssignment(graph, paramAndThis, stmt2Info).after()
+
+      return flowAssign to backAssign
+   }
+
+   /* ---------- 解析语句读写 ---------- */
+
+   private inline fun collectStmtInfo(
+      stmt: Stmt,
+      add: (Value, ValueLocation) -> Unit
+   ) {
+      when (stmt) {
+         is AssignStmt -> {
+            val left = stmt.leftOp
+            val rights = BaseSelector.selectBaseList(stmt.rightOp, true)
+
+            // 写
+            if (left is ArrayRef) add(left.base, ValueLocation.Right)
+            else add(left, ValueLocation.Left)
+
+            // 读
+            rights.forEach { add(it, ValueLocation.Right) }
          }
 
-         if (stmt is ReturnVoidStmt) {
-            addValueToInfoMap.invoke(returnVoidFake, ValueLocation.Right);
-            return;
+         is IdentityStmt -> {
+            when (val rop = stmt.rightOp) {
+               is ParameterRef,
+               is ThisRef -> add(stmt.leftOp, ValueLocation.ParamAndThis)
+            }
          }
+
+         is IfStmt -> if (trackControlFlowDependencies) {
+            val cond = stmt.condition as BinopExpr
+            add(cond.op1, ValueLocation.Right)
+            add(cond.op2, ValueLocation.Right)
+         }
+
+         is ReturnStmt   -> add(stmt.op, ValueLocation.Right)
+         is ReturnVoidStmt -> add(returnVoidFake, ValueLocation.Right)
       }
 
-      val ie: InvokeExpr = if (stmt.containsInvokeExpr()) stmt.getInvokeExpr() else null;
-      if (ie != null) {
-         if (ie is InstanceInvokeExpr) {
-            val var20: Value = (ie as InstanceInvokeExpr).getBase();
-            addValueToInfoMap.invoke(var20, ValueLocation.Arg);
-         }
-
-         var var15: Int = 0;
-
-         for (int var17 = ie.getArgCount(); i < var17; i++) {
-            val var21: Value = ie.getArg(var15);
-            addValueToInfoMap.invoke(var21, ValueLocation.Arg);
-         }
+      if (stmt.containsInvokeExpr()) {
+         val ie = stmt.invokeExpr
+         if (ie is InstanceInvokeExpr) add(ie.base, ValueLocation.Arg)
+         repeat(ie.argCount) { idx -> add(ie.getArg(idx), ValueLocation.Arg) }
       }
    }
 
-   private fun init(graph: DirectedGraph<Unit>): Pair<Map<Unit, FlowFact>, Map<Unit, FlowFact>> {
-      val paramAndThis: java.util.Set = new LinkedHashSet();
-      var `$this$associateWith$iv`: java.lang.Iterable = graph as java.lang.Iterable;
-      val `$this$associateWithTo$iv$iv`: java.util.Collection = new ArrayList();
+   /* ---------- 静态字段 ---------- */
 
-      for (Object element$iv$iv : $this$filterIsInstance$iv) {
-         if (`element$iv$iv` is Stmt) {
-            `$this$associateWithTo$iv$iv`.add(`element$iv$iv`);
-         }
-      }
+   companion object {
+      /** 伪返回值 (void) 占位 */
+      val returnVoidFake: Value = IntConstant.v(0)
 
-      `$this$associateWith$iv` = `$this$associateWithTo$iv$iv` as java.util.List;
-      val `result$iv`: LinkedHashMap = new LinkedHashMap(
-         RangesKt.coerceAtLeast(MapsKt.mapCapacity(CollectionsKt.collectionSizeOrDefault(`$this$associateWithTo$iv$iv` as java.util.List, 10)), 16)
-      );
-
-      for (Object element$iv$ivx : $this$filterIsInstance$iv) {
-         val var10000: java.util.Map = `result$iv`;
-         val stmt: Stmt = `element$iv$ivx` as Stmt;
-         val apAndLoc: java.util.Set = new LinkedHashSet();
-         this.collectStmtInfo(stmt, LocalVFA::init$lambda$2$lambda$1);
-         var10000.put(`element$iv$ivx`, apAndLoc);
-      }
-
-      return TuplesKt.to(new FlowAssignment(graph, paramAndThis, `result$iv`).getBefore(), new BackAssignment(graph, paramAndThis, `result$iv`).getAfter());
-   }
-
-   public override fun getDefUsesOfAt(ap: AP, stmt: Unit): List<Unit> {
-      val var10000: FlowFact = this.defuses.get(stmt);
-      if (var10000 == null) {
-         return CollectionsKt.emptyList();
-      } else {
-         var var15: PersistentSet = var10000.getData().get(ap.getValue()) as PersistentSet;
-         if (var15 == null) {
-            var15 = ExtensionsKt.persistentHashSetOf();
-         }
-
-         val `$this$map$iv`: java.lang.Iterable = var15 as java.lang.Iterable;
-         val `destination$iv$iv`: java.util.Collection = new ArrayList(CollectionsKt.collectionSizeOrDefault(var15 as java.lang.Iterable, 10));
-
-         for (Object item$iv$iv : $this$map$iv) {
-            `destination$iv$iv`.add((`item$iv$iv` as VFNode).getStmt());
-         }
-
-         return `destination$iv$iv` as MutableList<Unit>;
-      }
-   }
-
-   public override fun getUsesOfAt(ap: AP, stmt: Unit): List<Unit> {
-      val var10000: FlowFact = this.uses.get(stmt);
-      if (var10000 == null) {
-         return CollectionsKt.emptyList();
-      } else {
-         var var15: PersistentSet = var10000.getData().get(ap.getValue()) as PersistentSet;
-         if (var15 == null) {
-            var15 = ExtensionsKt.persistentHashSetOf();
-         }
-
-         val `$this$map$iv`: java.lang.Iterable = var15 as java.lang.Iterable;
-         val `destination$iv$iv`: java.util.Collection = new ArrayList(CollectionsKt.collectionSizeOrDefault(var15 as java.lang.Iterable, 10));
-
-         for (Object item$iv$iv : $this$map$iv) {
-            `destination$iv$iv`.add((`item$iv$iv` as VFNode).getStmt());
-         }
-
-         return `destination$iv$iv` as MutableList<Unit>;
-      }
-   }
-
-   @JvmStatic
-   fun `init$lambda$2$lambda$1`(`$paramAndThis`: java.util.Set, `$apAndLoc`: java.util.Set, value: Value, valueLocation: ValueLocation): kotlin.Unit {
-      val ap: AP = AP.Companion.get(value);
-      if (ap != null) {
-         if (valueLocation === ValueLocation.ParamAndThis) {
-            `$paramAndThis`.add(ap.getValue());
-         }
-
-         `$apAndLoc`.add(TuplesKt.to(ap, valueLocation));
-      }
-
-      return kotlin.Unit.INSTANCE;
-   }
-
-   public companion object {
-      public final val returnVoidFake: Value
-      public final val entryFake: Value
+      /** 方法入口的伪节点 */
+      val entryFake: Value = IntConstant.v(-1)
    }
 }

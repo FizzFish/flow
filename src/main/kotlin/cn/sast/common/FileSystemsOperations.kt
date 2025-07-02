@@ -3,147 +3,92 @@ package cn.sast.common
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.function.Consumer
-import kotlin.jvm.internal.SourceDebugExtension
+import kotlin.io.path.exists
 
-public class FileSystemsOperations {
-   @SourceDebugExtension(["SMAP\nFileSystemsOperations.kt\nKotlin\n*S Kotlin\n*F\n+ 1 FileSystemsOperations.kt\ncn/sast/common/FileSystemsOperations$Companion\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n*L\n1#1,84:1\n1863#2,2:85\n1863#2,2:87\n*S KotlinDebug\n*F\n+ 1 FileSystemsOperations.kt\ncn/sast/common/FileSystemsOperations$Companion\n*L\n62#1:85,2\n69#1:87,2\n*E\n"])
-   public companion object {
-      private fun copyPath(it: Path, src: Path, dest: Path): Path {
-         if (_Assertions.ENABLED && !Files.isDirectory(src)) {
-            throw new AssertionError("Assertion failed");
-         } else if (_Assertions.ENABLED && !Files.isDirectory(dest)) {
-            throw new AssertionError("Assertion failed");
-         } else {
-            val var8: Path = this.mapToDestination(it, src, dest);
-            if (!(var8 == dest)) {
-               if (_Assertions.ENABLED && Files.exists(var8)) {
-                  throw new AssertionError("Assertion failed");
-               }
+/**
+ * Kotlin-idiomatic rewrite of the original de-compiled `FileSystemsOperations`.
+ *
+ * *Only* file/dir copy helpers are preserved; any extra business logic should
+ * be added by callers.  Paths are assumed to be *absolute* and normalised.
+ */
+object FileSystemsOperations {
 
-               if (Files.isDirectory(it)) {
-                  Files.createDirectory(var8);
-               } else if (Files.isRegularFile(it)) {
-                  Files.copy(it, var8);
-               } else if (_Assertions.ENABLED) {
-                  throw new AssertionError("Assertion failed");
-               }
-            }
+   /* ---------------------------------------------------
+    *  Public API
+    * --------------------------------------------------- */
 
-            return var8;
-         }
+   /**
+    * Copy *src directory itself* **and** its whole tree into [dest] which must
+    * be a directory on a **different** file-system.
+    */
+   fun copyDirRecursivelyToDirInDifferentFileSystem(src: Path, dest: Path) {
+      require(Files.isDirectory(src)) { "src must be a directory" }
+      require(Files.isDirectory(dest)) { "dest must be a directory" }
+      require(src.fileSystem !== dest.fileSystem) { "src & dest must be on different file-systems" }
+      require(src.parent != null) { "src must not be FS root" }
+
+      Files.walk(src).forEach(Consumer { path ->
+         copyPath(path, src.parent, dest)
+      })
+   }
+
+   /** Copy *contents* of [src] (but not the directory itself) into [dest] on a different FS. */
+   fun copyDirContentsRecursivelyToDirInDifferentFileSystem(src: Path, dest: Path) {
+      require(Files.isDirectory(src)) { "src must be directory" }
+      require(Files.isDirectory(dest)) { "dest must be directory" }
+      require(src.fileSystem !== dest.fileSystem) { "src & dest must be on different file-systems" }
+
+      Files.walk(src).forEach(Consumer { path ->
+         copyPath(path, src, dest)
+      })
+   }
+
+   /** Same as above but *keeps the same* file-system; useful for deep copies inside one FS. */
+   fun copyDirContentsRecursivelyToDirInSameFileSystem(src: Path, dest: Path) {
+      require(Files.isDirectory(src))
+      require(Files.isDirectory(dest))
+      require(src.fileSystem === dest.fileSystem) { "src & dest must share the same FS" }
+
+      Files.walk(src).forEach(Consumer { path ->
+         copyPath(path, src, dest)
+      })
+   }
+
+   /** Copy a list of [files] (regular files only) into [dest] (different FS). */
+   fun copyFilesToDirInDifferentFileSystem(files: List<Path>, dest: Path) {
+      require(Files.isDirectory(dest))
+      files.forEach { f ->
+         require(Files.isRegularFile(f))
+         require(f.parent != null && Files.isDirectory(f.parent))
+         require(f.fileSystem !== dest.fileSystem)
       }
+      files.forEach { f -> copyPath(f, f.parent, dest) }
+   }
 
-      private fun mapToDestination(path: Path, srcDir: Path, destDir: Path): Path {
-         val var10001: java.lang.String = srcDir.relativize(path).toString();
-         val var10002: java.lang.String = srcDir.getFileSystem().getSeparator();
-         val var10003: java.lang.String = destDir.getFileSystem().getSeparator();
-         val var4: Path = destDir.resolve(StringsKt.replace$default(var10001, var10002, var10003, false, 4, null));
-         return var4;
+   /* ---------------------------------------------------
+    *  Internal helpers
+    * --------------------------------------------------- */
+
+   /**
+    * Copy [source] to the location computed by replacing the prefix [srcRoot]
+    * with [destRoot].  Directories are recreated, files are copied.
+    * The resulting absolute destination path is returned.
+    */
+   private fun copyPath(source: Path, srcRoot: Path, destRoot: Path): Path {
+      require(Files.isDirectory(srcRoot))
+      require(Files.isDirectory(destRoot))
+
+      val relative = srcRoot.relativize(source)      // e.g. /src/foo.txt -> foo.txt
+      val destination = destRoot.resolve(relative)
+
+      if (destination == destRoot) return destination // root dir already exists
+      require(!destination.exists()) { "destination already exists: $destination" }
+
+      when {
+         Files.isDirectory(source) -> Files.createDirectory(destination)
+         Files.isRegularFile(source) -> Files.copy(source, destination)
+         else -> error("Unsupported file type: $source")
       }
-
-      public fun copyDirRecursivelyToDirInDifferentFileSystem(dir: Path, dest: Path) {
-         if (_Assertions.ENABLED && !Files.isDirectory(dir)) {
-            throw new AssertionError("Assertion failed");
-         } else if (_Assertions.ENABLED && !Files.isDirectory(dest)) {
-            throw new AssertionError("Assertion failed");
-         } else if (_Assertions.ENABLED && dir.getFileSystem() == dest.getFileSystem()) {
-            throw new AssertionError("Assertion failed");
-         } else if (_Assertions.ENABLED && dir.getParent() == null) {
-            throw new AssertionError("Assertion failed");
-         } else {
-            Files.walk(dir).forEach(new Consumer(FileSystemsOperations.Companion::copyDirRecursivelyToDirInDifferentFileSystem$lambda$0) {
-               {
-                  this.function = function;
-               }
-            });
-         }
-      }
-
-      public fun copyDirContentsRecursivelyToDirInDifferentFileSystem(dir: Path, dest: Path) {
-         if (_Assertions.ENABLED && !Files.isDirectory(dir)) {
-            throw new AssertionError("Assertion failed");
-         } else if (_Assertions.ENABLED && !Files.isDirectory(dest)) {
-            throw new AssertionError("Assertion failed");
-         } else if (_Assertions.ENABLED && dir.getFileSystem() == dest.getFileSystem()) {
-            throw new AssertionError("Assertion failed");
-         } else {
-            Files.walk(dir).forEach(new Consumer(FileSystemsOperations.Companion::copyDirContentsRecursivelyToDirInDifferentFileSystem$lambda$1) {
-               {
-                  this.function = function;
-               }
-            });
-         }
-      }
-
-      public fun copyFilesToDirInDifferentFileSystem(files: List<Path>, dest: Path) {
-         if (_Assertions.ENABLED && !Files.isDirectory(dest)) {
-            throw new AssertionError("Assertion failed");
-         } else {
-            val var11: java.lang.Iterable;
-            for (Object element$iv : var11) {
-               val it: Path = `element$iv` as Path;
-               if (_Assertions.ENABLED && !Files.isRegularFile(`element$iv` as Path)) {
-                  throw new AssertionError("Assertion failed");
-               }
-
-               if (_Assertions.ENABLED && it.getParent() == null) {
-                  throw new AssertionError("Assertion failed");
-               }
-
-               if (_Assertions.ENABLED && !Files.isDirectory(it.getParent())) {
-                  throw new AssertionError("Assertion failed");
-               }
-
-               if (_Assertions.ENABLED && it.getFileSystem() == dest.getFileSystem()) {
-                  throw new AssertionError("Assertion failed");
-               }
-            }
-
-            for (Object element$iv : var11) {
-               val itx: Path = var16 as Path;
-               val var10000: FileSystemsOperations.Companion = FileSystemsOperations.Companion;
-               val var10002: Path = itx.getParent();
-               var10000.copyPath(itx, var10002, dest);
-            }
-         }
-      }
-
-      public fun copyDirContentsRecursivelyToDirInSameFileSystem(dir: Path, dest: Path) {
-         if (_Assertions.ENABLED && !Files.isDirectory(dir)) {
-            throw new AssertionError("Assertion failed");
-         } else if (_Assertions.ENABLED && !Files.isDirectory(dest)) {
-            throw new AssertionError("Assertion failed");
-         } else if (_Assertions.ENABLED && !(dir.getFileSystem() == dest.getFileSystem())) {
-            throw new AssertionError("Assertion failed");
-         } else {
-            Files.walk(dir).forEach(new Consumer(FileSystemsOperations.Companion::copyDirContentsRecursivelyToDirInSameFileSystem$lambda$4) {
-               {
-                  this.function = function;
-               }
-            });
-         }
-      }
-
-      @JvmStatic
-      fun `copyDirRecursivelyToDirInDifferentFileSystem$lambda$0`(`$dir`: Path, `$dest`: Path, it: Path): Unit {
-         val var10000: FileSystemsOperations.Companion = FileSystemsOperations.Companion;
-         val var10002: Path = `$dir`.getParent();
-         var10000.copyPath(it, var10002, `$dest`);
-         return Unit.INSTANCE;
-      }
-
-      @JvmStatic
-      fun `copyDirContentsRecursivelyToDirInDifferentFileSystem$lambda$1`(`$dir`: Path, `$dest`: Path, it: Path): Unit {
-         val var10000: FileSystemsOperations.Companion = FileSystemsOperations.Companion;
-         var10000.copyPath(it, `$dir`, `$dest`);
-         return Unit.INSTANCE;
-      }
-
-      @JvmStatic
-      fun `copyDirContentsRecursivelyToDirInSameFileSystem$lambda$4`(`$dir`: Path, `$dest`: Path, it: Path): Unit {
-         val var10000: FileSystemsOperations.Companion = FileSystemsOperations.Companion;
-         var10000.copyPath(it, `$dir`, `$dest`);
-         return Unit.INSTANCE;
-      }
+      return destination
    }
 }

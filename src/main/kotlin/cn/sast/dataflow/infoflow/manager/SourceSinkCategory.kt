@@ -2,24 +2,14 @@ package cn.sast.dataflow.infoflow.manager
 
 import soot.jimple.infoflow.sourcesSinks.definitions.ISourceSinkCategory
 
-public class SourceSinkCategory(detector: String, pattern: String) : ISourceSinkCategory {
-   public final val detector: String
-   public final val pattern: String
+class SourceSinkCategory(
+   val detector: String,
+   val pattern: String
+) : ISourceSinkCategory {
 
-   init {
-      this.detector = detector;
-      this.pattern = pattern;
-   }
+   override fun getHumanReadableDescription(): String = ""
 
-   public open fun getHumanReadableDescription(): String {
-      return "";
-   }
+   override fun getID(): String = pattern
 
-   public open fun getID(): String {
-      return this.pattern;
-   }
-
-   public override fun toString(): String {
-      return "${this.detector}::${this.pattern}";
-   }
+   override fun toString(): String = "$detector::$pattern"
 }

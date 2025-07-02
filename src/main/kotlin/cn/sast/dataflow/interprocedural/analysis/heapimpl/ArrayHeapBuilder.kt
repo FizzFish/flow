@@ -1,102 +1,73 @@
 package cn.sast.dataflow.interprocedural.analysis.heapimpl
 
-import cn.sast.dataflow.interprocedural.analysis.CompanionV
-import cn.sast.dataflow.interprocedural.analysis.HeapDataBuilder
-import cn.sast.dataflow.interprocedural.analysis.HeapValuesEnv
-import cn.sast.dataflow.interprocedural.analysis.IHeapValues
-import cn.sast.dataflow.interprocedural.analysis.IHeapValuesFactory
-import cn.sast.dataflow.interprocedural.analysis.IReNew
-import cn.sast.dataflow.interprocedural.analysis.ReferenceContext
-import cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder
+import cn.sast.dataflow.interprocedural.analysis.*
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.toPersistentMap
 import soot.ArrayType
 
-public abstract class ArrayHeapBuilder<V> : HeapDataBuilder<Integer, V> {
-   public final val type: ArrayType
-   public final val allSize: Builder<Any>
-   public final val size: Int?
+/**
+ * 可变数组堆对象，用于构建 / 更新 ArrayHeapKV。
+ *
+ * @param map          数组元素映射  index → values
+ * @param unreferenced 未知索引的元素集合
+ * @param type         数组类型
+ * @param allSize      长度值集合（不能为空）
+ * @param size         具体长度（已知时）
+ * @param initialized  全初始化值（若数组元素全部相同）
+ */
+open class ArrayHeapBuilder<V>(
+   map: PersistentMap<Int, IHeapValues<V>>,
+   unreferenced: IHeapValues<V>?,
+   val type: ArrayType,
+   val allSize: IHeapValues<V>,
+   val size: Int?,
+   var initializedValue: CompanionV<V>?
+) : HeapDataBuilder<Int, V>(map.toBuilder(), unreferenced) {
 
-   public final var initializedValue: CompanionV<Any>?
-      internal set
+   init {
+      require(allSize.isNotEmpty()) { "allSize must not be empty" }
+   }
 
-   open fun ArrayHeapBuilder(
-      element: kotlinx.collections.immutable.PersistentMapBuilder<Integer, IHeapValues<V>>,
-      unreferenced: IHeapValuesBuilder<V>?,
-      type: ArrayType,
-      allSize: IHeapValuesBuilder<V>,
-      size: Int?,
-      initializedValue: CompanionV<V>?
+   /** 单元素读取，若未写入且满足初始化条件则返回初始化值 */
+   fun getValue(
+      hf: IHeapValuesFactory<V>,
+      key: Int
+   ): IHeapValues<V>? =
+      super.getValue(hf, key) ?: run {
+         if (size != null && size == map.size && initializedValue != null) {
+            hf.single(initializedValue!!)
+         } else null
+      }
+
+   /** 写元素：append=true 表示集合并，否则覆盖 */
+   fun set(
+      hf: IHeapValuesFactory<V>,
+      env: HeapValuesEnv,
+      key: Int?,
+      update: IHeapValues<V>?,
+      append: Boolean
    ) {
-      super(element, unreferenced);
-      this.type = type;
-      this.allSize = allSize;
-      this.size = size;
-      this.initializedValue = initializedValue;
-      if (!this.allSize.isNotEmpty()) {
-         throw new IllegalArgumentException("Failed requirement.".toString());
+      if (isValidKey(key, size) != false) {
+         super.set(hf, env, key, update, append)
       }
    }
 
-   public open fun getValue(hf: IHeapValuesFactory<Any>, key: Int): IHeapValues<Any>? {
-      val initializedValue: CompanionV = this.initializedValue;
-      var var10000: IHeapValues = super.getValue(hf, key);
-      if (var10000 == null) {
-         label19: {
-            if (this.size != null) {
-               val var5: Int = this.size;
-               val var4: Int = this.getMap().size();
-               if (var5 != null) {
-                  if (var5 == var4) {
-                     break label19;
-                  }
-               }
-            }
+   /* ---------- 重写：克隆 + 对象重映射 ---------- */
 
-            if (initializedValue != null) {
-               return hf.single(initializedValue);
-            }
-         }
+   override fun cloneAndReNewObjects(re: IReNew<V>) {
+      super.cloneAndReNewObjects(re.context(ReferenceContext.ArrayElement))
+      allSizeBuilder.cloneAndReNewObjects(re.context(ReferenceContext.ArraySize))
 
-         var10000 = null;
-      }
-
-      return var10000;
-   }
-
-   public open fun set(hf: IHeapValuesFactory<Any>, env: HeapValuesEnv, key: Int?, update: IHeapValues<Any>?, append: Boolean) {
-      if (!(ArrayHeapKVKt.isValidKey(key, this.size) == false)) {
-         super.set(hf, env, key, update, append);
+      initializedValue?.let { initV ->
+         val newV = re.context(ReferenceContext.ArrayInitialized)
+            .checkNeedReplace(initV) ?: initV
+         initializedValue = if (newV.value === newV) newV else newV.copy(newV.value)
       }
    }
 
-   public override fun cloneAndReNewObjects(re: IReNew<Any>) {
-      super.cloneAndReNewObjects(re.context(ReferenceContext.ArrayElement.INSTANCE));
-      this.allSize.cloneAndReNewObjects(re.context(ReferenceContext.ArraySize.INSTANCE));
-      val initializedValue: CompanionV = this.initializedValue;
-      if (this.initializedValue != null) {
-         val k: Any = this.initializedValue.getValue();
-         var var10000: CompanionV = (CompanionV)re.checkNeedReplace(k);
-         if (var10000 == null) {
-            var10000 = (CompanionV)k;
-         }
+   /* ---------- 其它辅助 ---------- */
 
-         var10000 = re.context(ReferenceContext.ArrayInitialized.INSTANCE).checkNeedReplace(initializedValue);
-         if (var10000 == null) {
-            var10000 = initializedValue;
-         }
-
-         var newCompV: CompanionV = var10000;
-         if (k == var10000 && var10000 === initializedValue) {
-            return;
-         }
-
-         if (!(var10000.getValue() == var10000)) {
-            newCompV = var10000.copy(var10000);
-         }
-
-         this.initializedValue = newCompV;
-      }
-   }
-
-   public fun clearAllIndex() {
+   fun clearAllIndex() {
+      map.clear()
    }
 }

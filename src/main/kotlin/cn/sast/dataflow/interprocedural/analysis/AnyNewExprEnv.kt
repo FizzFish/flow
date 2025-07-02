@@ -3,10 +3,10 @@ package cn.sast.dataflow.interprocedural.analysis
 import soot.SootMethod
 import soot.Unit
 
-public class AnyNewExprEnv(method: SootMethod, u: Unit) : HeapValuesEnv(u) {
-   public final val method: SootMethod
-
-   init {
-      this.method = method;
-   }
-}
+/**
+ * `new` 表达式的运行环境（方法 + 语句）。
+ */
+class AnyNewExprEnv(
+   val method: SootMethod,
+   u: Unit
+) : HeapValuesEnv(u)

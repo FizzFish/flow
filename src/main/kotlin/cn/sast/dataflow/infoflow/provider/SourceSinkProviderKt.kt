@@ -8,29 +8,21 @@ import soot.Scene
 import soot.SootMethod
 import soot.Type
 
-private final val nullArg: MutableList<String>?
-
-public fun SootMethod.baseType(loc: MLocal): Type? {
-   val var10000: Type;
-   if (loc is MParameter) {
-      var10000 = if ((loc as MParameter).getIndex() == -1)
-         `$this$baseType`.getDeclaringClass().getType() as Type
-         else
-         (
-            if ((loc as MParameter).getIndex() >= `$this$baseType`.getParameterCount())
-               null
-               else
-               `$this$baseType`.getParameterType((loc as MParameter).getIndex())
-         );
-   } else if (loc is MReturn) {
-      var10000 = `$this$baseType`.getReturnType();
-   } else {
-      if (!(loc == MGlobal.INSTANCE)) {
-         throw new NoWhenBranchMatchedException();
-      }
-
-      var10000 = Scene.v().getObjectType() as Type;
+/**
+ * 计算 Loc 在当前方法中的“基类型”。
+ *
+ * - `this / field`   → 声明类类型
+ * - `参数 n (n≥0)`   → 第 n 个参数类型
+ * - `返回值`         → 返回类型
+ * - `MGlobal`        → java.lang.Object
+ */
+fun SootMethod.baseType(loc: MLocal): Type? = when (loc) {
+   is MParameter -> when (loc.index) {
+      -1  -> declaringClass.type               // this / field
+      in 0 until parameterCount -> getParameterType(loc.index)
+      else -> null
    }
-
-   return var10000;
+   is MReturn   -> returnType
+   MGlobal      -> Scene.v().objectType
+   else         -> error("Unrecognized MLocal subtype: $loc")
 }

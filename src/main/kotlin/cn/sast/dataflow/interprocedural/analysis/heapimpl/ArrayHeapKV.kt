@@ -1,119 +1,71 @@
 package cn.sast.dataflow.interprocedural.analysis.heapimpl
 
-import cn.sast.dataflow.interprocedural.analysis.CompanionV
-import cn.sast.dataflow.interprocedural.analysis.HeapKVData
-import cn.sast.dataflow.interprocedural.analysis.IDiff
-import cn.sast.dataflow.interprocedural.analysis.IDiffAble
-import cn.sast.dataflow.interprocedural.analysis.IHeapValues
-import cn.sast.dataflow.interprocedural.analysis.IHeapValuesFactory
+import cn.sast.dataflow.interprocedural.analysis.*
 import kotlinx.collections.immutable.PersistentMap
 import soot.ArrayType
 
-public abstract class ArrayHeapKV<V> : HeapKVData<Integer, V>, IArrayHeapKV<Integer, V> {
-   public final val allSize: IHeapValues<Any>
-   public open val type: ArrayType
-   public final val size: Int?
-   public final val initializedValue: CompanionV<Any>?
+/**
+ * 不可变数组堆对象。
+ */
+open class ArrayHeapKV<V>(
+   element: PersistentMap<Int, IHeapValues<V>>,
+   unreferenced: IHeapValues<V>?,
+   private val allSizeVal: IHeapValues<V>,
+   final override val type: ArrayType,
+   private val size: Int?,
+   private val initializedValue: CompanionV<V>? = null
+) : HeapKVData<Int, V>(element, unreferenced), IArrayHeapKV<Int, V> {
 
-   open fun ArrayHeapKV(
-      element: PersistentMap<Integer, ? extends IHeapValues<V>>,
-      unreferenced: IHeapValues<V>?,
-      allSize: IHeapValues<V>,
-      type: ArrayType,
-      size: Int?,
-      initializedValue: CompanionV<V>?
-   ) {
-      super(element, unreferenced);
-      this.allSize = allSize;
-      this.type = type;
-      this.size = size;
-      this.initializedValue = initializedValue;
-      if (!this.allSize.isNotEmpty()) {
-         throw new IllegalArgumentException("array length value set is empty".toString());
-      }
+   init {
+      require(allSizeVal.isNotEmpty()) { "array length value set is empty" }
    }
 
-   public override fun getName(): String {
-      return "${this.getType().getElementType()}[${this.size}]";
-   }
+   /* ---------- IArrayHeapKV ---------- */
 
-   public open fun isValidKey(key: Int?): Boolean? {
-      return ArrayHeapKVKt.isValidKey(key, this.size);
-   }
+   override fun getArrayLength(): IHeapValues<Any> = allSizeVal as IHeapValues<Any>
 
-   public override fun diff(cmp: IDiff<Any>, that: IDiffAble<out Any?>) {
-      if (that is ArrayHeapKV) {
-         this.allSize.diff(cmp, (that as ArrayHeapKV).allSize);
-         if (this.initializedValue != null && (that as ArrayHeapKV).initializedValue != null) {
-            cmp.diff(this.initializedValue, (that as ArrayHeapKV).initializedValue);
-         }
-      }
+   override fun getName(): String =
+      "${type.elementType}[${size ?: "?"}]"
 
-      super.diff(cmp, that);
-   }
+   fun isValidKey(key: Int?): Boolean? = isValidKey(key, size)
 
-   public open fun getValue(hf: IHeapValuesFactory<Any>, key: Int): IHeapValues<Any>? {
-      var var10000: IHeapValues = super.getValue(hf, key);
-      if (var10000 == null) {
-         if (this.size != null) {
-            val var4: Int = this.size;
-            val var3: Int = this.getMap().size();
-            if (var4 != null) {
-               if (var4 == var3) {
-                  var10000 = this.getUnreferenced();
-                  if (var10000 != null && var10000.isNotEmpty() && this.initializedValue != null) {
-                     return hf.single(this.initializedValue);
-                  }
-               }
-            }
-         }
+   override fun get(
+      hf: IHeapValuesFactory<Any>,
+      key: Int?
+   ): IHeapValues<Any>? =
+      if (isValidKey(key) == false) null else super.get(hf, key)
 
-         var10000 = null;
+   /** 单元素读取。若已满 & 有初值，返回初值 */
+   fun getValue(
+      hf: IHeapValuesFactory<Any>,
+      key: Int
+   ): IHeapValues<Any>? =
+      super.getValue(hf, key) ?: run {
+         if (size != null && size == map.size && initializedValue != null) {
+            hf.single(initializedValue as CompanionV<Any>)
+         } else null
       }
 
-      return var10000;
-   }
+   override fun getArray(hf: IHeapValuesFactory<Any>): Array<Any>? = null
+   override fun getByteArray(hf: IHeapValuesFactory<Any>): ByteArray? = null
 
-   public open fun get(hf: IHeapValuesFactory<Any>, key: Int?): IHeapValues<Any>? {
-      return if (this.isValidKey(key) == false) null else super.get(hf, key);
-   }
+   /* ---------- Diff ---------- */
 
-   public override fun getArrayLength(): IHeapValues<Any> {
-      return this.allSize;
-   }
-
-   public override fun computeHash(): Int {
-      return 31 * super.computeHash() + this.allSize.hashCode();
-   }
-
-   public override operator fun equals(other: Any?): Boolean {
-      if (!super.equals(other)) {
-         return false;
-      } else {
-         return other is ArrayHeapKV && this.allSize == (other as ArrayHeapKV).allSize;
+   override fun diff(cmp: IDiff<Any>, that: IDiffAble<out Any?>) {
+      if (that is ArrayHeapKV<*>) {
+         allSizeVal.diff(cmp, that.allSizeVal as IHeapValues<Any>)
+         if (initializedValue != null && that.initializedValue != null)
+            cmp.diff(initializedValue, that.initializedValue as CompanionV<Any>)
       }
+      super.diff(cmp, that)
    }
 
-   public override fun hashCode(): Int {
-      return super.hashCode();
-   }
+   /* ---------- hash/equals ---------- */
 
-   public open fun ppKey(key: Int): String {
-      return java.lang.String.valueOf(key);
-   }
+   override fun computeHash(): Int = 31 * super.computeHash() + allSizeVal.hashCode()
 
-   public override fun getFromNullKey(hf: IHeapValuesFactory<Any>): IHeapValues<Any> {
-      val r: IHeapValues = super.getFromNullKey(hf);
-      if (this.size != null) {
-         val var10000: Int = this.size;
-         val var3: Int = this.getMap().size();
-         if (var10000 != null) {
-            if (var10000 == var3) {
-               return r;
-            }
-         }
-      }
+   override fun equals(other: Any?): Boolean =
+      super.equals(other) && other is ArrayHeapKV<*> && other.allSizeVal == allSizeVal
 
-      return if (this.initializedValue != null) r.plus(hf.single(this.initializedValue)) else r;
-   }
+   override fun hashCode(): Int = super.hashCode()
 }

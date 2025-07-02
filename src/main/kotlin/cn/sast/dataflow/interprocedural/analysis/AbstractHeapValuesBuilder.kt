@@ -1,78 +1,51 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-import cn.sast.dataflow.util.Printer
-import java.util.Map.Entry
-import kotlinx.collections.immutable.PersistentMap.Builder
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.persistentHashMapOf
+import kotlinx.collections.immutable.toPersistentMap
 
-public sealed class AbstractHeapValuesBuilder<V> protected constructor(orig: AbstractHeapValues<Any>, map: Builder<Any, CompanionV<Any>>) :
-   IHeapValues.Builder<V> {
-   public open val orig: AbstractHeapValues<Any>
-   public final val map: Builder<Any, CompanionV<Any>>
+/**
+ * 可变构建器，实现 **增量合并 / 克隆重建**。
+ */
+sealed class AbstractHeapValuesBuilder<V>(
+   protected val orig: AbstractHeapValues<V>,
+   protected val map: PersistentMap<V, CompanionV<V>>.Builder =
+      orig.map.builder()
+) : IHeapValues.Builder<V> {
 
-   init {
-      this.orig = orig;
-      this.map = map;
+   override fun isEmpty()    = map.isEmpty()
+   override fun isNotEmpty() = map.isNotEmpty()
+
+   /* ---------- 添加 ---------- */
+
+   override fun add(elements: IHeapValues<V>): IHeapValues.Builder<V> {
+      if (elements is AbstractHeapValues) elements.forEach(::add)
+      return this
    }
 
-   public override fun isNotEmpty(): Boolean {
-      return !(this.map as java.util.Map).isEmpty();
+   override fun add(element: CompanionV<V>): IHeapValues.Builder<V> {
+      val k = element.value
+      val exist = map[k]
+      map[k] = exist?.union(element) ?: element
+      return this
    }
 
-   public override fun isEmpty(): Boolean {
-      return this.map.isEmpty();
-   }
+   /* ---------- 克隆并替换 ---------- */
 
-   public override fun add(elements: IHeapValues<Any>): cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder<Any> {
-      if (elements is AbstractHeapValues) {
-         for (CompanionV e : (AbstractHeapValues)elements) {
-            this.add(e);
-         }
-      }
-
-      return this;
-   }
-
-   public override fun add(element: CompanionV<Any>): cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder<Any> {
-      val k: Any = element.getValue();
-      val existV: CompanionV = this.map.get(k) as CompanionV;
-      if (existV == null) {
-         (this.map as java.util.Map).put(k, element);
-      } else {
-         (this.map as java.util.Map).put(k, existV.union(element));
-      }
-
-      return this;
-   }
-
-   public override fun cloneAndReNewObjects(re: IReNew<Any>) {
-      for (Entry var4 : ((java.util.Map)this.map.build()).entrySet()) {
-         val k: Any = var4.getKey();
-         val v: CompanionV = var4.getValue() as CompanionV;
-         var var10000: CompanionV = (CompanionV)re.checkNeedReplace(k);
-         if (var10000 == null) {
-            var10000 = (CompanionV)k;
-         }
-
-         var10000 = re.context(new ReferenceContext.ObjectValues(k)).checkNeedReplace(v);
-         if (var10000 == null) {
-            var10000 = v;
-         }
-
-         var newValue: CompanionV = var10000;
-         if (!(k == var10000) || var10000 != v) {
-            if (!(var10000.getValue() == var10000)) {
-               newValue = var10000.copy(var10000);
-            }
-
-            (this.map as java.util.Map).put(var10000, newValue);
-            if (!(k == var10000)) {
-               this.map.remove(k);
-            }
+   override fun cloneAndReNewObjects(re: IReNew<V>) {
+      val snapshot = map.toPersistentMap()
+      snapshot.forEach { (k, v) ->
+         val newK = re.checkNeedReplace(k) ?: k
+         val newV = re.context(ReferenceContext.ObjectValues(k)).checkNeedReplace(v) ?: v
+         if (newK != k || newV != v) {
+            map.remove(k)
+            map[newK] = if (newV.value === newV) newV else newV.copy(newV.value)
          }
       }
    }
 
-   public override fun toString(): String {
-      return Printer.Companion.nodes2String(this.map.values());
-   }
+   /* ---------- String ---------- */
+
+   override fun toString(): String =
+      cn.sast.dataflow.util.Printer.nodes2String(map.values)
 }

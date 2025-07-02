@@ -1,118 +1,70 @@
-@file:SourceDebugExtension(["SMAP\nSootUtils.kt\nKotlin\n*S Kotlin\n*F\n+ 1 SootUtils.kt\ncn/sast/dataflow/util/SootUtilsKt\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,59:1\n1#2:60\n*E\n"])
+@file:Suppress("NOTHING_TO_INLINE")
 
 package cn.sast.dataflow.util
 
-import kotlin.jvm.internal.SourceDebugExtension
-import soot.Body
-import soot.Local
-import soot.RefType
-import soot.Scene
-import soot.SootClass
-import soot.SootField
-import soot.SootMethodRef
-import soot.Type
-import soot.Unit
-import soot.Value
-import soot.jimple.IdentityRef
-import soot.jimple.IdentityStmt
-import soot.jimple.InstanceInvokeExpr
-import soot.jimple.InvokeExpr
-import soot.jimple.ParameterRef
-import soot.jimple.ThisRef
+import org.apache.commons.lang3.tuple.Pair
+import soot.*
+import soot.jimple.*
 import soot.jimple.infoflow.data.SootMethodAndClass
 import soot.jimple.infoflow.util.SootMethodRepresentationParser
 
-public final val thisLocalAndType: Pair<Local, RefType>
-   public final get() {
-      val it: Pair = argToOpAndType(`$this$thisLocalAndType`, -1);
-      val var10000: Any = it.getFirst();
-      val var10001: Any = it.getSecond();
-      return TuplesKt.to(var10000, var10001 as RefType);
-   }
+/* ------------------------------------------------------ */
+/* 1. SootMethodRef 构造                                   */
+/* ------------------------------------------------------ */
+fun sootSignatureToRef(signature: String, isStatic: Boolean): SootMethodRef {
+   val (cls, mtd, ret, params) = with(
+      SootMethodRepresentationParser.v().parseSootMethodString(signature)
+   ) { arrayOf(className, methodName, returnType, parameters) }
 
+   val sc  = Scene.v().getSootClass(cls)
+   val retTy = Scene.v().getTypeUnsafe(ret, /* allowPhantom = */ true)
+   val paramTys = cn.sast.api.util.SootUtilsKt.convertParameterTypes(params)
 
-public final val thisIdentityRef: Pair<ThisRef, RefType>
-   public final get() {
-      val it: IdentityRef = argToIdentityRef(`$this$thisIdentityRef`, -1).getFirst() as IdentityRef;
-      val var10000: ThisRef = it as ThisRef;
-      val var10001: Type = (it as ThisRef).getType();
-      return TuplesKt.to(var10000, var10001 as RefType);
-   }
-
-
-public final val thisOpAndType: Pair<Value, Type>
-   public final get() {
-      return argToOpAndType(`$this$thisOpAndType`, -1);
-   }
-
-
-public fun sootSignatureToRef(signature: String, isStatic: Boolean): SootMethodRef {
-   val smac: SootMethodAndClass = SootMethodRepresentationParser.v().parseSootMethodString(signature);
-   val var10000: SootClass = Scene.v().getSootClass(smac.getClassName());
-   val var5: Scene = Scene.v();
-   val var10002: java.lang.String = smac.getMethodName();
-   var var10003: java.util.List = smac.getParameters();
-   var10003 = cn.sast.api.util.SootUtilsKt.convertParameterTypes(var10003);
-   val var10004: Type = Scene.v().getTypeUnsafe(smac.getReturnType(), true);
-   val var4: SootMethodRef = var5.makeMethodRef(var10000, var10002, var10003, var10004, isStatic);
-   return var4;
+   return Scene.v().makeMethodRef(sc, mtd, paramTys, retTy, isStatic)
 }
 
-public fun Body.argToOpAndType(index: Int): Pair<Local, Type> {
-   val var10000: Pair;
-   if (index == -1) {
-      var10000 = TuplesKt.to(`$this$argToOpAndType`.getThisLocal(), `$this$argToOpAndType`.getMethod().getDeclaringClass().getType());
-   } else {
-      if (0 > index || index >= `$this$argToOpAndType`.getMethod().getParameterCount()) {
-         throw new IllegalStateException(
-            ("$`$this$argToOpAndType` parameterCount: ${`$this$argToOpAndType`.getMethod().getParameterCount()}, but index: $index").toString()
-         );
+/* ------------------------------------------------------ */
+/* 2. Body / InvokeExpr 参数辅助                          */
+/* ------------------------------------------------------ */
+fun Body.argToOpAndType(index: Int): Pair<Local, Type> = when (index) {
+   -1   -> Pair.of(this.thisLocal, method.declaringClass.type)
+   else -> {
+      require(index in 0 until method.parameterCount) {
+         "index: $index, parameterCount: ${method.parameterCount}"
       }
-
-      var10000 = TuplesKt.to(`$this$argToOpAndType`.getParameterLocal(index), `$this$argToOpAndType`.getMethod().getParameterType(index));
+      Pair.of(getParameterLocal(index), method.getParameterType(index))
    }
-
-   return var10000;
 }
 
-public fun Body.argToIdentityRef(index: Int): Pair<IdentityRef, Type> {
-   val var8: Pair;
-   if (index == -1) {
-      val var10000: Unit = `$this$argToIdentityRef`.getThisUnit();
-      val var7: Value = (var10000 as IdentityStmt).getRightOp();
-      var8 = TuplesKt.to(var7 as ThisRef, (var7 as ThisRef).getType());
+fun Body.argToIdentityRef(index: Int): Pair<IdentityRef, Type> = when (index) {
+   -1   -> {
+      val thisUnit = this.thisUnit as IdentityStmt
+      val ref = thisUnit.rightOp as ThisRef
+      Pair.of(ref, ref.type)
+   }
+   else -> {
+      require(index in 0 until method.parameterCount)
+      val ref = parameterRefs[index] as ParameterRef
+      Pair.of(ref, ref.type)
+   }
+}
+
+fun InvokeExpr.argToOpAndType(index: Int): Pair<Value, Type> =
+   if (index == -1 && this is InstanceInvokeExpr) {
+      Pair.of(base, methodRef.declaringClass.type)
    } else {
-      if (0 > index || index >= `$this$argToIdentityRef`.getMethod().getParameterCount()) {
-         throw new IllegalStateException(
-            ("$`$this$argToIdentityRef` parameterCount: ${`$this$argToIdentityRef`.getMethod().getParameterCount()}, but index: $index").toString()
-         );
-      }
-
-      val var9: Any = `$this$argToIdentityRef`.getParameterRefs().get(index);
-      var8 = TuplesKt.to(var9 as ParameterRef, (var9 as ParameterRef).getType());
+      require(index in 0 until argCount)
+      Pair.of(getArg(index), methodRef.getParameterType(index))
    }
 
-   return var8;
-}
-
-public fun InvokeExpr.argToOpAndType(index: Int): Pair<Value, Type> {
-   val var10000: Pair;
-   if (index == -1 && `$this$argToOpAndType` is InstanceInvokeExpr) {
-      val var2: Value = (`$this$argToOpAndType` as InstanceInvokeExpr).getBase();
-      var10000 = TuplesKt.to(var2 as Local, (`$this$argToOpAndType` as InstanceInvokeExpr).getMethodRef().getDeclaringClass().getType());
+/* ------------------------------------------------------ */
+/* 3. 获取 / 创建字段                                      */
+/* ------------------------------------------------------ */
+fun getOrMakeField(sootClass: String, fieldName: String, type: Type): SootField {
+   val sc = Scene.v().getSootClass(sootClass)
+   return if (sc.declaresFieldByName(fieldName)) {
+      sc.getFieldByName(fieldName)
    } else {
-      if (0 > index || index >= `$this$argToOpAndType`.getArgCount()) {
-         throw new IllegalStateException(("$`$this$argToOpAndType` parameterCount: ${`$this$argToOpAndType`.getMethodRef()}, but index is: $index").toString());
-      }
-
-      var10000 = TuplesKt.to(`$this$argToOpAndType`.getArg(index), `$this$argToOpAndType`.getMethodRef().getParameterType(index));
+      sc.getOrAddField(SootField(fieldName, type))
    }
-
-   return var10000;
-}
-
-public fun getOrMakeField(sootClass: String, fieldName: String, sootFieldType: Type): SootField {
-   val it: SootClass = Scene.v().getSootClass(sootClass);
-   val var10000: SootField = if (it.declaresFieldByName(fieldName)) it.getFieldByName(fieldName) else it.getOrAddField(new SootField(fieldName, sootFieldType));
-   return var10000;
 }

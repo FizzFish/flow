@@ -7,23 +7,14 @@ import soot.jimple.IdentityStmt
 import soot.jimple.ParameterRef
 import soot.jimple.ThisRef
 
-public fun Body.getParameterUnit(i: Int): Unit? {
-   val var10000: java.util.Iterator = `$this$getParameterUnit`.getUnits().iterator();
-   val var2: java.util.Iterator = var10000;
-
-   while (var2.hasNext()) {
-      val s: Unit = var2.next() as Unit;
-      if (s is IdentityStmt) {
-         val rightOp: Value = (s as IdentityStmt).getRightOp();
-         if (rightOp is ParameterRef) {
-            if ((rightOp as ParameterRef).getIndex() == i) {
-               return s;
-            }
-         } else if (rightOp is ThisRef && -1 == i) {
-            return s;
+/** 找到 _第 i_ 个参数（或 `this`=-1）所在的 **IdentityStmt** */
+fun Body.getParameterUnit(i: Int): Unit? =
+   units.find { u ->
+      (u as? IdentityStmt)?.rightOp?.let { rop ->
+         when (rop) {
+            is ParameterRef -> rop.index == i
+            is ThisRef      -> i == -1
+            else            -> false
          }
-      }
+      } ?: false
    }
-
-   return null;
-}

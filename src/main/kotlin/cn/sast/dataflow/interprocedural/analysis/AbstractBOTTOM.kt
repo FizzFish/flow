@@ -1,245 +1,147 @@
 package cn.sast.dataflow.interprocedural.analysis
 
-import cn.sast.dataflow.interprocedural.analysis.IFact.Builder
-import cn.sast.dataflow.interprocedural.analysis.heapimpl.IArrayHeapKV
 import kotlinx.collections.immutable.ImmutableSet
-import soot.ArrayType
-import soot.Context
-import soot.Local
-import soot.SootMethod
-import soot.Type
-import soot.Unit
-import soot.Value
+import soot.*
 
-public abstract class AbstractBOTTOM<V> : InValidFact<V> {
-   public open val hf: AbstractHeapFactory<Any>
-      public open get() {
-         throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-      }
+/**
+ * “常量” BOTTOM；所有查询皆视为无效。
+ */
+abstract class AbstractBOTTOM<V>(
+   /** 堆工厂（通常为单例，可安全共享） */
+   override val hf: AbstractHeapFactory<V>
+) : InValidFact<V>() {
 
+   /* ------------------------------------------------------------------ */
+   /*  IFact 基本性质                                                     */
+   /* ------------------------------------------------------------------ */
+   override fun isBottom() = true
+   override fun isTop()    = false
+   override fun isValid()  = false
 
-   public override fun isBottom(): Boolean {
-      return true;
-   }
+   override fun toString() = "IFact: BOTTOM"
 
-   public override fun isTop(): Boolean {
-      return false;
-   }
+   override fun equals(other: Any?): Boolean =
+      other is IFact<*> && other.isBottom()
 
-   public override fun isValid(): Boolean {
-      return false;
-   }
+   override fun hashCode(): Int = 2
 
-   public override fun toString(): String {
-      return "IFact: BOTTOM";
-   }
+   /* ------------------------------------------------------------------ */
+   /*  IFact 查询接口 —— 一律抛异常                                       */
+   /* ------------------------------------------------------------------ */
+   override fun getOfSlot(env: HeapValuesEnv, slot: Any): IHeapValues<Any> =
+      throw UnsupportedOperationException("BOTTOM has no slot values")
 
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is IFact) {
-         return false;
-      } else {
-         return this.isBottom() && (other as IFact).isBottom();
-      }
-   }
+   override fun diff(cmp: IDiff<Any>, that: IFact<Any>) = Unit
 
-   public override fun hashCode(): Int {
-      return 2;
-   }
+   /* ------------------------------------------------------------------ */
+   /*  Builder: 返回自身（不可变）                                        */
+   /* ------------------------------------------------------------------ */
+   override fun builder(): IFact.Builder<V> = object : IFact.Builder<V>(this@AbstractBOTTOM) {
 
-   public override fun getOfSlot(env: HeapValuesEnv, slot: Any): IHeapValues<Any> {
-      throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-   }
+      /* ------- 只要保证编译期签名完整即可，全部保持 Bottom 语义 -------- */
+      override val callStack: CallStackContext
+         get() = error("BOTTOM has no call-stack")
 
-   public override fun diff(cmp: IDiff<Any>, that: IFact<Any>) {
-   }
+      override fun assignLocal(env: HeapValuesEnv, lhs: Any, rhs: Any) = Unit
+      override fun assignNewExpr(
+         env: HeapValuesEnv, lhs: Any, allocSite: IHeapValues<V>, append: Boolean
+      ) = Unit
 
-   public override fun builder(): Builder<Any> {
-      return new IFact.Builder<V>(this) {
-         {
-            this.this$0 = `$receiver`;
-         }
+      override fun setField(
+         env: HeapValuesEnv, lhs: Any, field: JFieldType, rhs: Any, append: Boolean
+      ) = Unit
 
-         @Override
-         public CallStackContext getCallStack() {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun setFieldNew(
+         env: HeapValuesEnv, lhs: Any, field: JFieldType, allocSite: IHeapValues<V>
+      ) = Unit
 
-         @Override
-         public void assignLocal(HeapValuesEnv env, Object lhs, Object rhs) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun getField(
+         env: HeapValuesEnv, lhs: Any, rhs: Any, field: JFieldType, newSummaryField: Boolean
+      ) = Unit
 
-         @Override
-         public void assignNewExpr(HeapValuesEnv env, Object lhs, IHeapValues<V> allocSite, boolean append) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun summarizeTargetFields(lhs: Any) = Unit
+      override fun union(that: IFact<V>)         = Unit
 
-         @Override
-         public void setField(HeapValuesEnv env, Object lhs, JFieldType field, Object rhs, boolean append) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun updateIntraEdge(
+         env: HeapValuesEnv,
+         ctx: Context,
+         calleeCtx: Context,
+         callEdgeValue: IFact<V>,
+         hasReturnValue: Boolean
+      ): IHeapValues<V>? = null
 
-         @Override
-         public void setFieldNew(HeapValuesEnv env, Object lhs, JFieldType field, IHeapValues<V> allocSite) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun kill(slot: Any) = Unit
+      override fun getSlots(): Set<Local> = emptySet()
 
-         @Override
-         public void getField(HeapValuesEnv env, Object lhs, Object rhs, JFieldType field, boolean newSummaryField) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      /* 直接返回 BOTTOM 本身 */
+      override fun build(): IFact<V> = this@AbstractBOTTOM
 
-         @Override
-         public void summarizeTargetFields(Object lhs) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun addCalledMethod(sm: SootMethod)            = Unit
+      override fun getCalledMethods(): ImmutableSet<SootMethod> = emptySet()
 
-         @Override
-         public void union(IFact<V> that) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun getTargets(slot: Any): IHeapValues<V> =
+         hf.empty()
 
-         @Override
-         public IHeapValues<V> updateIntraEdge(HeapValuesEnv env, Context ctx, Context calleeCtx, IFact<V> callEdgeValue, boolean hasReturnValue) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      /* three-state helpers */
+      override fun isBottom() = true
+      override fun isTop()    = false
+      override fun isValid()  = false
 
-         @Override
-         public void kill(Object slot) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      /* 数组相关操作 —— 均忽略 */
+      override fun setArraySootValue(
+         env: HeapValuesEnv, lhs: Any, index: Value, rhs: Value, valueType: Type
+      ) = Unit
 
-         @Override
-         public java.util.Set<Local> getSlots() {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun setArrayValueNew(
+         env: HeapValuesEnv, lhs: Any, index: Value, allocSite: IHeapValues<V>
+      ) = Unit
 
-         @Override
-         public IFact<V> build() {
-            return this.this$0;
-         }
+      override fun getArrayValue(
+         env: HeapValuesEnv, lhs: Any, rhs: Any, index: Value
+      ): Boolean = false
 
-         @Override
-         public void addCalledMethod(SootMethod sm) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun getArrayValue(
+         env: HeapValuesEnv, lhs: Any, rhs: Value, index: Value
+      ): Boolean = false
 
-         @Override
-         public ImmutableSet<SootMethod> getCalledMethods() {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun gc() = Unit
 
-         @Override
-         public IHeapValues<V> getTargets(Object slot) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun callEntryFlowFunction(
+         context: cn.sast.idfa.analysis.Context<SootMethod, Unit, IFact<V>>,
+         callee: SootMethod,
+         node: Unit,
+         succ: Unit
+      ) = Unit
 
-         @Override
-         public boolean isBottom() {
-            return true;
-         }
+      override fun assignNewArray(
+         env: HeapValuesEnv, lhs: Any, allocSite: IHeapValues<V>,
+         type: ArrayType, size: Value
+      ) = Unit
 
-         @Override
-         public boolean isTop() {
-            return false;
-         }
+      override fun getValueData(v: V, mt: Any): IData<V>? = null
 
-         @Override
-         public boolean isValid() {
-            return false;
-         }
+      override fun getOfSlot(env: HeapValuesEnv, slot: Any): IHeapValues<V> =
+         hf.empty()
 
-         @Override
-         public void setArraySootValue(HeapValuesEnv env, Object lhs, Value index, Value rhs, Type valueType) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun setValueData(env: HeapValuesEnv, v: V, mt: Any, data: IData<V>) = Unit
+      override fun getArrayLength(array: V): IHeapValues<V>? = null
 
-         @Override
-         public void setArrayValueNew(HeapValuesEnv env, Object lhs, Value index, IHeapValues<V> allocSite) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun assignLocalSootValue(
+         env: HeapValuesEnv, lhs: Any, rhs: Value, valueType: Type
+      ) = Unit
 
-         @Override
-         public boolean getArrayValue(HeapValuesEnv env, Object lhs, Object rhs, Value index) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun assignFieldSootValue(
+         env: HeapValuesEnv, lhs: Any, field: JFieldType,
+         rhs: Value, valueType: Type, append: Boolean
+      ) = Unit
 
-         @Override
-         public boolean getArrayValue(HeapValuesEnv env, Object lhs, Value rhs, Value index) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
+      override fun getOfSootValue(
+         env: HeapValuesEnv, value: Value, valueType: Type
+      ): IHeapValues<V> = hf.empty()
 
-         @Override
-         public void gc() {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public void callEntryFlowFunction(cn.sast.idfa.analysis.Context<SootMethod, Unit, IFact<V>> context, SootMethod callee, Unit node, Unit succ) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public void assignNewArray(HeapValuesEnv env, Object lhs, IHeapValues<V> allocSite, ArrayType type, Value size) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public IData<V> getValueData(V v, Object mt) {
-            return null;
-         }
-
-         @Override
-         public IHeapValues<V> getOfSlot(HeapValuesEnv env, Object slot) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public void setValueData(HeapValuesEnv env, V v, Object mt, IData<V> data) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public IHeapValues<V> getArrayLength(V array) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public void assignLocalSootValue(HeapValuesEnv env, Object lhs, Value rhs, Type valueType) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public void assignFieldSootValue(HeapValuesEnv env, Object lhs, JFieldType field, Value rhs, Type valueType, boolean append) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public IHeapValues<V> getOfSootValue(HeapValuesEnv env, Value value, Type valueType) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public AbstractHeapFactory<V> getHf() {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public void copyValueData(V from, V to) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public IHeapValues<V> getTargetsUnsafe(Object slot) {
-            throw new NotImplementedError("An operation is not implemented: Not yet implemented");
-         }
-
-         @Override
-         public IArrayHeapKV<Integer, V> getArray(V array) {
-            return IFact.Builder.DefaultImpls.getArray(this, (V)array);
-         }
-      };
+      override fun getHf(): AbstractHeapFactory<V> = hf
+      override fun copyValueData(from: V, to: V)   = Unit
+      override fun getTargetsUnsafe(slot: Any): IHeapValues<V> = hf.empty()
+      override fun getArray(array: V): IArrayHeapKV<Int, V>? = null
    }
 }
