@@ -3,44 +3,37 @@ package cn.sast.common
 import java.util.Timer
 import java.util.TimerTask
 
-public open class CustomRepeatingTimer(interval: Long, action: () -> Unit) {
-   private final val interval: Long
-   private final val action: () -> Unit
-   private final var timer: Timer?
+/**
+ * Simple wrapper around [Timer] that executes a repeating action.
+ */
+open class CustomRepeatingTimer(
+    private val interval: Long,
+    private val action: () -> Unit
+) {
+    private var timer: Timer? = null
 
-   public final var isRepeats: Boolean
-      internal set
+    var isRepeats: Boolean = true
+        internal set
 
-   init {
-      this.interval = interval;
-      this.action = action;
-      this.isRepeats = true;
-   }
-
-   public fun start() {
-      val var1: Timer = new Timer();
-      var1.scheduleAtFixedRate(new TimerTask(this) {
-         {
-            this.this$0 = `$receiver`;
-         }
-
-         @Override
-         public void run() {
-            CustomRepeatingTimer.access$getAction$p(this.this$0).invoke();
-            if (!this.this$0.isRepeats()) {
-               this.cancel();
+    fun start() {
+        val t = Timer()
+        val task = object : TimerTask() {
+            override fun run() {
+                action()
+                if (!isRepeats) {
+                    cancel()
+                }
             }
-         }
-      }, this.interval, this.interval);
-      this.timer = var1;
-   }
+        }
+        t.scheduleAtFixedRate(task, interval, interval)
+        timer = t
+    }
 
-   public open fun stop() {
-      if (this.timer != null) {
-         val it: Timer = this.timer;
-         this.timer.cancel();
-         it.purge();
-         this.timer = null;
-      }
-   }
+    open fun stop() {
+        timer?.let { runningTimer ->
+            runningTimer.cancel()
+            runningTimer.purge()
+            timer = null
+        }
+    }
 }
