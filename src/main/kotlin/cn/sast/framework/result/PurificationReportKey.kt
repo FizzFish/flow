@@ -7,68 +7,40 @@ import java.time.LocalDateTime
 import kotlin.jvm.functions.Function0
 import kotlin.jvm.internal.Ref.ObjectRef
 
-public data class PurificationReportKey(bugResFile: IBugResInfo, line: Int, checkName: String, firstEvent: BugPathEvent) {
-   public final val bugResFile: IBugResInfo
-   public final val line: Int
-   public final val checkName: String
-   public final val firstEvent: BugPathEvent
+data class PurificationReportKey(
+    val bugResFile: IBugResInfo,
+    val line: Int,
+    val checkName: String,
+    val firstEvent: BugPathEvent
+) {
+    operator fun component1(): IBugResInfo = bugResFile
 
-   init {
-      this.bugResFile = bugResFile;
-      this.line = line;
-      this.checkName = checkName;
-      this.firstEvent = firstEvent;
-   }
+    operator fun component2(): Int = line
 
-   public operator fun component1(): IBugResInfo {
-      return this.bugResFile;
-   }
+    operator fun component3(): String = checkName
 
-   public operator fun component2(): Int {
-      return this.line;
-   }
+    operator fun component4(): BugPathEvent = firstEvent
 
-   public operator fun component3(): String {
-      return this.checkName;
-   }
+    fun copy(
+        bugResFile: IBugResInfo = this.bugResFile,
+        line: Int = this.line,
+        checkName: String = this.checkName,
+        firstEvent: BugPathEvent = this.firstEvent
+    ): PurificationReportKey = PurificationReportKey(bugResFile, line, checkName, firstEvent)
 
-   public operator fun component4(): BugPathEvent {
-      return this.firstEvent;
-   }
+    override fun toString(): String =
+        "PurificationReportKey(bugResFile=$bugResFile, line=$line, checkName=$checkName, firstEvent=$firstEvent)"
 
-   public fun copy(
-      bugResFile: IBugResInfo = this.bugResFile,
-      line: Int = this.line,
-      checkName: String = this.checkName,
-      firstEvent: BugPathEvent = this.firstEvent
-   ): PurificationReportKey {
-      return new PurificationReportKey(bugResFile, line, checkName, firstEvent);
-   }
+    override fun hashCode(): Int =
+        ((bugResFile.hashCode() * 31 + Integer.hashCode(line)) * 31 + checkName.hashCode()) * 31 + firstEvent.hashCode()
 
-   public override fun toString(): String {
-      return "PurificationReportKey(bugResFile=${this.bugResFile}, line=${this.line}, checkName=${this.checkName}, firstEvent=${this.firstEvent})";
-   }
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is PurificationReportKey) return false
 
-   public override fun hashCode(): Int {
-      return ((this.bugResFile.hashCode() * 31 + Integer.hashCode(this.line)) * 31 + this.checkName.hashCode()) * 31 + this.firstEvent.hashCode();
-   }
-
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is PurificationReportKey) {
-         return false;
-      } else {
-         val var2: PurificationReportKey = other as PurificationReportKey;
-         if (!(this.bugResFile == (other as PurificationReportKey).bugResFile)) {
-            return false;
-         } else if (this.line != var2.line) {
-            return false;
-         } else if (!(this.checkName == var2.checkName)) {
-            return false;
-         } else {
-            return this.firstEvent == var2.firstEvent;
-         }
-      }
-   }
+        return bugResFile == other.bugResFile &&
+                line == other.line &&
+                checkName == other.checkName &&
+                firstEvent == other.firstEvent
+    }
 }

@@ -2,19 +2,16 @@ package cn.sast.framework.report
 
 import kotlin.enums.EnumEntries
 
-public enum class ListSuffixRelation(neitherSuffix: Boolean) {
-   Equals(false),
-   AIsSuffixOfB(false),
-   BIsSuffixOfA(false),
-   NeitherSuffix(true)
-   public final val neitherSuffix: Boolean
+public enum class ListSuffixRelation(public val neitherSuffix: Boolean) {
+    Equals(false),
+    AIsSuffixOfB(false),
+    BIsSuffixOfA(false),
+    NeitherSuffix(true);
 
-   init {
-      this.neitherSuffix = neitherSuffix;
-   }
-
-   @JvmStatic
-   fun getEntries(): EnumEntries<ListSuffixRelation> {
-      return $ENTRIES;
-   }
+    companion object {
+        @JvmStatic
+        fun getEntries(): EnumEntries<ListSuffixRelation> {
+            return entries
+        }
+    }
 }

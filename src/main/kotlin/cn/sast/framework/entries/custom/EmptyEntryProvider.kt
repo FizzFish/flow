@@ -14,90 +14,42 @@ import soot.SootMethod
 import soot.jimple.toolkits.callgraph.CallGraph
 
 public object EmptyEntryProvider : IEntryPointProvider {
-   public open val iterator: Flow<AnalyzeTask> =
-      FlowKt.flow((new Function2<FlowCollector<? super IEntryPointProvider.AnalyzeTask>, Continuation<? super Unit>, Object>(null) {
-         int label;
+    override val iterator: Flow<AnalyzeTask> =
+        FlowKt.flow(Function2<FlowCollector<AnalyzeTask>, Continuation<Unit>, Any?> { `$this$flow`, continuation ->
+            val var3x: Any? = IntrinsicsKt.getCOROUTINE_SUSPENDED()
+            when (continuation.label) {
+                0 -> {
+                    val var10001 = object : AnalyzeTask {
+                        private val entries: Set<SootMethod> = emptySet()
+                        private val components: Set<SootClass> = emptySet()
 
-         {
-            super(2, `$completion`);
-         }
-
-         public final Object invokeSuspend(Object $result) {
-            val var3x: Any = IntrinsicsKt.getCOROUTINE_SUSPENDED();
-            switch (this.label) {
-               case 0:
-                  ResultKt.throwOnFailure(`$result`);
-                  val `$this$flow`: FlowCollector = this.L$0 as FlowCollector;
-                  val var10001: IEntryPointProvider.AnalyzeTask = new IEntryPointProvider.AnalyzeTask() {
-                     private final java.util.Set<SootMethod> entries;
-                     private final java.util.Set<SootClass> components;
-
-                     {
-                        this.entries = SetsKt.emptySet();
-                     }
-
-                     @Override
-                     public java.util.Set<SootMethod> getEntries() {
-                        return this.entries;
-                     }
-
-                     @Override
-                     public java.util.Set<SootMethod> getMethodsMustAnalyze() {
-                        return this.getEntries();
-                     }
-
-                     @Override
-                     public java.util.Set<SootClass> getComponents() {
-                        return this.components;
-                     }
-
-                     @Override
-                     public java.lang.String getName() {
-                        return "(empty entries provider)";
-                     }
-
-                     @Override
-                     public void needConstructCallGraph(SootCtx sootCtx) {
-                        sootCtx.setCallGraph(new CallGraph());
-                     }
-
-                     @Override
-                     public java.util.Set<SootMethod> getAdditionalEntries() {
-                        return IEntryPointProvider.AnalyzeTask.DefaultImpls.getAdditionalEntries(this);
-                     }
-                  };
-                  val var10002: Continuation = this as Continuation;
-                  this.label = 1;
-                  if (`$this$flow`.emit(var10001, var10002) === var3x) {
-                     return var3x;
-                  }
-                  break;
-               case 1:
-                  ResultKt.throwOnFailure(`$result`);
-                  break;
-               default:
-                  throw new IllegalStateException("call to 'resume' before 'invoke' with coroutine");
+                        override fun getEntries(): Set<SootMethod> = entries
+                        override fun getMethodsMustAnalyze(): Set<SootMethod> = getEntries()
+                        override fun getComponents(): Set<SootClass> = components
+                        override fun getName(): String = "(empty entries provider)"
+                        override fun needConstructCallGraph(sootCtx: SootCtx) {
+                            sootCtx.setCallGraph(CallGraph())
+                        }
+                        override fun getAdditionalEntries(): Set<SootMethod> = 
+                            AnalyzeTask.DefaultImpls.getAdditionalEntries(this)
+                    }
+                    
+                    continuation.label = 1
+                    if (`$this$flow`.emit(var10001, continuation) === var3x) {
+                        return@Function2 var3x
+                    }
+                }
+                1 -> Unit
+                else -> throw IllegalStateException("call to 'resume' before 'invoke' with coroutine")
             }
+            Unit
+        })
 
-            return Unit.INSTANCE;
-         }
+    override fun startAnalyse() {
+        IEntryPointProvider.DefaultImpls.startAnalyse(this)
+    }
 
-         public final Continuation<Unit> create(Object value, Continuation<?> $completion) {
-            val var3: Function2 = new <anonymous constructor>(`$completion`);
-            var3.L$0 = value;
-            return var3 as Continuation<Unit>;
-         }
-
-         public final Object invoke(FlowCollector<? super IEntryPointProvider.AnalyzeTask> p1, Continuation<? super Unit> p2) {
-            return (this.create(p1, p2) as <unrepresentable>).invokeSuspend(Unit.INSTANCE);
-         }
-      }) as Function2)
-
-   override fun startAnalyse() {
-      IEntryPointProvider.DefaultImpls.startAnalyse(this);
-   }
-
-   override fun endAnalyse() {
-      IEntryPointProvider.DefaultImpls.endAnalyse(this);
-   }
+    override fun endAnalyse() {
+        IEntryPointProvider.DefaultImpls.endAnalyse(this)
+    }
 }

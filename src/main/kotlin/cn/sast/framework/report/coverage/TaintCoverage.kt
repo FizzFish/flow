@@ -20,89 +20,64 @@ import org.jetbrains.annotations.Nullable
 
 @SourceDebugExtension(["SMAP\nCoverageCompnment.kt\nKotlin\n*S Kotlin\n*F\n+ 1 CoverageCompnment.kt\ncn/sast/framework/report/coverage/TaintCoverage\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,72:1\n1#2:73\n*E\n"])
 public class TaintCoverage : Coverage {
-   private fun copyResource(name: String, to: IResFile) {
-      label19: {
-         val var10000: Path = to.getPath();
-         val var10001: Array<OpenOption> = new OpenOption[0];
-         val var13: OutputStream = Files.newOutputStream(var10000, Arrays.copyOf(var10001, var10001.length));
-         val var3: Closeable = var13;
-         var var4: java.lang.Throwable = null;
+    private fun copyResource(name: String, to: IResFile) {
+        val path: Path = to.getPath()
+        val options: Array<OpenOption> = emptyArray()
+        val outputStream: OutputStream = Files.newOutputStream(path, Arrays.copyOf(options, options.size))
+        val closeable: Closeable = outputStream
+        var exception: Throwable? = null
+        
+        try {
+            val inputStream: InputStream = TaintCoverage::class.java.getResourceAsStream(name)
+            ByteStreamsKt.copyTo$default(inputStream, outputStream, 0, 2, null)
+        } catch (t: Throwable) {
+            exception = t
+            throw t
+        } finally {
+            closeable.closeFinally(exception)
+        }
+    }
 
-         try {
-            try {
-               val it: OutputStream = var3 as OutputStream;
-               val var14: InputStream = TaintCoverage.class.getResourceAsStream(name);
-               val var12: Long = ByteStreamsKt.copyTo$default(var14, it, 0, 2, null);
-            } catch (var8: java.lang.Throwable) {
-               var4 = var8;
-               throw var8;
+    public fun changeColor(reportOutputRoot: IResDirectory) {
+        this.copyResource("/jacoco/taint-report.css", reportOutputRoot.resolve("jacoco-resources").resolve("report.css").toFile())
+        this.copyResource("/jacoco/greenbar.gif", reportOutputRoot.resolve("jacoco-resources").resolve("redbar.gif").toFile())
+        this.copyResource("/jacoco/redbar.gif", reportOutputRoot.resolve("jacoco-resources").resolve("greenbar.gif").toFile())
+    }
+
+    public override suspend fun flushCoverage(locator: IProjectFileLocator, outputDir: IResDirectory, encoding: Charset) {
+        val continuation = object : ContinuationImpl(this as Continuation<Unit>, null) {
+            var L$0: Any? = null
+            var L$1: Any? = null
+            var label: Int = 0
+
+            override fun invokeSuspend(result: Any?): Any? {
+                this.result = result
+                this.label = this.label or Int.MIN_VALUE
+                return this@TaintCoverage.flushCoverage(null, null, null, this)
             }
-         } catch (var9: java.lang.Throwable) {
-            CloseableKt.closeFinally(var3, var4);
-         }
+        }
 
-         CloseableKt.closeFinally(var3, null);
-      }
-   }
-
-   public fun changeColor(reportOutputRoot: IResDirectory) {
-      this.copyResource("/jacoco/taint-report.css", reportOutputRoot.resolve("jacoco-resources").resolve("report.css").toFile());
-      this.copyResource("/jacoco/greenbar.gif", reportOutputRoot.resolve("jacoco-resources").resolve("redbar.gif").toFile());
-      this.copyResource("/jacoco/redbar.gif", reportOutputRoot.resolve("jacoco-resources").resolve("greenbar.gif").toFile());
-   }
-
-   public override suspend fun flushCoverage(locator: IProjectFileLocator, outputDir: IResDirectory, encoding: Charset) {
-      var `$continuation`: Continuation;
-      label20: {
-         if (`$completion` is <unrepresentable>) {
-            `$continuation` = `$completion` as <unrepresentable>;
-            if (((`$completion` as <unrepresentable>).label and Integer.MIN_VALUE) != 0) {
-               `$continuation`.label -= Integer.MIN_VALUE;
-               break label20;
+        val result = continuation.result
+        val suspended = IntrinsicsKt.getCOROUTINE_SUSPENDED()
+        when (continuation.label) {
+            0 -> {
+                ResultKt.throwOnFailure(result)
+                continuation.L$0 = this
+                continuation.L$1 = outputDir
+                continuation.label = 1
+                if (super.flushCoverage(locator, outputDir, encoding, continuation) === suspended) {
+                    return suspended
+                }
             }
-         }
-
-         `$continuation` = new ContinuationImpl(this, `$completion`) {
-            Object L$0;
-            Object L$1;
-            int label;
-
-            {
-               super(`$completion`);
-               this.this$0 = `this$0`;
+            1 -> {
+                outputDir = continuation.L$1 as IResDirectory
+                this@TaintCoverage = continuation.L$0 as TaintCoverage
+                ResultKt.throwOnFailure(result)
             }
+            else -> throw IllegalStateException("call to 'resume' before 'invoke' with coroutine")
+        }
 
-            @Nullable
-            public final Object invokeSuspend(@NotNull Object $result) {
-               this.result = `$result`;
-               this.label |= Integer.MIN_VALUE;
-               return this.this$0.flushCoverage(null, null, null, this as Continuation<? super Unit>);
-            }
-         };
-      }
-
-      val `$result`: Any = `$continuation`.result;
-      val var9: Any = IntrinsicsKt.getCOROUTINE_SUSPENDED();
-      switch ($continuation.label) {
-         case 0:
-            ResultKt.throwOnFailure(`$result`);
-            `$continuation`.L$0 = this;
-            `$continuation`.L$1 = outputDir;
-            `$continuation`.label = 1;
-            if (super.flushCoverage(locator, outputDir, encoding, `$continuation`) === var9) {
-               return var9;
-            }
-            break;
-         case 1:
-            outputDir = `$continuation`.L$1 as IResDirectory;
-            this = `$continuation`.L$0 as TaintCoverage;
-            ResultKt.throwOnFailure(`$result`);
-            break;
-         default:
-            throw new IllegalStateException("call to 'resume' before 'invoke' with coroutine");
-      }
-
-      this.changeColor(outputDir);
-      return Unit.INSTANCE;
-   }
+        this.changeColor(outputDir)
+        return Unit
+    }
 }

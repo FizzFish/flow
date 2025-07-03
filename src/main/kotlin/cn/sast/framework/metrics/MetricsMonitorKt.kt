@@ -9,54 +9,53 @@ import java.util.Date
 import kotlin.jvm.internal.SourceDebugExtension
 import kotlin.time.Duration
 
-private final val dateFormat: SimpleDateFormat = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss")
+private val dateFormat = SimpleDateFormat("yyyy.MM.dd HH:mm:ss")
 
 internal fun timeSub(time: Long?, begin: Long): Long? {
-   if (time != null) {
-      val it: Long = time.longValue();
-      val var10000: java.lang.Long = if (it >= begin) time else null;
-      if ((if (it >= begin) time else null) != null) {
-         return var10000.longValue() - begin;
-      }
-   }
-
-   return null;
+    if (time != null) {
+        val it = time
+        val var10000 = if (it >= begin) time else null
+        if (var10000 != null) {
+            return var10000 - begin
+        }
+    }
+    return null
 }
 
 internal fun Number.fmt(postfix: String, scale: Int = 2): String {
-   val var3: java.lang.String = "%.$scalef$postfix";
-   val var4: Array<Any> = new Object[]{`$this$fmt`.doubleValue()};
-   val var10000: java.lang.String = java.lang.String.format(var3, Arrays.copyOf(var4, var4.length));
-   return var10000;
+    val formatString = "%.${scale}f$postfix"
+    val args = arrayOf<Any>(this.toDouble())
+    return String.format(formatString, Arrays.copyOf(args, args.size))
 }
 
 @JvmSynthetic
-fun `fmt$default`(var0: java.lang.Number, var1: java.lang.String, var2: Int, var3: Int, var4: Any): java.lang.String {
-   if ((var3 and 2) != 0) {
-      var2 = 2;
-   }
-
-   return fmt(var0, var1, var2);
+internal fun fmt$default(`$this$fmt`: Number, postfix: String, scale: Int, mask: Int, any: Any?): String {
+    var scaleVar = scale
+    if ((mask and 2) != 0) {
+        scaleVar = 2
+    }
+    return `$this$fmt`.fmt(postfix, scaleVar)
 }
 
 internal fun Number?.inMemGB(scale: Int = 3): Double {
-   return if (`$this$inMemGB` != null) PhaseIntervalTimerKt.retainDecimalPlaces$default(`$this$inMemGB`.doubleValue(), scale, null, 4, null) else -1.0;
+    return this?.let {
+        PhaseIntervalTimerKt.retainDecimalPlaces(it.toDouble(), scale)
+    } ?: -1.0
 }
 
 @JvmSynthetic
-fun `inMemGB$default`(var0: java.lang.Number, var1: Int, var2: Int, var3: Any): Double {
-   if ((var2 and 1) != 0) {
-      var1 = 3;
-   }
-
-   return inMemGB(var0, var1);
+internal fun inMemGB$default(`$this$inMemGB`: Number?, scale: Int, mask: Int, any: Any?): Double {
+    var scaleVar = scale
+    if ((mask and 1) != 0) {
+        scaleVar = 3
+    }
+    return `$this$inMemGB`.inMemGB(scaleVar)
 }
 
 public fun getDateStringFromMillis(duration: Duration): String {
-   return getDateStringFromMillis(Duration.getInWholeMilliseconds-impl(duration));
+    return getDateStringFromMillis(duration.inWholeMilliseconds)
 }
 
 public fun getDateStringFromMillis(beginMillis: Long): String {
-   val var10000: java.lang.String = dateFormat.format(new Date(beginMillis));
-   return var10000;
+    return dateFormat.format(Date(beginMillis))
 }

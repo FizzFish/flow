@@ -39,341 +39,354 @@ import soot.util.queue.QueueReader
 
 @SourceDebugExtension(["SMAP\nCGUtils.kt\nKotlin\n*S Kotlin\n*F\n+ 1 CGUtils.kt\ncn/sast/framework/graph/CGUtils\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,223:1\n1#2:224\n*E\n"])
 public object CGUtils {
-   public final val missClasses: Counter<SootClass> = new Counter()
-   private final val logger: KLogger = KotlinLogging.INSTANCE.logger(CGUtils::logger$lambda$8)
+    public val missClasses: Counter<SootClass> = Counter()
+    private val logger: KLogger = KotlinLogging.logger {}
 
-   public fun rewriteJimpleBodyAfterCG() {
-      val all: java.util.Iterator = Scene.v().getClasses().snapshotIterator();
-      BuildersKt.runBlocking(
-         Dispatchers.getDefault() as CoroutineContext,
-         (
-            new Function2<CoroutineScope, Continuation<? super Unit>, Object>(all, null) {
-               int label;
+    public fun rewriteJimpleBodyAfterCG() {
+        val all = Scene.v().classes.snapshotIterator()
+        BuildersKt.runBlocking(
+            Dispatchers.Default,
+            object : Function2<CoroutineScope, Continuation<Unit>, Any?> {
+                private val $all = all
+                var label = 0
 
-               {
-                  super(2, `$completionx`);
-                  this.$all = `$all`;
-               }
+                override fun invokeSuspend(result: Any?): Any? {
+                    when (label) {
+                        0 -> {
+                            ResultKt.throwOnFailure(result)
+                            val $this$runBlocking = this.L$0 as CoroutineScope
+                            val sc = $all
+                            val var3x = sc
 
-               public final Object invokeSuspend(Object $result) {
-                  IntrinsicsKt.getCOROUTINE_SUSPENDED();
-                  switch (this.label) {
-                     case 0:
-                        ResultKt.throwOnFailure(`$result`);
-                        val `$this$runBlocking`: CoroutineScope = this.L$0 as CoroutineScope;
-                        val sc: java.util.Iterator = this.$all;
-                        val var3x: java.util.Iterator = sc;
+                            while (var3x.hasNext()) {
+                                val var8 = var3x.next() as SootClass
+                                if (!var8.isPhantom) {
+                                    val var6 = var8.methods
 
-                        while (var3x.hasNext()) {
-                           val var8: SootClass = var3x.next() as SootClass;
-                           if (!var8.isPhantom()) {
-                              val var6: java.util.List = var8.getMethods();
+                                    for (sm in var6) {
+                                        if (sm.hasActiveBody()) {
+                                            BuildersKt.launch(
+                                                $this$runBlocking,
+                                                null,
+                                                null,
+                                                object : Function2<CoroutineScope, Continuation<Unit>, Any?> {
+                                                    private val $sm = sm
+                                                    var label = 0
 
-                              for (SootMethod sm : CollectionsKt.toList(var6)) {
-                                 if (sm.hasActiveBody()) {
-                                    BuildersKt.launch$default(
-                                       `$this$runBlocking`, null, null, (new Function2<CoroutineScope, Continuation<? super Unit>, Object>(sm, null) {
-                                          int label;
+                                                    override fun invokeSuspend(result: Any?): Any? {
+                                                        when (label) {
+                                                            0 -> {
+                                                                ResultKt.throwOnFailure(result)
+                                                                if (!$sm.hasActiveBody()) {
+                                                                    return Unit
+                                                                } else {
+                                                                    try {
+                                                                        val body = $sm.activeBody
+                                                                        if (body == null) {
+                                                                            return Unit
+                                                                        }
 
-                                          {
-                                             super(2, `$completionx`);
-                                             this.$sm = `$sm`;
-                                          }
+                                                                        PackManager.v().getTransform("jb.rewriter").apply(body)
+                                                                        PackManager.v().getTransform("jb.identityStmt2MethodParamRegion").apply(body)
+                                                                        $sm.activeBody = body
+                                                                    } catch (_: RuntimeException) {
+                                                                    }
 
-                                          public final Object invokeSuspend(Object $result) {
-                                             IntrinsicsKt.getCOROUTINE_SUSPENDED();
-                                             switch (this.label) {
-                                                case 0:
-                                                   ResultKt.throwOnFailure(`$result`);
-                                                   if (!this.$sm.hasActiveBody()) {
-                                                      return Unit.INSTANCE;
-                                                   } else {
-                                                      try {
-                                                         val var10000: Body = this.$sm.getActiveBody();
-                                                         if (var10000 == null) {
-                                                            return Unit.INSTANCE;
-                                                         }
+                                                                    return Unit
+                                                                }
+                                                            }
+                                                            else -> throw IllegalStateException("call to 'resume' before 'invoke' with coroutine")
+                                                        }
+                                                    }
 
-                                                         PackManager.v().getTransform("jb.rewriter").apply(var10000);
-                                                         PackManager.v().getTransform("jb.identityStmt2MethodParamRegion").apply(var10000);
-                                                         this.$sm.setActiveBody(var10000);
-                                                      } catch (var3: RuntimeException) {
-                                                      }
+                                                    override fun create(value: Any?, completion: Continuation<*>): Continuation<Unit> {
+                                                        return object : Function2<CoroutineScope, Continuation<Unit>, Any?> {
+                                                            private val $sm = this@Function2.$sm
+                                                            var label = 0
 
-                                                      return Unit.INSTANCE;
-                                                   }
-                                                default:
-                                                   throw new IllegalStateException("call to 'resume' before 'invoke' with coroutine");
-                                             }
-                                          }
+                                                            override fun invokeSuspend(result: Any?): Any? {
+                                                                return this@Function2.invokeSuspend(result)
+                                                            }
 
-                                          public final Continuation<Unit> create(Object value, Continuation<?> $completion) {
-                                             return (new <anonymous constructor>(this.$sm, `$completion`)) as Continuation<Unit>;
-                                          }
+                                                            override fun create(value: Any?, completion: Continuation<*>): Continuation<Unit> {
+                                                                return this
+                                                            }
 
-                                          public final Object invoke(CoroutineScope p1, Continuation<? super Unit> p2) {
-                                             return (this.create(p1, p2) as <unrepresentable>).invokeSuspend(Unit.INSTANCE);
-                                          }
-                                       }) as Function2, 3, null
-                                    );
-                                 }
-                              }
-                           }
+                                                            override fun invoke(p1: CoroutineScope, p2: Continuation<Unit>): Any? {
+                                                                return invokeSuspend(Unit)
+                                                            }
+                                                        }
+                                                    }
+
+                                                    override fun invoke(p1: CoroutineScope, p2: Continuation<Unit>): Any? {
+                                                        return invokeSuspend(Unit)
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            return Unit
+                        }
+                        else -> throw IllegalStateException("call to 'resume' before 'invoke' with coroutine")
+                    }
+                }
+
+                override fun create(value: Any?, completion: Continuation<*>): Continuation<Unit> {
+                    val function = object : Function2<CoroutineScope, Continuation<Unit>, Any?> {
+                        private val $all = this@Function2.$all
+                        var label = 0
+
+                        override fun invokeSuspend(result: Any?): Any? {
+                            return this@Function2.invokeSuspend(result)
                         }
 
-                        return Unit.INSTANCE;
-                     default:
-                        throw new IllegalStateException("call to 'resume' before 'invoke' with coroutine");
-                  }
-               }
-
-               public final Continuation<Unit> create(Object value, Continuation<?> $completion) {
-                  val var3: Function2 = new <anonymous constructor>(this.$all, `$completion`);
-                  var3.L$0 = value;
-                  return var3 as Continuation<Unit>;
-               }
-
-               public final Object invoke(CoroutineScope p1, Continuation<? super Unit> p2) {
-                  return (this.create(p1, p2) as <unrepresentable>).invokeSuspend(Unit.INSTANCE);
-               }
-            }
-         ) as Function2
-      );
-   }
-
-   public fun makeSpuriousMethodFromInvokeExpr() {
-      val var10000: Chain = Scene.v().getApplicationClasses();
-
-      for (SootClass appSc : CollectionsKt.toList((java.lang.Iterable)var10000)) {
-         if (!appSc.isPhantom()) {
-            val var16: java.util.List = appSc.getMethods();
-
-            for (SootMethod sm : CollectionsKt.toList(var16)) {
-               if (sm.isConcrete() && sm.getSource() != null) {
-                  try {
-                     val var17: Body = sm.retrieveActiveBody();
-                     if (var17 != null) {
-                        val var18: UnitPatchingChain = var17.getUnits();
-                        val var19: java.util.Iterator = var18.iterator();
-                        val var9: java.util.Iterator = var19;
-
-                        while (var9.hasNext()) {
-                           val u: soot.Unit = var9.next() as soot.Unit;
-                           val var12: Stmt = u as? Stmt;
-                           if ((u as? Stmt) != null) {
-                              if (var12.containsInvokeExpr()) {
-                                 val var14: SootMethod = var12.getInvokeExpr().getMethod();
-                              }
-
-                              if (var12.containsFieldRef()) {
-                                 val var15: SootField = var12.getFieldRef().getField();
-                              }
-                           }
+                        override fun create(value: Any?, completion: Continuation<*>): Continuation<Unit> {
+                            return this
                         }
-                     }
-                  } catch (var13: RuntimeException) {
-                  }
-               }
-            }
-         }
-      }
-   }
 
-   private fun CallGraph.forceAddCgEdge(src: SootMethod, srcUnit: Stmt, ie: InvokeExpr) {
-      val tgt: SootMethod = ie.getMethod();
-      if (srcUnit.getInvokeExpr() !is DynamicInvokeExpr) {
-         `$this$forceAddCgEdge`.addEdge(new Edge(src as MethodOrMethodContext, srcUnit, tgt as MethodOrMethodContext));
-      }
-   }
-
-   public fun addCallEdgeForPhantomMethods() {
-      val scene: Scene = Scene.v();
-      val cg: CallGraph = scene.getCallGraph();
-      val reachableMethods: ReachableMethods = scene.getReachableMethods();
-      reachableMethods.update();
-      val var10000: QueueReader = reachableMethods.listener();
-      val listener: java.util.Iterator = var10000 as java.util.Iterator;
-
-      while (listener.hasNext()) {
-         val src: SootMethod = (listener.next() as MethodOrMethodContext).method();
-         if (src.hasActiveBody()) {
-            val var14: UnitPatchingChain = src.getActiveBody().getUnits();
-            val var15: java.util.Iterator = var14.iterator();
-            val var7: java.util.Iterator = var15;
-
-            while (var7.hasNext()) {
-               val u: soot.Unit = var7.next() as soot.Unit;
-               val srcUnit: Stmt = u as Stmt;
-               if ((u as Stmt).containsInvokeExpr()) {
-                  val ie: InvokeExpr = srcUnit.getInvokeExpr();
-                  if (!cg.edgesOutOf(u).hasNext()) {
-                     val var16: SootClass = ie.getMethodRef().getDeclaringClass();
-                     if (var16 != null) {
-                        if (var16.isPhantom() && !Scene.v().isExcluded(var16)) {
-                           val var17: java.lang.String = var16.getName();
-                           if (!StringsKt.startsWith$default(var17, "soot.dummy", false, 2, null)) {
-                              missClasses.count(var16);
-                           }
+                        override fun invoke(p1: CoroutineScope, p2: Continuation<Unit>): Any? {
+                            return invokeSuspend(Unit)
                         }
-                     }
+                    }
+                    function.L$0 = value
+                    return function
+                }
 
-                     this.forceAddCgEdge(cg, src, srcUnit, ie);
-                  }
-               }
+                override fun invoke(p1: CoroutineScope, p2: Continuation<Unit>): Any? {
+                    return invokeSuspend(Unit)
+                }
             }
-         }
-      }
-   }
+        )
+    }
 
-   public fun flushMissedClasses(outputDir: IResDirectory) {
-      val out: IResFile = outputDir.resolve("phantom_dependence_classes.txt").toFile();
-      if (missClasses.isNotEmpty()) {
-         logger.warn(CGUtils::flushMissedClasses$lambda$1);
-         missClasses.writeResults(out);
-      } else {
-         Files.deleteIfExists(out.getPath());
-      }
-   }
+    public fun makeSpuriousMethodFromInvokeExpr() {
+        val classes = Scene.v().applicationClasses
 
-   public fun removeInvalidMethodBody(scene: Scene) {
-      val var10000: java.util.Iterator = scene.getClasses().iterator();
-      val var2: java.util.Iterator = var10000;
+        for (appSc in classes) {
+            if (!appSc.isPhantom) {
+                val methods = appSc.methods
 
-      while (var2.hasNext()) {
-         for (SootMethod sm : ((SootClass)var2.next()).getMethods()) {
-            if (sm.hasActiveBody() && sm.getActiveBody().getUnits().isEmpty()) {
-               sm.setActiveBody(null);
-               sm.setPhantom(true);
+                for (sm in methods) {
+                    if (sm.isConcrete && sm.source != null) {
+                        try {
+                            val body = sm.retrieveActiveBody()
+                            if (body != null) {
+                                val units = body.units
+                                val iterator = units.iterator()
+
+                                while (iterator.hasNext()) {
+                                    val u = iterator.next()
+                                    val stmt = u as? Stmt
+                                    if (stmt != null) {
+                                        if (stmt.containsInvokeExpr()) {
+                                            val method = stmt.invokeExpr.method
+                                        }
+
+                                        if (stmt.containsFieldRef()) {
+                                            val field = stmt.fieldRef.field
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (_: RuntimeException) {
+                        }
+                    }
+                }
             }
-         }
-      }
-   }
+        }
+    }
 
-   public fun fixInvalidInterface(scene: Scene) {
-      var var10000: java.util.Iterator = scene.getClasses().iterator();
-      val var2: java.util.Iterator = var10000;
+    private fun CallGraph.forceAddCgEdge(src: SootMethod, srcUnit: Stmt, ie: InvokeExpr) {
+        val tgt = ie.method
+        if (srcUnit.invokeExpr !is DynamicInvokeExpr) {
+            this.addEdge(Edge(src as MethodOrMethodContext, srcUnit, tgt as MethodOrMethodContext))
+        }
+    }
 
-      while (var2.hasNext()) {
-         val sc: SootClass = var2.next() as SootClass;
-         var10000 = sc.getInterfaces().snapshotIterator();
-         val var4: java.util.Iterator = var10000;
+    public fun addCallEdgeForPhantomMethods() {
+        val scene = Scene.v()
+        val cg = scene.callGraph
+        val reachableMethods = scene.reachableMethods
+        reachableMethods.update()
+        val listener = reachableMethods.listener() as Iterator<*>
 
-         while (var4.hasNext()) {
-            val i: SootClass = var4.next() as SootClass;
-            if (!i.isInterface()) {
-               logger.warn(CGUtils::fixInvalidInterface$lambda$2);
+        while (listener.hasNext()) {
+            val src = (listener.next() as MethodOrMethodContext).method()
+            if (src.hasActiveBody()) {
+                val units = src.activeBody.units
+                val iterator = units.iterator()
 
-               try {
-                  sc.removeInterface(i);
-               } catch (var7: Exception) {
-                  logger.warn(var7, CGUtils::fixInvalidInterface$lambda$3);
-               }
+                while (iterator.hasNext()) {
+                    val u = iterator.next()
+                    val srcUnit = u as Stmt
+                    if (u.containsInvokeExpr()) {
+                        val ie = srcUnit.invokeExpr
+                        if (!cg.edgesOutOf(u).hasNext()) {
+                            val declaringClass = ie.methodRef.declaringClass
+                            if (declaringClass != null) {
+                                if (declaringClass.isPhantom && !scene.isExcluded(declaringClass)) {
+                                    val className = declaringClass.name
+                                    if (!className.startsWith("soot.dummy")) {
+                                        missClasses.count(declaringClass)
+                                    }
+                                }
+                            }
+
+                            forceAddCgEdge(cg, src, srcUnit, ie)
+                        }
+                    }
+                }
             }
-         }
-      }
-   }
+        }
+    }
 
-   public fun removeLargeClasses(scene: Scene) {
-      val skipClassByMaximumMethods: Int = ExtSettings.INSTANCE.getSkip_large_class_by_maximum_methods();
-      val skipClassByMaximumFields: Int = ExtSettings.INSTANCE.getSkip_large_class_by_maximum_fields();
-      if (skipClassByMaximumMethods > 0 || skipClassByMaximumFields > 0) {
-         val var10000: java.util.Iterator = scene.getClasses().snapshotIterator();
-         val var4: java.util.Iterator = var10000;
+    public fun flushMissedClasses(outputDir: IResDirectory) {
+        val out = outputDir.resolve("phantom_dependence_classes.txt").toFile()
+        if (missClasses.isNotEmpty()) {
+            logger.warn { flushMissedClasses$lambda$1(out) }
+            missClasses.writeResults(out)
+        } else {
+            Files.deleteIfExists(out.path)
+        }
+    }
 
-         while (var4.hasNext()) {
-            val sc: SootClass = var4.next() as SootClass;
-            var removeIt: Boolean = false;
-            if (skipClassByMaximumMethods > 0 && sc.getMethodCount() > skipClassByMaximumMethods) {
-               removeIt = true;
-               logger.warn(CGUtils::removeLargeClasses$lambda$4);
+    public fun removeInvalidMethodBody(scene: Scene) {
+        val classes = scene.classes.iterator()
+
+        while (classes.hasNext()) {
+            for (sm in classes.next().methods) {
+                if (sm.hasActiveBody() && sm.activeBody.units.isEmpty()) {
+                    sm.activeBody = null
+                    sm.setPhantom(true)
+                }
             }
+        }
+    }
 
-            if (skipClassByMaximumFields > 0 && sc.getFieldCount() > skipClassByMaximumFields) {
-               removeIt = true;
-               logger.warn(CGUtils::removeLargeClasses$lambda$5);
+    public fun fixInvalidInterface(scene: Scene) {
+        val classes = scene.classes.iterator()
+
+        while (classes.hasNext()) {
+            val sc = classes.next() as SootClass
+            val interfaces = sc.interfaces.snapshotIterator()
+
+            while (interfaces.hasNext()) {
+                val i = interfaces.next() as SootClass
+                if (!i.isInterface) {
+                    logger.warn { fixInvalidInterface$lambda$2(i, sc) }
+
+                    try {
+                        sc.removeInterface(i)
+                    } catch (e: Exception) {
+                        logger.warn(e) { fixInvalidInterface$lambda$3(i, sc) }
+                    }
+                }
             }
+        }
+    }
 
-            if (removeIt) {
-               scene.removeClass(sc);
+    public fun removeLargeClasses(scene: Scene) {
+        val skipClassByMaximumMethods = ExtSettings.INSTANCE.skip_large_class_by_maximum_methods
+        val skipClassByMaximumFields = ExtSettings.INSTANCE.skip_large_class_by_maximum_fields
+        if (skipClassByMaximumMethods > 0 || skipClassByMaximumFields > 0) {
+            val classes = scene.classes.snapshotIterator()
+
+            while (classes.hasNext()) {
+                val sc = classes.next() as SootClass
+                var removeIt = false
+                if (skipClassByMaximumMethods > 0 && sc.methodCount > skipClassByMaximumMethods) {
+                    removeIt = true
+                    logger.warn { removeLargeClasses$lambda$4(sc, skipClassByMaximumMethods) }
+                }
+
+                if (skipClassByMaximumFields > 0 && sc.fieldCount > skipClassByMaximumFields) {
+                    removeIt = true
+                    logger.warn { removeLargeClasses$lambda$5(sc, skipClassByMaximumFields) }
+                }
+
+                if (removeIt) {
+                    scene.removeClass(sc)
+                }
             }
-         }
-      }
-   }
+        }
+    }
 
-   public fun fixScene(scene: Scene) {
-      this.removeInvalidMethodBody(scene);
-      this.fixInvalidInterface(scene);
-   }
+    public fun fixScene(scene: Scene) {
+        removeInvalidMethodBody(scene)
+        fixInvalidInterface(scene)
+    }
 
-   public fun createSootMethod(
-      name: String,
-      argsTypes: List<Type>,
-      returnType: Type,
-      declaringClass: SootClass,
-      graphBody: JimpleBody,
-      isStatic: Boolean = true
-   ): SootMethod {
-      val var7: SootMethod = new SootMethod(name, argsTypes, returnType, if (isStatic) 8 else 0);
-      declaringClass.addMethod(var7);
-      var7.setActiveBody(graphBody as Body);
-      return var7;
-   }
+    public fun createSootMethod(
+        name: String,
+        argsTypes: List<Type>,
+        returnType: Type,
+        declaringClass: SootClass,
+        graphBody: JimpleBody,
+        isStatic: Boolean = true
+    ): SootMethod {
+        val method = SootMethod(name, argsTypes, returnType, if (isStatic) 8 else 0)
+        declaringClass.addMethod(method)
+        method.activeBody = graphBody
+        return method
+    }
 
-   public fun getOrCreateClass(scene: Scene, className: String): SootClass {
-      var mainClass: SootClass = scene.getSootClassUnsafe(className, false);
-      if (mainClass == null) {
-         val var10000: SootClass = scene.makeSootClass(className);
-         mainClass = var10000;
-         var10000.setResolvingLevel(3);
-         scene.addClass(var10000);
-      }
+    public fun getOrCreateClass(scene: Scene, className: String): SootClass {
+        var mainClass = scene.getSootClassUnsafe(className, false)
+        if (mainClass == null) {
+            mainClass = scene.makeSootClass(className).apply {
+                resolvingLevel = 3
+            }
+            scene.addClass(mainClass)
+        }
 
-      return mainClass;
-   }
+        return mainClass
+    }
 
-   public fun createDummyMain(scene: Scene, dummyClassName: String = "dummyMainClass", methodName: String = "fakeMethod"): SootClass {
-      val jimple: Jimple = Jimple.v();
-      val dummyClass: SootClass = this.getOrCreateClass(scene, dummyClassName);
-      dummyClass.setApplicationClass();
-      val var7: JimpleBody = jimple.newBody();
-      var7.getUnits().add(jimple.newNopStmt() as soot.Unit);
-      val var10002: java.util.List = CollectionsKt.emptyList();
-      val var10003: VoidType = VoidType.v();
-      val var10: Type = var10003 as Type;
-      createSootMethod$default(this, methodName, var10002, var10, dummyClass, var7, false, 32, null);
-      return dummyClass;
-   }
+    public fun createDummyMain(
+        scene: Scene,
+        dummyClassName: String = "dummyMainClass",
+        methodName: String = "fakeMethod"
+    ): SootClass {
+        val jimple = Jimple.v()
+        val dummyClass = getOrCreateClass(scene, dummyClassName)
+        dummyClass.setApplicationClass()
+        val body = jimple.newBody()
+        body.units.add(jimple.newNopStmt())
+        createSootMethod(methodName, emptyList(), VoidType.v(), dummyClass, body, false)
+        return dummyClass
+    }
 
-   @JvmStatic
-   fun `flushMissedClasses$lambda$1`(`$out`: IResFile): Any {
-      return Theme.Companion
-         .getDefault()
-         .getWarning()
-         .invoke("Incomplete analysis! The num of ${missClasses.size()} dependent classes cannot be found here. check: ${`$out`.getAbsolute().getNormalize()}");
-   }
+    @JvmStatic
+    fun flushMissedClasses$lambda$1(out: IResFile): Any {
+        return Theme.Default.warning(
+            "Incomplete analysis! The num of ${missClasses.size()} dependent classes cannot be found here. check: ${out.absolute.normalize}"
+        )
+    }
 
-   @JvmStatic
-   fun `fixInvalidInterface$lambda$2`(`$i`: SootClass, `$sc`: SootClass): Any {
-      return "$`$i` is not a interface. but contains in interfaces of $`$sc`";
-   }
+    @JvmStatic
+    fun fixInvalidInterface$lambda$2(i: SootClass, sc: SootClass): Any {
+        return "$i is not a interface. but contains in interfaces of $sc"
+    }
 
-   @JvmStatic
-   fun `fixInvalidInterface$lambda$3`(`$i`: SootClass, `$sc`: SootClass): Any {
-      return "remove interface $`$i` from $`$sc` failed";
-   }
+    @JvmStatic
+    fun fixInvalidInterface$lambda$3(i: SootClass, sc: SootClass): Any {
+        return "remove interface $i from $sc failed"
+    }
 
-   @JvmStatic
-   fun `removeLargeClasses$lambda$4`(`$sc`: SootClass, `$skipClassByMaximumMethods`: Int): Any {
-      return "Remove large class: $`$sc` which is too large. Limit the class methods count should less than $`$skipClassByMaximumMethods`";
-   }
+    @JvmStatic
+    fun removeLargeClasses$lambda$4(sc: SootClass, skipClassByMaximumMethods: Int): Any {
+        return "Remove large class: $sc which is too large. Limit the class methods count should less than $skipClassByMaximumMethods"
+    }
 
-   @JvmStatic
-   fun `removeLargeClasses$lambda$5`(`$sc`: SootClass, `$skipClassByMaximumFields`: Int): Any {
-      return "Remove big class: $`$sc` which is too large. Limit the class fields count should less than $`$skipClassByMaximumFields`";
-   }
+    @JvmStatic
+    fun removeLargeClasses$lambda$5(sc: SootClass, skipClassByMaximumFields: Int): Any {
+        return "Remove big class: $sc which is too large. Limit the class fields count should less than $skipClassByMaximumFields"
+    }
 
-   @JvmStatic
-   fun `logger$lambda$8`(): Unit {
-      return Unit.INSTANCE;
-   }
+    @JvmStatic
+    fun logger$lambda$8() {
+    }
 }

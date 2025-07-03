@@ -11,19 +11,16 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.modules.SerializersModule
 
 @ExperimentalSerializationApi
-public class DynamicLookupSerializer : KSerializer<Object> {
-   public open val descriptor: SerialDescriptor = new ContextualSerializer(Any::class, null, new KSerializer[0]).getDescriptor()
+public class DynamicLookupSerializer : KSerializer<Any> {
+    override val descriptor: SerialDescriptor = ContextualSerializer(Any::class, null, emptyArray()).descriptor
 
-   public open fun serialize(encoder: Encoder, value: Any) {
-      var var10000: KSerializer = SerializersModule.getContextual$default(encoder.getSerializersModule(), value.getClass()::class, null, 2, null);
-      if (var10000 == null) {
-         var10000 = SerializersKt.serializer(value.getClass()::class);
-      }
+    override fun serialize(encoder: Encoder, value: Any) {
+        var serializer: KSerializer<Any> = SerializersModule.getContextual(encoder.serializersModule, value::class, null) as? KSerializer<Any>
+            ?: SerializersKt.serializer(value::class) as KSerializer<Any>
+        encoder.encodeSerializableValue(serializer as SerializationStrategy<Any>, value)
+    }
 
-      encoder.encodeSerializableValue(var10000 as SerializationStrategy, value);
-   }
-
-   public open fun deserialize(decoder: Decoder): Any {
-      throw new IllegalStateException("not support yet".toString());
-   }
+    override fun deserialize(decoder: Decoder): Any {
+        throw IllegalStateException("not support yet")
+    }
 }

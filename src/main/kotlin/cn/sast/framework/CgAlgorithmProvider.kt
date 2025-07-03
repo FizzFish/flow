@@ -3,10 +3,13 @@ package cn.sast.framework
 import kotlin.enums.EnumEntries
 
 public enum class CgAlgorithmProvider {
-   Soot,
-   QiLin
-   @JvmStatic
-   fun getEntries(): EnumEntries<CgAlgorithmProvider> {
-      return $ENTRIES;
-   }
+    Soot,
+    QiLin;
+
+    companion object {
+        @JvmStatic
+        fun getEntries(): EnumEntries<CgAlgorithmProvider> {
+            return entries
+        }
+    }
 }

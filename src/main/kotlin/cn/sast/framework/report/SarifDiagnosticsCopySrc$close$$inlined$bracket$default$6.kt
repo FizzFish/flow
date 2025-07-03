@@ -4,15 +4,12 @@ import java.time.LocalDateTime
 import kotlin.jvm.functions.Function0
 import org.utbot.common.LoggingKt
 
-// $VF: Class flags could not be determined
-internal class `SarifDiagnosticsCopySrc$close$$inlined$bracket$default$6` : Function0<Object> {
-   fun `SarifDiagnosticsCopySrc$close$$inlined$bracket$default$6`(`$startTime`: LocalDateTime, `$msg`: java.lang.String) {
-      this.$startTime = `$startTime`;
-      this.$msg = `$msg`;
-   }
-
-   fun invoke(): Any {
-      val var1: LocalDateTime = this.$startTime;
-      return "Finished (in ${LoggingKt.elapsedSecFrom(var1)}): ${this.$msg} <Nothing>";
-   }
+internal class `SarifDiagnosticsCopySrc$close$$inlined$bracket$default$6`(
+    private val `$startTime`: LocalDateTime,
+    private val `$msg`: String
+) : Function0<Any> {
+    override fun invoke(): Any {
+        val var1: LocalDateTime = `$startTime`
+        return "Finished (in ${LoggingKt.elapsedSecFrom(var1)}): ${`$msg`} <Nothing>"
+    }
 }

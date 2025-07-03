@@ -15,149 +15,86 @@ import soot.SootClass
 import soot.SootMethod
 
 public class HybridCustomThenComponent(ctx: SootCtx, entries: Set<SootMethod>) : CustomEntryProvider(entries) {
-   public open val iterator: Flow<AnalyzeTask>
+    public open val iterator: Flow<AnalyzeTask>
 
-   init {
-      this.iterator = FlowKt.flow(
-         (
-            new Function2<FlowCollector<? super IEntryPointProvider.AnalyzeTask>, Continuation<? super Unit>, Object>(this, ctx, entries, null) {
-               int label;
+    init {
+        this.iterator = FlowKt.flow(Function2 { flowCollector: FlowCollector<AnalyzeTask>, continuation: Continuation<Unit> ->
+            object : Continuation<Any?> {
+                var label = 0
+                val this$0 = this@HybridCustomThenComponent
+                val $ctx = ctx
+                val $entries = entries
 
-               {
-                  super(2, `$completionx`);
-                  this.this$0 = `$receiver`;
-                  this.$ctx = `$ctx`;
-                  this.$entries = `$entries`;
-               }
+                override fun invokeSuspend(result: Any?): Any? {
+                    val suspended = IntrinsicsKt.getCOROUTINE_SUSPENDED()
+                    when (label) {
+                        0 -> {
+                            ResultKt.throwOnFailure(result)
+                            val flow = flowCollector
+                            val iterator = this$0.getMethod()
+                            val ctx = $ctx
+                            val destination = ArrayList<SootMethod>(iterator.size)
 
-               public final Object invokeSuspend(Object $result) {
-                  val var18: Any = IntrinsicsKt.getCOROUTINE_SUSPENDED();
-                  switch (this.label) {
-                     case 0:
-                        ResultKt.throwOnFailure(`$result`);
-                        val `$this$flow`: FlowCollector = this.L$0 as FlowCollector;
-                        val iterator: java.lang.Iterable = this.this$0.getMethod();
-                        val var14: SootCtx = this.$ctx;
-                        val `destination$iv$iv`: java.util.Collection = new ArrayList(CollectionsKt.collectionSizeOrDefault(iterator, 10));
+                            for (item in iterator) {
+                                destination.add((item as SootMethod).signature)
+                            }
 
-                        for (Object item$iv$iv : iterator) {
-                           `destination$iv$iv`.add((`item$iv$iv` as SootMethod).getSignature());
-                        }
+                            val component = ComponentEntryProvider(ctx, destination)
+                            val nestedFlow = FlowKt.flow(Function2 { nestedFlowCollector: FlowCollector<AnalyzeTask>, nestedContinuation: Continuation<Unit> ->
+                                object : Continuation<Any?> {
+                                    var label = 0
+                                    val $component = component
+                                    val $entries = entries
 
-                        val component: ComponentEntryProvider = new ComponentEntryProvider(var14, `destination$iv$iv`);
-                        val var19: Flow = FlowKt.flow(
-                           (
-                              new Function2<FlowCollector<? super IEntryPointProvider.AnalyzeTask>, Continuation<? super Unit>, Object>(
-                                 component, this.$entries, null
-                              ) {
-                                 int label;
+                                    override fun invokeSuspend(nestedResult: Any?): Any? {
+                                        val nestedSuspended = IntrinsicsKt.getCOROUTINE_SUSPENDED()
+                                        when (label) {
+                                            0 -> {
+                                                ResultKt.throwOnFailure(nestedResult)
+                                                val nestedFlow = nestedFlowCollector
+                                                val task = object : AnalyzeTask {
+                                                    private val entries: Set<SootMethod> = $component.getMethod()
+                                                    private val components: Set<SootClass> = emptySet()
 
-                                 {
-                                    super(2, `$completionx`);
-                                    this.$component = `$component`;
-                                    this.$entries = `$entries`;
-                                 }
-
-                                 public final Object invokeSuspend(Object $result) {
-                                    val var3x: Any = IntrinsicsKt.getCOROUTINE_SUSPENDED();
-                                    switch (this.label) {
-                                       case 0:
-                                          ResultKt.throwOnFailure(`$result`);
-                                          val `$this$flow`: FlowCollector = this.L$0 as FlowCollector;
-                                          val var10001: IEntryPointProvider.AnalyzeTask = new IEntryPointProvider.AnalyzeTask(this.$component, this.$entries) {
-                                             private final java.util.Set<SootMethod> entries;
-                                             private final java.util.Set<SootClass> components;
-
-                                             {
-                                                this.$entries = `$entries`;
-                                                this.entries = `$component`.getMethod();
-                                             }
-
-                                             @Override
-                                             public java.util.Set<SootMethod> getEntries() {
-                                                return this.entries;
-                                             }
-
-                                             @Override
-                                             public java.util.Set<SootClass> getComponents() {
-                                                return this.components;
-                                             }
-
-                                             @Override
-                                             public java.util.Set<SootMethod> getMethodsMustAnalyze() {
-                                                return this.$entries;
-                                             }
-
-                                             @Override
-                                             public java.lang.String getName() {
-                                                return "(entries size: ${this.$entries.size()})";
-                                             }
-
-                                             @Override
-                                             public void needConstructCallGraph(SootCtx sootCtx) {
-                                                sootCtx.constructCallGraph();
-                                             }
-
-                                             @Override
-                                             public java.util.Set<SootMethod> getAdditionalEntries() {
-                                                return IEntryPointProvider.AnalyzeTask.DefaultImpls.getAdditionalEntries(this);
-                                             }
-                                          };
-                                          val var10002: Continuation = this as Continuation;
-                                          this.label = 1;
-                                          if (`$this$flow`.emit(var10001, var10002) === var3x) {
-                                             return var3x;
-                                          }
-                                          break;
-                                       case 1:
-                                          ResultKt.throwOnFailure(`$result`);
-                                          break;
-                                       default:
-                                          throw new IllegalStateException("call to 'resume' before 'invoke' with coroutine");
+                                                    override fun getEntries(): Set<SootMethod> = entries
+                                                    override fun getComponents(): Set<SootClass> = components
+                                                    override fun getMethodsMustAnalyze(): Set<SootMethod> = $entries
+                                                    override fun getName(): String = "(entries size: ${$entries.size})"
+                                                    override fun needConstructCallGraph(sootCtx: SootCtx) {
+                                                        sootCtx.constructCallGraph()
+                                                    }
+                                                    override fun getAdditionalEntries(): Set<SootMethod> {
+                                                        return AnalyzeTask.DefaultImpls.getAdditionalEntries(this)
+                                                    }
+                                                }
+                                                label = 1
+                                                if (nestedFlow.emit(task, this) === nestedSuspended) {
+                                                    return nestedSuspended
+                                                }
+                                            }
+                                            1 -> {
+                                                ResultKt.throwOnFailure(nestedResult)
+                                            }
+                                            else -> throw IllegalStateException("call to 'resume' before 'invoke' with coroutine")
+                                        }
+                                        return Unit
                                     }
+                                }
+                            })
 
-                                    return Unit.INSTANCE;
-                                 }
-
-                                 public final Continuation<Unit> create(Object value, Continuation<?> $completion) {
-                                    val var3: Function2 = new <anonymous constructor>(this.$component, this.$entries, `$completion`);
-                                    var3.L$0 = value;
-                                    return var3 as Continuation<Unit>;
-                                 }
-
-                                 public final Object invoke(FlowCollector<? super IEntryPointProvider.AnalyzeTask> p1, Continuation<? super Unit> p2) {
-                                    return (this.create(p1, p2) as <unrepresentable>).invokeSuspend(Unit.INSTANCE);
-                                 }
-                              }
-                           ) as Function2
-                        );
-                        val var10002: Continuation = this as Continuation;
-                        this.label = 1;
-                        if (FlowKt.emitAll(`$this$flow`, var19, var10002) === var18) {
-                           return var18;
+                            label = 1
+                            if (FlowKt.emitAll(flow, nestedFlow, this) === suspended) {
+                                return suspended
+                            }
                         }
-                        break;
-                     case 1:
-                        ResultKt.throwOnFailure(`$result`);
-                        break;
-                     default:
-                        throw new IllegalStateException("call to 'resume' before 'invoke' with coroutine");
-                  }
-
-                  return Unit.INSTANCE;
-               }
-
-               public final Continuation<Unit> create(Object value, Continuation<?> $completion) {
-                  val var3: Function2 = new <anonymous constructor>(this.this$0, this.$ctx, this.$entries, `$completion`);
-                  var3.L$0 = value;
-                  return var3 as Continuation<Unit>;
-               }
-
-               public final Object invoke(FlowCollector<? super IEntryPointProvider.AnalyzeTask> p1, Continuation<? super Unit> p2) {
-                  return (this.create(p1, p2) as <unrepresentable>).invokeSuspend(Unit.INSTANCE);
-               }
+                        1 -> {
+                            ResultKt.throwOnFailure(result)
+                        }
+                        else -> throw IllegalStateException("call to 'resume' before 'invoke' with coroutine")
+                    }
+                    return Unit
+                }
             }
-         ) as Function2
-      );
-   }
+        })
+    }
 }

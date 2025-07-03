@@ -14,121 +14,92 @@ import soot.Scene
 import soot.SootClass
 import soot.SootMethod
 
-public class ComponentEntryProvider(ctx: SootCtx, entries: Collection<String>) : IEntryPointProvider {
-   private final val ctx: SootCtx
-   private final val entries: Collection<String>
-
-   public final val method: Set<SootMethod>
-      public final get() {
-         val var10000: SootMethod = new ComponentEntryPointCreator(this.entries).createDummyMain();
-         if (!var10000.getDeclaringClass().isInScene()) {
-            Scene.v().addClass(var10000.getDeclaringClass());
-         }
-
-         var10000.getDeclaringClass().setApplicationClass();
-         return SetsKt.setOf(var10000);
-      }
-
-
-   public open val iterator: Flow<AnalyzeTask>
-
-   init {
-      this.ctx = ctx;
-      this.entries = entries;
-      this.iterator = FlowKt.flow((new Function2<FlowCollector<? super IEntryPointProvider.AnalyzeTask>, Continuation<? super Unit>, Object>(this, null) {
-         int label;
-
-         {
-            super(2, `$completionx`);
-            this.this$0 = `$receiver`;
-         }
-
-         public final Object invokeSuspend(Object $result) {
-            val var3x: Any = IntrinsicsKt.getCOROUTINE_SUSPENDED();
-            switch (this.label) {
-               case 0:
-                  ResultKt.throwOnFailure(`$result`);
-                  val `$this$flow`: FlowCollector = this.L$0 as FlowCollector;
-                  val var10001: IEntryPointProvider.AnalyzeTask = new IEntryPointProvider.AnalyzeTask(this.this$0) {
-                     private final java.util.Set<SootMethod> entries;
-                     private final java.util.Set<SootClass> components;
-
-                     {
-                        this.entries = `$receiver`.getMethod();
-                     }
-
-                     @Override
-                     public java.util.Set<SootMethod> getEntries() {
-                        return this.entries;
-                     }
-
-                     @Override
-                     public java.util.Set<SootClass> getComponents() {
-                        return this.components;
-                     }
-
-                     @Override
-                     public java.lang.String getName() {
-                        return "(entries size: ${this.getEntries().size()})";
-                     }
-
-                     @Override
-                     public void needConstructCallGraph(SootCtx sootCtx) {
-                        sootCtx.constructCallGraph();
-                     }
-
-                     @Override
-                     public java.util.Set<SootMethod> getMethodsMustAnalyze() {
-                        return IEntryPointProvider.AnalyzeTask.DefaultImpls.getMethodsMustAnalyze(this);
-                     }
-
-                     @Override
-                     public java.util.Set<SootMethod> getAdditionalEntries() {
-                        return IEntryPointProvider.AnalyzeTask.DefaultImpls.getAdditionalEntries(this);
-                     }
-                  };
-                  val var10002: Continuation = this as Continuation;
-                  this.label = 1;
-                  if (`$this$flow`.emit(var10001, var10002) === var3x) {
-                     return var3x;
-                  }
-                  break;
-               case 1:
-                  ResultKt.throwOnFailure(`$result`);
-                  break;
-               default:
-                  throw new IllegalStateException("call to 'resume' before 'invoke' with coroutine");
+public class ComponentEntryProvider(
+    private val ctx: SootCtx,
+    private val entries: Collection<String>
+) : IEntryPointProvider {
+    public val method: Set<SootMethod>
+        get() {
+            val var10000 = ComponentEntryPointCreator(entries).createDummyMain()
+            if (!var10000.declaringClass.isInScene) {
+                Scene.v().addClass(var10000.declaringClass)
             }
 
-            return Unit.INSTANCE;
-         }
+            var10000.declaringClass.setApplicationClass()
+            return setOf(var10000)
+        }
 
-         public final Continuation<Unit> create(Object value, Continuation<?> $completion) {
-            val var3: Function2 = new <anonymous constructor>(this.this$0, `$completion`);
-            var3.L$0 = value;
-            return var3 as Continuation<Unit>;
-         }
+    override val iterator: Flow<AnalyzeTask>
 
-         public final Object invoke(FlowCollector<? super IEntryPointProvider.AnalyzeTask> p1, Continuation<? super Unit> p2) {
-            return (this.create(p1, p2) as <unrepresentable>).invokeSuspend(Unit.INSTANCE);
-         }
-      }) as Function2);
-   }
+    init {
+        iterator = FlowKt.flow(Function2<FlowCollector<AnalyzeTask>, Continuation<Unit>, Any> { `$this$flow`, continuation ->
+            object : Continuation<Unit> {
+                var label = 0
+                var L$0: Any? = null
 
-   override fun startAnalyse() {
-      IEntryPointProvider.DefaultImpls.startAnalyse(this);
-   }
+                override fun invokeSuspend(result: Any): Any {
+                    when (label) {
+                        0 -> {
+                            ResultKt.throwOnFailure(result)
+                            L$0 = `$this$flow`
+                            label = 1
+                            val task = object : AnalyzeTask(this@ComponentEntryProvider) {
+                                private val entries = this@ComponentEntryProvider.method
+                                private val components: Set<SootClass> = TODO("FIXME — components initialization")
 
-   override fun endAnalyse() {
-      IEntryPointProvider.DefaultImpls.endAnalyse(this);
-   }
+                                override fun getEntries(): Set<SootMethod> = entries
+                                override fun getComponents(): Set<SootClass> = components
+                                override fun getName(): String = "(entries size: ${entries.size})"
+                                override fun needConstructCallGraph(sootCtx: SootCtx) {
+                                    sootCtx.constructCallGraph()
+                                }
+                                override fun getMethodsMustAnalyze(): Set<SootMethod> = 
+                                    AnalyzeTask.DefaultImpls.getMethodsMustAnalyze(this)
+                                override fun getAdditionalEntries(): Set<SootMethod> = 
+                                    AnalyzeTask.DefaultImpls.getAdditionalEntries(this)
+                            }
+                            if (`$this$flow`.emit(task, this) == IntrinsicsKt.getCOROUTINE_SUSPENDED()) {
+                                return IntrinsicsKt.getCOROUTINE_SUSPENDED()
+                            }
+                        }
+                        1 -> {
+                            ResultKt.throwOnFailure(result)
+                        }
+                        else -> throw IllegalStateException("call to 'resume' before 'invoke' with coroutine")
+                    }
+                    return Unit
+                }
 
-   @JvmStatic
-   fun `logger$lambda$0`(): Unit {
-      return Unit.INSTANCE;
-   }
+                override fun create(value: Any, completion: Continuation<*>): Continuation<Unit> {
+                    return object : Continuation<Unit> {
+                        init {
+                            L$0 = value
+                        }
+                        override fun invokeSuspend(result: Any): Any = 
+                            this@Function2.invokeSuspend(result)
+                    }
+                }
 
-   public companion object {
-      private final val logger: KLogger
-   }
+                override fun invoke(p1: FlowCollector<AnalyzeTask>, p2: Continuation<Unit>): Any {
+                    return create(p1, p2).invokeSuspend(Unit)
+                }
+            }.invokeSuspend(Unit)
+        })
+    }
+
+    override fun startAnalyse() {
+        IEntryPointProvider.DefaultImpls.startAnalyse(this)
+    }
+
+    override fun endAnalyse() {
+        IEntryPointProvider.DefaultImpls.endAnalyse(this)
+    }
+
+    @JvmStatic
+    fun `logger$lambda$0`() {
+    }
+
+    public companion object {
+        private val logger: KLogger = TODO("FIXME — logger initialization")
+    }
 }

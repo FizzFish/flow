@@ -4,42 +4,36 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 
 @Serializable
-public data class MessageStrings(default: Message) {
-   public final val default: Message
+public data class MessageStrings(public val default: Message) {
+    public operator fun component1(): Message {
+        return this.default
+    }
 
-   init {
-      this.default = var1;
-   }
+    public fun copy(default: Message = this.default): MessageStrings {
+        return MessageStrings(default)
+    }
 
-   public operator fun component1(): Message {
-      return this.default;
-   }
+    public override fun toString(): String {
+        return "MessageStrings(default=${this.default})"
+    }
 
-   public fun copy(default: Message = this.default): MessageStrings {
-      return new MessageStrings(var1);
-   }
+    public override fun hashCode(): Int {
+        return this.default.hashCode()
+    }
 
-   public override fun toString(): String {
-      return "MessageStrings(default=${this.default})";
-   }
+    public override operator fun equals(other: Any?): Boolean {
+        if (this === other) {
+            return true
+        } else if (other !is MessageStrings) {
+            return false
+        } else {
+            return this.default == other.default
+        }
+    }
 
-   public override fun hashCode(): Int {
-      return this.default.hashCode();
-   }
-
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is MessageStrings) {
-         return false;
-      } else {
-         return this.default == (other as MessageStrings).default;
-      }
-   }
-
-   public companion object {
-      public fun serializer(): KSerializer<MessageStrings> {
-         return MessageStrings.$serializer.INSTANCE as KSerializer<MessageStrings>;
-      }
-   }
+    public companion object {
+        public fun serializer(): KSerializer<MessageStrings> {
+            return MessageStrings.serializer()
+        }
+    }
 }

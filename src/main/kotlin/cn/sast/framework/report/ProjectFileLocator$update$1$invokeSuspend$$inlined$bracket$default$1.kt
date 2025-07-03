@@ -2,13 +2,14 @@ package cn.sast.framework.report
 
 import kotlin.jvm.functions.Function0
 
-// $VF: Class flags could not be determined
-internal class `ProjectFileLocator$update$1$invokeSuspend$$inlined$bracket$default$1` : Function0<Object> {
-   fun `ProjectFileLocator$update$1$invokeSuspend$$inlined$bracket$default$1`(`$msg`: java.lang.String) {
-      this.$msg = `$msg`;
-   }
+internal class `ProjectFileLocator$update$1$invokeSuspend$$inlined$bracket$default$1` : Function0<Any> {
+    private lateinit var $msg: String
 
-   fun invoke(): Any {
-      return "Started: ${this.$msg}";
-   }
+    constructor($msg: String) {
+        this.$msg = $msg
+    }
+
+    override fun invoke(): Any {
+        return "Started: ${this.$msg}"
+    }
 }

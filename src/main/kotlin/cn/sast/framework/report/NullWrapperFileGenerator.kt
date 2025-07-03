@@ -4,18 +4,15 @@ import cn.sast.api.report.IBugResInfo
 import cn.sast.common.IResDirectory
 import cn.sast.common.IResFile
 
-public object NullWrapperFileGenerator : IWrapperFileGenerator {
-   public open val name: String
-      public open get() {
-         return "null";
-      }
+object NullWrapperFileGenerator : IWrapperFileGenerator {
+    override val name: String
+        get() = "null"
 
+    override fun makeWrapperFile(fileWrapperOutPutDir: IResDirectory, resInfo: IBugResInfo): IResFile? {
+        return null
+    }
 
-   public override fun makeWrapperFile(fileWrapperOutPutDir: IResDirectory, resInfo: IBugResInfo): IResFile? {
-      return null;
-   }
-
-   override fun getInternalFileName(resInfo: IBugResInfo): java.lang.String {
-      return IWrapperFileGenerator.DefaultImpls.getInternalFileName(this, resInfo);
-   }
+    override fun getInternalFileName(resInfo: IBugResInfo): String {
+        return IWrapperFileGenerator.DefaultImpls.getInternalFileName(this, resInfo)
+    }
 }

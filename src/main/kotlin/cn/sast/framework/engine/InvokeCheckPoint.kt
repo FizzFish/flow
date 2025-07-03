@@ -14,94 +14,91 @@ import soot.Type
 import soot.Unit
 import soot.jimple.InvokeExpr
 import soot.tagkit.AbstractHost
+import kotlin.LazyThreadSafetyMode
+import kotlin.lazy
 
 @SourceDebugExtension(["SMAP\nPreAnalysisImpl.kt\nKotlin\n*S Kotlin\n*F\n+ 1 PreAnalysisImpl.kt\ncn/sast/framework/engine/InvokeCheckPoint\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,760:1\n1#2:761\n*E\n"])
-public class InvokeCheckPoint(info: SootInfoCache,
-      container: SootMethod,
-      callSite: Unit?,
-      declaredReceiverType: Type?,
-      invokeMethodRef: SootMethodRef?,
-      callee: SootMethod,
-      invokeExpr: InvokeExpr?
-   )
-   : CheckPoint,
-   IInvokeCheckPoint {
-   public final val info: SootInfoCache
-   public open val container: SootMethod
-   public open val callSite: Unit?
-   public open val declaredReceiverType: Type?
-   public open val invokeMethodRef: SootMethodRef?
-   public open val callee: SootMethod
-   public open val invokeExpr: InvokeExpr?
+class InvokeCheckPoint(
+    info: SootInfoCache,
+    container: SootMethod,
+    callSite: Unit?,
+    declaredReceiverType: Type?,
+    invokeMethodRef: SootMethodRef?,
+    callee: SootMethod,
+    invokeExpr: InvokeExpr?
+) : CheckPoint, IInvokeCheckPoint {
+    val info: SootInfoCache
+    override val container: SootMethod
+    override val callSite: Unit?
+    override val declaredReceiverType: Type?
+    override val invokeMethodRef: SootMethodRef?
+    override val callee: SootMethod
+    override val invokeExpr: InvokeExpr?
 
-   public open val region: Region
-      public open get() {
-         val var10000: Unit = this.getCallSite();
-         if (var10000 != null) {
-            val var3: Region = Region.Companion.invoke(var10000);
-            if (var3 != null) {
-               return var3;
+    override val region: Region
+        get() {
+            val callSite = this.callSite
+            if (callSite != null) {
+                val region = Region.Companion.invoke(callSite)
+                if (region != null) {
+                    return region
+                }
             }
-         }
 
-         var var4: Region = Region.Companion.invoke(this.info, this.getContainer() as AbstractHost);
-         if (var4 == null) {
-            var4 = Region.Companion.getERROR();
-         }
+            var fallbackRegion = Region.Companion.invoke(info, container as AbstractHost)
+            if (fallbackRegion == null) {
+                fallbackRegion = Region.Companion.getERROR()
+            }
 
-         return var4;
-      }
+            return fallbackRegion
+        }
 
+    override val file: IBugResInfo
+        get() = file$delegate.value as IBugResInfo
 
-   public open val file: IBugResInfo
-      public open get() {
-         return this.file$delegate.getValue() as IBugResInfo;
-      }
+    internal val env: DefaultEnv
+        get() = env$delegate.value as DefaultEnv
 
+    private val file$delegate = lazy(LazyThreadSafetyMode.PUBLICATION) { file_delegate$lambda$1(this) }
+    private val env$delegate = lazy(LazyThreadSafetyMode.PUBLICATION) { env_delegate$lambda$2(this) }
 
-   internal open val env: DefaultEnv
-      internal open get() {
-         return this.env$delegate.getValue() as DefaultEnv;
-      }
+    init {
+        this.info = info
+        this.container = container
+        this.callSite = callSite
+        this.declaredReceiverType = declaredReceiverType
+        this.invokeMethodRef = invokeMethodRef
+        this.callee = callee
+        this.invokeExpr = invokeExpr
+    }
 
+    override fun toString(): String {
+        val callSite = this.callSite
+        return "${container}: at ${callSite?.javaSourceStartLineNumber} : $callSite -> $invokeMethodRef -> $callee"
+    }
 
-   init {
-      this.info = info;
-      this.container = container;
-      this.callSite = callSite;
-      this.declaredReceiverType = declaredReceiverType;
-      this.invokeMethodRef = invokeMethodRef;
-      this.callee = callee;
-      this.invokeExpr = invokeExpr;
-      this.file$delegate = LazyKt.lazy(LazyThreadSafetyMode.PUBLICATION, InvokeCheckPoint::file_delegate$lambda$1);
-      this.env$delegate = LazyKt.lazy(LazyThreadSafetyMode.PUBLICATION, InvokeCheckPoint::env_delegate$lambda$2);
-   }
+    companion object {
+        @JvmStatic
+        private fun file_delegate$lambda$1(this$0: InvokeCheckPoint): ClassResInfo {
+            val declaringClass = this$0.container.declaringClass
+            return ClassResInfo(declaringClass)
+        }
 
-   public override fun toString(): String {
-      val var10001: Unit = this.getCallSite();
-      return "${this.getContainer()}: at ${if (var10001 != null) var10001.getJavaSourceStartLineNumber() else null} : ${this.getCallSite()} -> ${this.getInvokeMethodRef()} -> ${this.getCallee()}";
-   }
-
-   @JvmStatic
-   fun `file_delegate$lambda$1`(`this$0`: InvokeCheckPoint): ClassResInfo {
-      val var10002: SootClass = `this$0`.getContainer().getDeclaringClass();
-      return new ClassResInfo(var10002);
-   }
-
-   @JvmStatic
-   fun `env_delegate$lambda$2`(`this$0`: InvokeCheckPoint): DefaultEnv {
-      return new DefaultEnv(
-         `this$0`.getRegion().getMutable(),
-         null,
-         `this$0`.getCallSite(),
-         `this$0`.getCallee(),
-         `this$0`.getContainer(),
-         `this$0`.getInvokeExpr(),
-         null,
-         null,
-         null,
-         450,
-         null
-      );
-   }
+        @JvmStatic
+        private fun env_delegate$lambda$2(this$0: InvokeCheckPoint): DefaultEnv {
+            return DefaultEnv(
+                this$0.region.mutable,
+                null,
+                this$0.callSite,
+                this$0.callee,
+                this$0.container,
+                this$0.invokeExpr,
+                null,
+                null,
+                null,
+                450,
+                null
+            )
+        }
+    }
 }

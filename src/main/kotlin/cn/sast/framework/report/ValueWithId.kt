@@ -1,46 +1,36 @@
 package cn.sast.framework.report
 
-private data class ValueWithId<T>(id: Long, value: Any) {
-   public final val id: Long
-   public final val value: Any
+private data class ValueWithId<T>(val id: Long, val value: T) {
+    public operator fun component1(): Long {
+        return this.id
+    }
 
-   init {
-      this.id = id;
-      this.value = (T)value;
-   }
+    public operator fun component2(): T {
+        return this.value
+    }
 
-   public operator fun component1(): Long {
-      return this.id;
-   }
+    public fun copy(id: Long = this.id, value: T = this.value): ValueWithId<T> {
+        return ValueWithId(id, value)
+    }
 
-   public operator fun component2(): Any {
-      return this.value;
-   }
+    public override fun toString(): String {
+        return "ValueWithId(id=${this.id}, value=${this.value})"
+    }
 
-   public fun copy(id: Long = this.id, value: Any = this.value): ValueWithId<Any> {
-      return new ValueWithId<>(id, (T)value);
-   }
+    public override fun hashCode(): Int {
+        return java.lang.Long.hashCode(this.id) * 31 + (this.value?.hashCode() ?: 0)
+    }
 
-   public override fun toString(): String {
-      return "ValueWithId(id=${this.id}, value=${this.value})";
-   }
-
-   public override fun hashCode(): Int {
-      return java.lang.Long.hashCode(this.id) * 31 + (if (this.value == null) 0 else this.value.hashCode());
-   }
-
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is ValueWithId) {
-         return false;
-      } else {
-         val var2: ValueWithId = other as ValueWithId;
-         if (this.id != (other as ValueWithId).id) {
-            return false;
-         } else {
-            return this.value == var2.value;
-         }
-      }
-   }
+    public override operator fun equals(other: Any?): Boolean {
+        if (this === other) {
+            return true
+        }
+        if (other !is ValueWithId<*>) {
+            return false
+        }
+        if (this.id != other.id) {
+            return false
+        }
+        return this.value == other.value
+    }
 }

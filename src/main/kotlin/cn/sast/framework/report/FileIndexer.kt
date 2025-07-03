@@ -4,55 +4,47 @@ import cn.sast.common.IResFile
 import cn.sast.framework.report.AbstractFileIndexer.CompareMode
 import java.nio.file.Path
 import java.util.Map.Entry
+import kotlin.Lazy
+import kotlin.collections.Map
+import kotlin.collections.Set
+import kotlin.collections.emptyList
+import kotlin.collections.toList
+import kotlin.lazy
 
-public class FileIndexer(fileNameToPathMap: Map<String, Set<IResFile>>, extensionToPathMap: Map<String, Set<IResFile>>) : AbstractFileIndexer<IResFile> {
-   internal final val fileNameToPathMap: Map<String, Set<IResFile>>
-   internal final val extensionToPathMap: Map<String, Set<IResFile>>
+public class FileIndexer(
+    fileNameToPathMap: Map<String, Set<IResFile>>,
+    extensionToPathMap: Map<String, Set<IResFile>>
+) : AbstractFileIndexer<IResFile> {
+    internal val fileNameToPathMap: Map<String, Set<IResFile>>
+    internal val extensionToPathMap: Map<String, Set<IResFile>>
 
-   public final val count: Long
-      public final get() {
-         return (this.count$delegate.getValue() as java.lang.Number).longValue();
-      }
+    public val count: Long by lazy {
+        var c = 0L
+        for ((_, value) in fileNameToPathMap) {
+            c += value.size
+        }
+        c
+    }
 
+    init {
+        this.fileNameToPathMap = fileNameToPathMap
+        this.extensionToPathMap = extensionToPathMap
+    }
 
-   init {
-      this.fileNameToPathMap = fileNameToPathMap;
-      this.extensionToPathMap = extensionToPathMap;
-      this.count$delegate = LazyKt.lazy(FileIndexer::count_delegate$lambda$0);
-   }
+    public open fun getNames(path: IResFile, mode: CompareMode): List<String> {
+        val p: Path = path.getPath()
+        val names = mutableListOf<String>()
+        for (i in 0 until p.nameCount) {
+            names.add(p.getName(i).toString())
+        }
+        return names.toList()
+    }
 
-   public open fun getNames(path: IResFile, mode: CompareMode): List<String> {
-      val p: Path = path.getPath();
-      var var4: Int = 0;
-      val var5: Int = p.getNameCount();
+    public override fun getPathsByName(name: String): Collection<IResFile> {
+        return fileNameToPathMap[name] ?: emptyList()
+    }
 
-      val var6: Array<java.lang.String>;
-      for (var6 = new java.lang.String[var5]; var4 < var5; var4++) {
-         val var10002: Path = p.getName(var4);
-         var6[var4] = var10002.toString();
-      }
-
-      return ArraysKt.toList(var6);
-   }
-
-   public override fun getPathsByName(name: String): Collection<IResFile> {
-      val var10000: java.util.Set = this.fileNameToPathMap.get(name);
-      return (java.util.Collection<IResFile>)(if (var10000 != null) var10000 else CollectionsKt.emptyList());
-   }
-
-   public fun getPathsByExtension(extension: String): Collection<IResFile> {
-      val var10000: java.util.Set = this.extensionToPathMap.get(extension);
-      return (java.util.Collection<IResFile>)(if (var10000 != null) var10000 else CollectionsKt.emptyList());
-   }
-
-   @JvmStatic
-   fun `count_delegate$lambda$0`(`this$0`: FileIndexer): Long {
-      var c: Long = 0L;
-
-      for (Entry x : this$0.fileNameToPathMap.entrySet()) {
-         c += (x.getValue() as java.util.Set).size();
-      }
-
-      return c;
-   }
+    public fun getPathsByExtension(extension: String): Collection<IResFile> {
+        return extensionToPathMap[extension] ?: emptyList()
+    }
 }

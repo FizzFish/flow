@@ -26,210 +26,123 @@ import soot.util.Chain
 import soot.util.queue.QueueReader
 
 @SourceDebugExtension(["SMAP\nUnReachableEntryProvider.kt\nKotlin\n*S Kotlin\n*F\n+ 1 UnReachableEntryProvider.kt\ncn/sast/framework/entries/java/UnReachableEntryProvider\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n*L\n1#1,79:1\n1368#2:80\n1454#2,5:81\n774#2:86\n865#2,2:87\n*S KotlinDebug\n*F\n+ 1 UnReachableEntryProvider.kt\ncn/sast/framework/entries/java/UnReachableEntryProvider\n*L\n59#1:80\n59#1:81,5\n59#1:86\n59#1:87,2\n*E\n"])
-public open class UnReachableEntryProvider(ctx: SootCtx, exclude: MutableSet<String> = (new LinkedHashSet()) as java.util.Set) : IEntryPointProvider {
-   private final val ctx: SootCtx
-   public final val exclude: MutableSet<String>
-   public open val iterator: Flow<AnalyzeTask>
+open class UnReachableEntryProvider(
+    private val ctx: SootCtx,
+    val exclude: MutableSet<String> = LinkedHashSet()
+) : IEntryPointProvider {
+    override val iterator: Flow<AnalyzeTask> = FlowKt.flow(Function2<FlowCollector<AnalyzeTask>, Continuation<Unit>, Any?> { flowCollector, continuation ->
+        object : Continuation<Unit> {
+            var label = 0
+            var L$0: Any? = null
 
-   init {
-      this.ctx = ctx;
-      this.exclude = exclude;
-      this.iterator = FlowKt.flow((new Function2<FlowCollector<? super IEntryPointProvider.AnalyzeTask>, Continuation<? super Unit>, Object>(this, null) {
-         int label;
+            override val context = continuation.context
 
-         {
-            super(2, `$completionx`);
-            this.this$0 = `$receiver`;
-         }
-
-         public final Object invokeSuspend(Object $result) {
-            val var12: Any = IntrinsicsKt.getCOROUTINE_SUSPENDED();
-            switch (this.label) {
-               case 0:
-                  ResultKt.throwOnFailure(`$result`);
-                  val `$this$flow`: FlowCollector = this.L$0 as FlowCollector;
-                  val `$this$filterTo$iv`: java.lang.Iterable = this.this$0.getEntryMethods();
-                  val `destination$iv`: java.util.Collection = new LinkedHashSet();
-                  val var6: UnReachableEntryProvider = this.this$0;
-
-                  for (Object element$iv : $this$filterTo$iv) {
-                     if (!var6.getExclude().contains((`element$iv` as SootMethod).getSignature())) {
-                        `destination$iv`.add(`element$iv`);
-                     }
-                  }
-
-                  val methods: java.util.Set = `destination$iv` as java.util.Set;
-                  val var10001: IEntryPointProvider.AnalyzeTask = new IEntryPointProvider.AnalyzeTask(methods, this.this$0) {
-                     private final java.util.Set<SootMethod> entries;
-                     private final java.util.Set<SootClass> components;
-                     private final java.lang.String name;
-
-                     {
-                        this.this$0 = `$receiver`;
-                        this.entries = `$methods`;
-                        this.name = "(entries size: ${`$methods`.size()})";
-                     }
-
-                     @Override
-                     public java.util.Set<SootMethod> getEntries() {
-                        return this.entries;
-                     }
-
-                     @Override
-                     public java.util.Set<SootMethod> getMethodsMustAnalyze() {
-                        val `$this$filterTo$ivx`: java.lang.Iterable = IEntryPointProvider.AnalyzeTask.DefaultImpls.getMethodsMustAnalyze(this);
-                        val `destination$ivx`: java.util.Collection = new LinkedHashSet();
-                        val var3x: UnReachableEntryProvider = this.this$0;
-
-                        for (Object element$ivx : $this$filterTo$ivx) {
-                           if (!var3x.getExclude().contains((`element$ivx` as SootMethod).getSignature())) {
-                              `destination$ivx`.add(`element$ivx`);
-                           }
+            override fun resumeWith(result: Result<Unit>) {
+                when (label) {
+                    0 -> {
+                        ResultKt.throwOnFailure(result)
+                        L$0 = flowCollector
+                        val entryMethods = this@UnReachableEntryProvider.getEntryMethods()
+                        val destination = LinkedHashSet<SootMethod>()
+                        for (element in entryMethods) {
+                            if (!exclude.contains(element.signature)) {
+                                destination.add(element)
+                            }
                         }
+                        val methods = destination
+                        val task = object : AnalyzeTask {
+                            private val entries = methods
+                            private val components = emptySet<SootClass>()
+                            private val name = "(entries size: ${methods.size})"
 
-                        return `destination$ivx` as MutableSet<SootMethod>;
-                     }
-
-                     @Override
-                     public java.util.Set<SootClass> getComponents() {
-                        return this.components;
-                     }
-
-                     @Override
-                     public java.lang.String getName() {
-                        return this.name;
-                     }
-
-                     @Override
-                     public void needConstructCallGraph(SootCtx sootCtx) {
-                     }
-
-                     @Override
-                     public java.util.Set<SootMethod> getAdditionalEntries() {
-                        return IEntryPointProvider.AnalyzeTask.DefaultImpls.getAdditionalEntries(this);
-                     }
-                  };
-                  val var10002: Continuation = this as Continuation;
-                  this.label = 1;
-                  if (`$this$flow`.emit(var10001, var10002) === var12) {
-                     return var12;
-                  }
-                  break;
-               case 1:
-                  ResultKt.throwOnFailure(`$result`);
-                  break;
-               default:
-                  throw new IllegalStateException("call to 'resume' before 'invoke' with coroutine");
+                            override fun getEntries(): Set<SootMethod> = entries
+                            override fun getMethodsMustAnalyze(): Set<SootMethod> {
+                                val defaultMethods = AnalyzeTask.DefaultImpls.getMethodsMustAnalyze(this)
+                                val result = LinkedHashSet<SootMethod>()
+                                for (method in defaultMethods) {
+                                    if (!this@UnReachableEntryProvider.exclude.contains(method.signature)) {
+                                        result.add(method)
+                                    }
+                                }
+                                return result
+                            }
+                            override fun getComponents(): Set<SootClass> = components
+                            override fun getName(): String = name
+                            override fun needConstructCallGraph(sootCtx: SootCtx) {}
+                            override fun getAdditionalEntries(): Set<SootMethod> = 
+                                AnalyzeTask.DefaultImpls.getAdditionalEntries(this)
+                        }
+                        label = 1
+                        if (flowCollector.emit(task, this) == IntrinsicsKt.getCOROUTINE_SUSPENDED()) {
+                            return
+                        }
+                    }
+                    1 -> {
+                        ResultKt.throwOnFailure(result)
+                    }
+                    else -> throw IllegalStateException("call to 'resume' before 'invoke' with coroutine")
+                }
+                continuation.resumeWith(Result.success(Unit))
             }
+        }
+    })
 
-            return Unit.INSTANCE;
-         }
-
-         public final Continuation<Unit> create(Object value, Continuation<?> $completion) {
-            val var3: Function2 = new <anonymous constructor>(this.this$0, `$completion`);
-            var3.L$0 = value;
-            return var3 as Continuation<Unit>;
-         }
-
-         public final Object invoke(FlowCollector<? super IEntryPointProvider.AnalyzeTask> p1, Continuation<? super Unit> p2) {
-            return (this.create(p1, p2) as <unrepresentable>).invokeSuspend(Unit.INSTANCE);
-         }
-      }) as Function2);
-   }
-
-   public open fun getEntryMethods(): Set<SootMethod> {
-      val scene: Scene = Scene.v();
-      val reachClasses: Chain = scene.getApplicationClasses();
-      logger.info(UnReachableEntryProvider::getEntryMethods$lambda$0);
-      var `$this$filter$iv`: java.lang.Iterable = reachClasses as java.lang.Iterable;
-      var `destination$iv$iv`: java.util.Collection = new ArrayList();
-
-      for (Object element$iv$iv : $this$flatMap$iv) {
-         val var10000: java.util.List = (`element$iv$iv` as SootClass).getMethods();
-         CollectionsKt.addAll(`destination$iv$iv`, var10000);
-      }
-
-      `$this$filter$iv` = `destination$iv$iv` as java.util.List;
-      `destination$iv$iv` = new ArrayList();
-
-      for (Object element$iv$iv : $this$flatMap$iv) {
-         if (!scene.isExcluded((var18 as SootMethod).getDeclaringClass().getName()) || scene.isIncluded((var18 as SootMethod).getDeclaringClass().getName())) {
-            `destination$iv$iv`.add(var18);
-         }
-      }
-
-      return Companion.getEntryPoints(this.ctx, `destination$iv$iv` as MutableList<SootMethod>);
-   }
-
-   override fun startAnalyse() {
-      IEntryPointProvider.DefaultImpls.startAnalyse(this);
-   }
-
-   override fun endAnalyse() {
-      IEntryPointProvider.DefaultImpls.endAnalyse(this);
-   }
-
-   @JvmStatic
-   fun `getEntryMethods$lambda$0`(`$reachClasses`: Chain): Any {
-      return "reach classes num: ${`$reachClasses`.size()}";
-   }
-
-   @JvmStatic
-   fun `logger$lambda$3`(): Unit {
-      return Unit.INSTANCE;
-   }
-
-   public companion object {
-      private final val logger: KLogger
-
-      public fun getEntryPoints(ctx: SootCtx, methodsToFind: List<SootMethod>): MutableSet<SootMethod> {
-         ctx.releaseCallGraph();
-         UnReachableEntryProvider.access$getLogger$cp().info(UnReachableEntryProvider.Companion::getEntryPoints$lambda$0);
-         UnReachableEntryProvider.access$getLogger$cp().info(UnReachableEntryProvider.Companion::getEntryPoints$lambda$1);
-         val scene: Scene = Scene.v();
-         val var10000: java.util.List = EntryPoints.v().all();
-         scene.setEntryPoints(methodsToFind);
-         ctx.constructCallGraph();
-         val cg: CallGraph = ctx.getSootMethodCallGraph();
-         val reachable: TargetReachableMethods = new TargetReachableMethods(cg, methodsToFind);
-         reachable.update();
-         val var8: java.util.Set = new LinkedHashSet();
-         val it: java.util.Set = var8;
-         val var14: QueueReader = reachable.listener();
-         val iter: java.util.Iterator = var14 as java.util.Iterator;
-
-         while (iter.hasNext()) {
-            val cur: MethodOrMethodContext = iter.next() as MethodOrMethodContext;
-            if (!new Sources(cg.edgesInto(cur)).hasNext() && cur.method().isConcrete()) {
-               val var10001: SootMethod = cur.method();
-               it.add(var10001);
+    fun getEntryMethods(): Set<SootMethod> {
+        val scene = Scene.v()
+        val reachClasses = scene.applicationClasses
+        logger.info { "reach classes num: ${reachClasses.size}" }
+        val methods = ArrayList<SootMethod>().apply {
+            for (clazz in reachClasses) {
+                addAll(clazz.methods)
             }
-         }
+        }
+        val filteredMethods = ArrayList<SootMethod>().apply {
+            for (method in methods) {
+                val className = method.declaringClass.name
+                if (!scene.isExcluded(className) || scene.isIncluded(className)) {
+                    add(method)
+                }
+            }
+        }
+        return Companion.getEntryPoints(ctx, filteredMethods)
+    }
 
-         it.addAll(var10000);
-         UnReachableEntryProvider.access$getLogger$cp().info(UnReachableEntryProvider.Companion::getEntryPoints$lambda$3$lambda$2);
-         if (var8.isEmpty()) {
-            UnReachableEntryProvider.access$getLogger$cp().warn("no entry points");
-         }
+    override fun startAnalyse() {
+        IEntryPointProvider.DefaultImpls.startAnalyse(this)
+    }
 
-         return var8;
-      }
+    override fun endAnalyse() {
+        IEntryPointProvider.DefaultImpls.endAnalyse(this)
+    }
 
-      @JvmStatic
-      fun `getEntryPoints$lambda$0`(): Any {
-         return "auto make the entry points by UnReachableMethodsFinder.";
-      }
+    companion object {
+        private val logger: KLogger = TODO("Initialize logger")
 
-      @JvmStatic
-      fun `getEntryPoints$lambda$1`(`$methodsToFind`: java.util.List): Any {
-         return "reach methods num: ${`$methodsToFind`.size()}";
-      }
-
-      @JvmStatic
-      fun `getEntryPoints$lambda$3$lambda$2`(`$it`: java.util.Set): Any {
-         val var2: Array<Any> = new Object[]{`$it`.size()};
-         val var10000: java.lang.String = java.lang.String.format("unreachable entry methods num :%d", Arrays.copyOf(var2, var2.length));
-         return var10000;
-      }
-   }
+        fun getEntryPoints(ctx: SootCtx, methodsToFind: List<SootMethod>): MutableSet<SootMethod> {
+            ctx.releaseCallGraph()
+            logger.info { "auto make the entry points by UnReachableMethodsFinder." }
+            logger.info { "reach methods num: ${methodsToFind.size}" }
+            val scene = Scene.v()
+            val defaultEntries = EntryPoints.v().all()
+            scene.setEntryPoints(methodsToFind)
+            ctx.constructCallGraph()
+            val cg = ctx.sootMethodCallGraph
+            val reachable = TargetReachableMethods(cg, methodsToFind)
+            reachable.update()
+            val result = LinkedHashSet<SootMethod>()
+            val iter = reachable.listener()
+            while (iter.hasNext()) {
+                val cur = iter.next() as MethodOrMethodContext
+                if (!Sources(cg.edgesInto(cur)).hasNext() && cur.method().isConcrete) {
+                    result.add(cur.method())
+                }
+            }
+            result.addAll(defaultEntries)
+            logger.info { "unreachable entry methods num :${result.size}" }
+            if (result.isEmpty()) {
+                logger.warn("no entry points")
+            }
+            return result
+        }
+    }
 }

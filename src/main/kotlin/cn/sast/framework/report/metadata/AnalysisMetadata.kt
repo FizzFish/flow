@@ -8,147 +8,95 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonBuilder
 
 @Serializable
-public data class AnalysisMetadata(fileCount: Int,
-   lineCount: Int,
-   codeCoverage: Counter,
-   numOfReportDir: Int,
-   sourcePaths: List<String>,
-   osName: String,
-   tools: List<Tool>
+public data class AnalysisMetadata(
+    @SerialName("file_count")
+    public val fileCount: Int,
+    @SerialName("line_count")
+    public val lineCount: Int,
+    @SerialName("code_coverage")
+    public val codeCoverage: Counter,
+    @SerialName("num_of_report_dir")
+    public val numOfReportDir: Int,
+    @SerialName("source_paths")
+    public val sourcePaths: List<String>,
+    @SerialName("os_name")
+    public val osName: String,
+    public val tools: List<Tool>
 ) {
-   @SerialName("file_count")
-   public final val fileCount: Int
+    public fun toJson(): String {
+        return jsonFormat.encodeToString(serializer(), this)
+    }
 
-   @SerialName("line_count")
-   public final val lineCount: Int
+    public operator fun component1(): Int = this.fileCount
 
-   @SerialName("code_coverage")
-   public final val codeCoverage: Counter
+    public operator fun component2(): Int = this.lineCount
 
-   @SerialName("num_of_report_dir")
-   public final val numOfReportDir: Int
+    public operator fun component3(): Counter = this.codeCoverage
 
-   @SerialName("source_paths")
-   public final val sourcePaths: List<String>
+    public operator fun component4(): Int = this.numOfReportDir
 
-   @SerialName("os_name")
-   public final val osName: String
+    public operator fun component5(): List<String> = this.sourcePaths
 
-   public final val tools: List<Tool>
+    public operator fun component6(): String = this.osName
 
-   init {
-      this.fileCount = fileCount;
-      this.lineCount = lineCount;
-      this.codeCoverage = codeCoverage;
-      this.numOfReportDir = numOfReportDir;
-      this.sourcePaths = sourcePaths;
-      this.osName = osName;
-      this.tools = tools;
-   }
+    public operator fun component7(): List<Tool> = this.tools
 
-   public fun toJson(): String {
-      return jsonFormat.encodeToString(Companion.serializer() as SerializationStrategy, this);
-   }
+    public fun copy(
+        fileCount: Int = this.fileCount,
+        lineCount: Int = this.lineCount,
+        codeCoverage: Counter = this.codeCoverage,
+        numOfReportDir: Int = this.numOfReportDir,
+        sourcePaths: List<String> = this.sourcePaths,
+        osName: String = this.osName,
+        tools: List<Tool> = this.tools
+    ): AnalysisMetadata {
+        return AnalysisMetadata(fileCount, lineCount, codeCoverage, numOfReportDir, sourcePaths, osName, tools)
+    }
 
-   public operator fun component1(): Int {
-      return this.fileCount;
-   }
+    public override fun toString(): String {
+        return "AnalysisMetadata(fileCount=$fileCount, lineCount=$lineCount, codeCoverage=$codeCoverage, numOfReportDir=$numOfReportDir, sourcePaths=$sourcePaths, osName=$osName, tools=$tools)"
+    }
 
-   public operator fun component2(): Int {
-      return this.lineCount;
-   }
+    public override fun hashCode(): Int {
+        return (
+            (
+                (
+                    ((fileCount.hashCode() * 31 + lineCount.hashCode()) * 31 + codeCoverage.hashCode()) * 31
+                        + numOfReportDir.hashCode()
+                    ) * 31
+                    + sourcePaths.hashCode()
+                ) * 31
+                + osName.hashCode()
+            ) * 31
+            + tools.hashCode()
+        )
+    }
 
-   public operator fun component3(): Counter {
-      return this.codeCoverage;
-   }
+    public override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is AnalysisMetadata) return false
+        
+        return fileCount == other.fileCount &&
+            lineCount == other.lineCount &&
+            codeCoverage == other.codeCoverage &&
+            numOfReportDir == other.numOfReportDir &&
+            sourcePaths == other.sourcePaths &&
+            osName == other.osName &&
+            tools == other.tools
+    }
 
-   public operator fun component4(): Int {
-      return this.numOfReportDir;
-   }
+    @JvmStatic
+    private fun JsonBuilder.`jsonFormat$lambda$0`() {
+        this.setUseArrayPolymorphism(true)
+        this.setPrettyPrint(true)
+        this.setEncodeDefaults(false)
+    }
 
-   public operator fun component5(): List<String> {
-      return this.sourcePaths;
-   }
+    public companion object {
+        private val jsonFormat: Json = Json {
+            jsonFormat$lambda$0()
+        }
 
-   public operator fun component6(): String {
-      return this.osName;
-   }
-
-   public operator fun component7(): List<Tool> {
-      return this.tools;
-   }
-
-   public fun copy(
-      fileCount: Int = this.fileCount,
-      lineCount: Int = this.lineCount,
-      codeCoverage: Counter = this.codeCoverage,
-      numOfReportDir: Int = this.numOfReportDir,
-      sourcePaths: List<String> = this.sourcePaths,
-      osName: String = this.osName,
-      tools: List<Tool> = this.tools
-   ): AnalysisMetadata {
-      return new AnalysisMetadata(fileCount, lineCount, codeCoverage, numOfReportDir, sourcePaths, osName, tools);
-   }
-
-   public override fun toString(): String {
-      return "AnalysisMetadata(fileCount=${this.fileCount}, lineCount=${this.lineCount}, codeCoverage=${this.codeCoverage}, numOfReportDir=${this.numOfReportDir}, sourcePaths=${this.sourcePaths}, osName=${this.osName}, tools=${this.tools})";
-   }
-
-   public override fun hashCode(): Int {
-      return (
-               (
-                        (
-                                 ((Integer.hashCode(this.fileCount) * 31 + Integer.hashCode(this.lineCount)) * 31 + this.codeCoverage.hashCode()) * 31
-                                    + Integer.hashCode(this.numOfReportDir)
-                              )
-                              * 31
-                           + this.sourcePaths.hashCode()
-                     )
-                     * 31
-                  + this.osName.hashCode()
-            )
-            * 31
-         + this.tools.hashCode();
-   }
-
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is AnalysisMetadata) {
-         return false;
-      } else {
-         val var2: AnalysisMetadata = other as AnalysisMetadata;
-         if (this.fileCount != (other as AnalysisMetadata).fileCount) {
-            return false;
-         } else if (this.lineCount != var2.lineCount) {
-            return false;
-         } else if (!(this.codeCoverage == var2.codeCoverage)) {
-            return false;
-         } else if (this.numOfReportDir != var2.numOfReportDir) {
-            return false;
-         } else if (!(this.sourcePaths == var2.sourcePaths)) {
-            return false;
-         } else if (!(this.osName == var2.osName)) {
-            return false;
-         } else {
-            return this.tools == var2.tools;
-         }
-      }
-   }
-
-   @JvmStatic
-   fun JsonBuilder.`jsonFormat$lambda$0`(): Unit {
-      `$this$Json`.setUseArrayPolymorphism(true);
-      `$this$Json`.setPrettyPrint(true);
-      `$this$Json`.setEncodeDefaults(false);
-      return Unit.INSTANCE;
-   }
-
-   public companion object {
-      private final val jsonFormat: Json
-
-      public fun serializer(): KSerializer<AnalysisMetadata> {
-         return AnalysisMetadata.$serializer.INSTANCE as KSerializer<AnalysisMetadata>;
-      }
-   }
+        public fun serializer(): KSerializer<AnalysisMetadata> = AnalysisMetadata.serializer()
+    }
 }

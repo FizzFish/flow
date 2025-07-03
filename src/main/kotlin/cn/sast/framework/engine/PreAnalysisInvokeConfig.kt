@@ -2,20 +2,17 @@ package cn.sast.framework.engine
 
 import com.feysh.corax.config.api.IPreAnalysisInvokeConfig
 
-internal class PreAnalysisInvokeConfig(appOnly: Boolean = true, ignoreProjectConfigProcessFilter: Boolean = false) : PreAnalysisAbsConfig(null, false, 3),
-   IPreAnalysisInvokeConfig {
-   public open var appOnly: Boolean
-      internal final set
+internal class PreAnalysisInvokeConfig(
+    appOnly: Boolean = true,
+    ignoreProjectConfigProcessFilter: Boolean = false
+) : PreAnalysisAbsConfig(null, false, 3), IPreAnalysisInvokeConfig {
+    var appOnly: Boolean = appOnly
+        internal set
 
-   public open var ignoreProjectConfigProcessFilter: Boolean
-      internal final set
+    var ignoreProjectConfigProcessFilter: Boolean = ignoreProjectConfigProcessFilter
+        internal set
 
-   init {
-      this.appOnly = appOnly;
-      this.ignoreProjectConfigProcessFilter = ignoreProjectConfigProcessFilter;
-   }
-
-   fun PreAnalysisInvokeConfig() {
-      this(false, false, 3, null);
-   }
+    constructor() : this(false, false) {
+        TODO("FIXME — unclear what the 3 and null parameters in the original were for")
+    }
 }

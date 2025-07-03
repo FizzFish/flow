@@ -4,18 +4,18 @@ import soot.jimple.infoflow.data.AbstractionAtSink
 import soot.jimple.infoflow.results.InfoflowResults
 import soot.jimple.infoflow.solver.cfg.IInfoflowCFG
 
-public class FlowDroidResultCollector : IFlowDroidResultCollector {
-   public final val result: InfoflowResults = new InfoflowResults()
+class FlowDroidResultCollector : IFlowDroidResultCollector {
+    val result: InfoflowResults = InfoflowResults()
 
-   public open fun onResultsAvailable(cfg: IInfoflowCFG?, results: InfoflowResults?) {
-      this.result.addAll(results);
-   }
+    override fun onResultsAvailable(cfg: IInfoflowCFG?, results: InfoflowResults?) {
+        result.addAll(results)
+    }
 
-   public open fun onResultAvailable(cfg: IInfoflowCFG, abs: AbstractionAtSink?): Boolean {
-      return true;
-   }
+    override fun onResultAvailable(cfg: IInfoflowCFG, abs: AbstractionAtSink?): Boolean {
+        return true
+    }
 
-   public override suspend fun flush() {
-      return Unit.INSTANCE;
-   }
+    override suspend fun flush() {
+        return Unit
+    }
 }

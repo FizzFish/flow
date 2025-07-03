@@ -10,31 +10,27 @@ import kotlin.jvm.internal.SourceDebugExtension
 import soot.Scene
 
 public fun sootClassPathsCvt(sourceDir: Set<IResource>): Set<IResource> {
-   val srcTranslate: java.lang.Iterable = sourceDir;
-   val `$this$fold$iv`: java.util.Collection = new LinkedHashSet();
+    val srcTranslate: Iterable<IResource> = sourceDir
+    val resultSet = LinkedHashSet<String>()
 
-   for (Object item$iv : srcTranslate) {
-      `$this$fold$iv`.add((`accumulator$iv` as IResource).getAbsolutePath());
-   }
+    for (item in srcTranslate) {
+        resultSet.add(item.getAbsolutePath())
+    }
 
-   val var13: java.util.List = CollectionsKt.toMutableList(`$this$fold$iv`);
-   val var10001: java.lang.String = Scene.v().getSootClassPath();
-   var13.addAll(StringsKt.split$default(var10001, new java.lang.String[]{File.pathSeparator}, false, 0, 6, null));
-   val var14: java.lang.Iterable = var13;
-   var var19: Any = new LinkedHashSet();
+    val pathsList = resultSet.toMutableList()
+    val sootClassPath = Scene.v().sootClassPath
+    pathsList.addAll(sootClassPath.split(File.pathSeparator).toList())
 
-   for (Object element$iv : var14) {
-      val aPath: java.lang.String = var21 as java.lang.String;
-      if ("VIRTUAL_FS_FOR_JDK" == var21 as java.lang.String) {
-         val var23: Resource = Resource.INSTANCE;
-         val var10002: java.lang.String = System.getProperty("java.home");
-         var19.add(var23.of(var10002));
-      } else {
-         var19.add(Resource.INSTANCE.of(aPath));
-      }
+    val finalSet = LinkedHashSet<IResource>()
 
-      var19 = var19;
-   }
+    for (element in pathsList) {
+        val aPath = element as String
+        if ("VIRTUAL_FS_FOR_JDK" == aPath) {
+            finalSet.add(Resource.INSTANCE.of(System.getProperty("java.home")))
+        } else {
+            finalSet.add(Resource.INSTANCE.of(aPath))
+        }
+    }
 
-   return (java.util.Set<IResource>)var19;
+    return finalSet
 }

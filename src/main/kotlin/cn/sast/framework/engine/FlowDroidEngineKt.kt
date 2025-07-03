@@ -9,19 +9,17 @@ import soot.jimple.infoflow.android.InfoflowAndroidConfiguration
 import soot.jimple.infoflow.sourcesSinks.manager.ISourceSinkManager
 
 public fun InfoflowConfiguration.fix() {
-   val var10000: KotlinLogging = KotlinLogging.INSTANCE;
-   val var10001: java.lang.String = InfoflowConfiguration.class.getName();
-   val logger: KLogger = var10000.logger(var10001);
-   if (`$this$fix` is InfoflowAndroidConfiguration
-      && (`$this$fix` as InfoflowAndroidConfiguration).getSourceSinkConfig().getEnableLifecycleSources()
-      && (`$this$fix` as InfoflowAndroidConfiguration).getIccConfig().isIccEnabled()) {
-      logger.warn("ICC model specified, automatically disabling lifecycle sources");
-      (`$this$fix` as InfoflowAndroidConfiguration).getSourceSinkConfig().setEnableLifecycleSources(false);
-   }
+    val logger: KLogger = KotlinLogging.logger(InfoflowConfiguration::class.java.name)
+    if (this is InfoflowAndroidConfiguration
+        && this.sourceSinkConfig.enableLifecycleSources
+        && this.iccConfig.isIccEnabled) {
+        logger.warn("ICC model specified, automatically disabling lifecycle sources")
+        this.sourceSinkConfig.enableLifecycleSources = false
+    }
 }
 
 public fun AbstractInfoflow.runAnalysisReflect(sourcesSinks: ISourceSinkManager, additionalSeeds: Set<String>?) {
-   val it: Method = AbstractInfoflow.class.getDeclaredMethod("runAnalysis", ISourceSinkManager.class, java.util.Set.class);
-   it.setAccessible(true);
-   it.invoke(`$this$runAnalysisReflect`, sourcesSinks, additionalSeeds);
+    val it: Method = AbstractInfoflow::class.java.getDeclaredMethod("runAnalysis", ISourceSinkManager::class.java, Set::class.java)
+    it.isAccessible = true
+    it.invoke(this, sourcesSinks, additionalSeeds)
 }

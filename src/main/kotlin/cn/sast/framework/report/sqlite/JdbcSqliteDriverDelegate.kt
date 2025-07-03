@@ -10,92 +10,68 @@ import java.util.LinkedHashSet
 import kotlin.jvm.internal.SourceDebugExtension
 
 @SourceDebugExtension(["SMAP\nJdbcSqliteDriverDelegate.kt\nKotlin\n*S Kotlin\n*F\n+ 1 JdbcSqliteDriverDelegate.kt\ncn/sast/framework/report/sqlite/JdbcSqliteDriverDelegate\n+ 2 _Arrays.kt\nkotlin/collections/ArraysKt___ArraysKt\n+ 3 Maps.kt\nkotlin/collections/MapsKt__MapsKt\n+ 4 fake.kt\nkotlin/jvm/internal/FakeKt\n+ 5 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n*L\n1#1,49:1\n13409#2:50\n13410#2:58\n13409#2,2:59\n13409#2:61\n13410#2:63\n381#3,7:51\n1#4:62\n1863#5,2:64\n*S KotlinDebug\n*F\n+ 1 JdbcSqliteDriverDelegate.kt\ncn/sast/framework/report/sqlite/JdbcSqliteDriverDelegate\n*L\n17#1:50\n17#1:58\n25#1:59,2\n34#1:61\n34#1:63\n18#1:51,7\n36#1:64,2\n*E\n"])
-public open class JdbcSqliteDriverDelegate(delegate: ConnectionManager) : JdbcDriver, ConnectionManager {
-   protected final val delegate: ConnectionManager
-   private final val listeners: LinkedHashMap<String, MutableSet<Listener>>
+open class JdbcSqliteDriverDelegate(
+    protected val delegate: ConnectionManager
+) : JdbcDriver, ConnectionManager {
+    private val listeners = LinkedHashMap<String, MutableSet<Listener>>()
 
-   public open var transaction: Transaction?
-      internal final set
+    open var transaction: Transaction? = null
+        internal set
 
-   init {
-      this.delegate = delegate;
-      this.listeners = new LinkedHashMap<>();
-   }
-
-   public open fun addListener(vararg queryKeys: String, listener: Listener) {
-      synchronized (this.listeners) {
-         for (Object element$iv : queryKeys) {
-            val `$this$getOrPut$iv`: java.util.Map = this.listeners;
-            val `value$iv`: Any = this.listeners.get(`element$iv`);
-            val var10000: Any;
-            if (`value$iv` == null) {
-               val var18: Any = new LinkedHashSet();
-               `$this$getOrPut$iv`.put(`element$iv`, var18);
-               var10000 = var18;
-            } else {
-               var10000 = `value$iv`;
+    override fun addListener(vararg queryKeys: String, listener: Listener) {
+        synchronized(listeners) {
+            for (key in queryKeys) {
+                listeners.getOrPut(key) { LinkedHashSet() }.add(listener)
             }
+        }
+    }
 
-            (var10000 as java.util.Set).add(listener);
-         }
-      }
-   }
-
-   public open fun removeListener(vararg queryKeys: String, listener: Listener) {
-      synchronized (this.listeners) {
-         for (Object element$iv : queryKeys) {
-            val var10000: java.util.Set = this.listeners.get(`element$iv`);
-            if (var10000 != null) {
-               var10000.remove(listener);
+    override fun removeListener(vararg queryKeys: String, listener: Listener) {
+        synchronized(listeners) {
+            for (key in queryKeys) {
+                listeners[key]?.remove(listener)
             }
-         }
-      }
-   }
+        }
+    }
 
-   public open fun notifyListeners(vararg queryKeys: String) {
-      val listenersToNotify: LinkedHashSet = new LinkedHashSet();
-      synchronized (this.listeners) {
-         for (Object element$iv : queryKeys) {
-            val var10000: java.util.Set = this.listeners.get(`element$iv`);
-            if (var10000 != null) {
-               listenersToNotify.addAll(var10000);
+    override fun notifyListeners(vararg queryKeys: String) {
+        val listenersToNotify = LinkedHashSet<Listener>()
+        synchronized(listeners) {
+            for (key in queryKeys) {
+                listeners[key]?.let { listenersToNotify.addAll(it) }
             }
-         }
-      }
+        }
 
-      val `$this$forEach$iv`: java.lang.Iterable;
-      for (Object element$ivx : $this$forEach$iv) {
-         (`element$ivx` as Listener).queryResultsChanged();
-      }
-   }
+        listenersToNotify.forEach { it.queryResultsChanged() }
+    }
 
-   public open fun Connection.endTransaction() {
-      this.delegate.endTransaction(`$this$endTransaction`);
-      this.delegate.setTransaction(null);
-      this.closeConnection(`$this$endTransaction`);
-   }
+    override fun Connection.endTransaction() {
+        delegate.endTransaction(this)
+        delegate.setTransaction(null)
+        closeConnection(this)
+    }
 
-   public open fun close() {
-      this.delegate.close();
-   }
+    override fun close() {
+        delegate.close()
+    }
 
-   public open fun Connection.beginTransaction() {
-      this.delegate.beginTransaction(`$this$beginTransaction`);
-   }
+    override fun Connection.beginTransaction() {
+        delegate.beginTransaction(this)
+    }
 
-   public open fun Connection.rollbackTransaction() {
-      this.delegate.rollbackTransaction(`$this$rollbackTransaction`);
-   }
+    override fun Connection.rollbackTransaction() {
+        delegate.rollbackTransaction(this)
+    }
 
-   public open fun closeConnection(connection: Connection) {
-      this.delegate.closeConnection(connection);
-   }
+    override fun closeConnection(connection: Connection) {
+        delegate.closeConnection(connection)
+    }
 
-   public open fun getConnection(): Connection {
-      return this.delegate.getConnection();
-   }
+    override fun getConnection(): Connection {
+        return delegate.getConnection()
+    }
 
-   public companion object {
-      public const val IN_MEMORY: String
-   }
+    companion object {
+        const val IN_MEMORY: String = TODO("FIXME — uninitialized constant")
+    }
 }

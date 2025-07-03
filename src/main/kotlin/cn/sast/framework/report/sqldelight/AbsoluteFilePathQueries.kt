@@ -15,100 +15,116 @@ import kotlin.jvm.functions.Function1
 import kotlin.jvm.functions.Function2
 
 public class AbsoluteFilePathQueries(driver: SqlDriver) : TransacterImpl(driver) {
-   public fun <T : Any> verify_absolute_file_path(mapper: (String, Long) -> T): ExecutableQuery<T> {
-      return new AbsoluteFilePathQueries.Verify_absolute_file_pathQuery(this, AbsoluteFilePathQueries::verify_absolute_file_path$lambda$0);
-   }
+    public fun <T : Any> verify_absolute_file_path(mapper: (String, Long) -> T): ExecutableQuery<T> {
+        return Verify_absolute_file_pathQuery(this) { cursor ->
+            `verify_absolute_file_path$lambda$0`(Function2 { a, b -> mapper(a, b) }, cursor)
+        }
+    }
 
-   public fun verify_absolute_file_path(): ExecutableQuery<AbsoluteFilePath> {
-      return this.verify_absolute_file_path(AbsoluteFilePathQueries::verify_absolute_file_path$lambda$1);
-   }
+    public fun verify_absolute_file_path(): ExecutableQuery<AbsoluteFilePath> {
+        return this.verify_absolute_file_path { file_abs_path, __file_id ->
+            `verify_absolute_file_path$lambda$1`(file_abs_path, __file_id)
+        }
+    }
 
-   public fun <T : Any> selectAll(mapper: (String, Long) -> T): Query<T> {
-      return QueryKt.Query(
-         77310330,
-         new java.lang.String[]{"AbsoluteFilePath"},
-         this.getDriver(),
-         "AbsoluteFilePath.sq",
-         "selectAll",
-         "SELECT AbsoluteFilePath.file_abs_path, AbsoluteFilePath.__file_id\nFROM AbsoluteFilePath",
-         AbsoluteFilePathQueries::selectAll$lambda$2
-      );
-   }
+    public fun <T : Any> selectAll(mapper: (String, Long) -> T): Query<T> {
+        return QueryKt.Query(
+            77310330,
+            arrayOf("AbsoluteFilePath"),
+            this.getDriver(),
+            "AbsoluteFilePath.sq",
+            "selectAll",
+            "SELECT AbsoluteFilePath.file_abs_path, AbsoluteFilePath.__file_id\nFROM AbsoluteFilePath"
+        ) { cursor ->
+            `selectAll$lambda$2`(Function2 { a, b -> mapper(a, b) }, cursor)
+        }
+    }
 
-   public fun selectAll(): Query<AbsoluteFilePath> {
-      return this.selectAll(AbsoluteFilePathQueries::selectAll$lambda$3);
-   }
+    public fun selectAll(): Query<AbsoluteFilePath> {
+        return this.selectAll { file_abs_path, __file_id ->
+            `selectAll$lambda$3`(file_abs_path, __file_id)
+        }
+    }
 
-   public fun insert(AbsoluteFilePath: AbsoluteFilePath) {
-      this.getDriver()
-         .execute(365662308, "INSERT OR IGNORE INTO AbsoluteFilePath (file_abs_path, __file_id) VALUES (?, ?)", 2, AbsoluteFilePathQueries::insert$lambda$4);
-      this.notifyQueries(365662308, AbsoluteFilePathQueries::insert$lambda$5);
-   }
+    public fun insert(AbsoluteFilePath: AbsoluteFilePath) {
+        this.getDriver()
+            .execute(365662308, "INSERT OR IGNORE INTO AbsoluteFilePath (file_abs_path, __file_id) VALUES (?, ?)", 2) { stmt ->
+                `insert$lambda$4`(AbsoluteFilePath, stmt)
+            }
+        this.notifyQueries(365662308) { emitter ->
+            `insert$lambda$5`(Function1 { emitter(it) })
+        }
+    }
 
-   @JvmStatic
-   fun `verify_absolute_file_path$lambda$0`(`$mapper`: Function2, cursor: SqlCursor): Any {
-      val var10001: java.lang.String = cursor.getString(0);
-      val var10002: java.lang.Long = cursor.getLong(1);
-      return `$mapper`.invoke(var10001, var10002);
-   }
+    @JvmStatic
+    private fun `verify_absolute_file_path$lambda$0`(`$mapper`: Function2<String, Long, Any>, cursor: SqlCursor): Any {
+        val var10001: String = cursor.getString(0)
+        val var10002: Long = cursor.getLong(1)
+        return `$mapper`.invoke(var10001, var10002)
+    }
 
-   @JvmStatic
-   fun `verify_absolute_file_path$lambda$1`(file_abs_path: java.lang.String, __file_id: Long): AbsoluteFilePath {
-      return new AbsoluteFilePath(file_abs_path, __file_id);
-   }
+    @JvmStatic
+    private fun `verify_absolute_file_path$lambda$1`(file_abs_path: String, __file_id: Long): AbsoluteFilePath {
+        return AbsoluteFilePath(file_abs_path, __file_id)
+    }
 
-   @JvmStatic
-   fun `selectAll$lambda$2`(`$mapper`: Function2, cursor: SqlCursor): Any {
-      val var10001: java.lang.String = cursor.getString(0);
-      val var10002: java.lang.Long = cursor.getLong(1);
-      return `$mapper`.invoke(var10001, var10002);
-   }
+    @JvmStatic
+    private fun `selectAll$lambda$2`(`$mapper`: Function2<String, Long, Any>, cursor: SqlCursor): Any {
+        val var10001: String = cursor.getString(0)
+        val var10002: Long = cursor.getLong(1)
+        return `$mapper`.invoke(var10001, var10002)
+    }
 
-   @JvmStatic
-   fun `selectAll$lambda$3`(file_abs_path: java.lang.String, __file_id: Long): AbsoluteFilePath {
-      return new AbsoluteFilePath(file_abs_path, __file_id);
-   }
+    @JvmStatic
+    private fun `selectAll$lambda$3`(file_abs_path: String, __file_id: Long): AbsoluteFilePath {
+        return AbsoluteFilePath(file_abs_path, __file_id)
+    }
 
-   @JvmStatic
-   fun `insert$lambda$4`(`$AbsoluteFilePath`: AbsoluteFilePath, `$this$execute`: SqlPreparedStatement): Unit {
-      `$this$execute`.bindString(0, `$AbsoluteFilePath`.getFile_abs_path());
-      `$this$execute`.bindLong(1, `$AbsoluteFilePath`.get__file_id());
-      return Unit.INSTANCE;
-   }
+    @JvmStatic
+    private fun `insert$lambda$4`(`$AbsoluteFilePath`: AbsoluteFilePath, `$this$execute`: SqlPreparedStatement) {
+        `$this$execute`.bindString(0, `$AbsoluteFilePath`.file_abs_path)
+        `$this$execute`.bindLong(1, `$AbsoluteFilePath`.__file_id)
+    }
 
-   @JvmStatic
-   fun `insert$lambda$5`(emit: Function1): Unit {
-      emit.invoke("AbsoluteFilePath");
-      return Unit.INSTANCE;
-   }
+    @JvmStatic
+    private fun `insert$lambda$5`(emit: Function1<String, Unit>) {
+        emit.invoke("AbsoluteFilePath")
+    }
 
-   private inner class Verify_absolute_file_pathQuery<T>(mapper: (SqlCursor) -> Any) : ExecutableQuery(mapper) {
-      init {
-         this.this$0 = `this$0`;
-      }
+    private inner class Verify_absolute_file_pathQuery<T>(
+        private val this$0: AbsoluteFilePathQueries,
+        mapper: (SqlCursor) -> Any
+    ) : ExecutableQuery<T>(mapper) {
+        override fun <R> execute(mapper: (SqlCursor) -> QueryResult<R>): QueryResult<R> {
+            return DefaultImpls.transactionWithResult$default(
+                this$0 as Transacter, false, { transaction ->
+                    `execute$lambda$0`(this$0, Function1 { cursor -> mapper(cursor) }, transaction)
+                }, 1, null
+            ) as QueryResult<R>
+        }
 
-      public open fun <R> execute(mapper: (SqlCursor) -> QueryResult<R>): QueryResult<R> {
-         return DefaultImpls.transactionWithResult$default(
-            this.this$0 as Transacter, false, AbsoluteFilePathQueries.Verify_absolute_file_pathQuery::execute$lambda$0, 1, null
-         ) as QueryResult<R>;
-      }
+        override fun toString(): String {
+            return "AbsoluteFilePath.sq:verify_absolute_file_path"
+        }
 
-      public open fun toString(): String {
-         return "AbsoluteFilePath.sq:verify_absolute_file_path";
-      }
-
-      @JvmStatic
-      fun `execute$lambda$0`(`this$0`: AbsoluteFilePathQueries, `$mapper`: Function1, `$this$transactionWithResult`: TransactionWithReturn): QueryResult {
-         return app.cash.sqldelight.db.SqlDriver.DefaultImpls.executeQuery$default(
-            AbsoluteFilePathQueries.access$getDriver(`this$0`),
-            -1503538388,
-            "SELECT AbsoluteFilePath.file_abs_path, AbsoluteFilePath.__file_id FROM AbsoluteFilePath WHERE __file_id NOT IN (SELECT id FROM File)",
-            `$mapper`,
-            0,
-            null,
-            16,
-            null
-         );
-      }
-   }
+        companion object {
+            @JvmStatic
+            private fun `execute$lambda$0`(
+                `this$0`: AbsoluteFilePathQueries,
+                `$mapper`: Function1<SqlCursor, QueryResult<*>>,
+                `$this$transactionWithResult`: TransactionWithReturn
+            ): QueryResult<*> {
+                return app.cash.sqldelight.db.SqlDriver.DefaultImpls.executeQuery$default(
+                    `this$0`.getDriver(),
+                    -1503538388,
+                    "SELECT AbsoluteFilePath.file_abs_path, AbsoluteFilePath.__file_id FROM AbsoluteFilePath WHERE __file_id NOT IN (SELECT id FROM File)",
+                    `$mapper`,
+                    0,
+                    null,
+                    16,
+                    null
+                )
+            }
+        }
+    }
 }

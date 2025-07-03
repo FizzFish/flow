@@ -5,19 +5,18 @@ import java.io.Closeable
 import kotlin.coroutines.Continuation
 
 public interface IReportConsumer : Closeable {
-   public val type: OutputType
+    public val type: OutputType
 
-   public abstract suspend fun init() {
-   }
+    public abstract suspend fun init() {
+    }
 
-   public open suspend fun run(locator: IProjectFileLocator) {
-   }
+    public open suspend fun run(locator: IProjectFileLocator) {
+    }
 
-   // $VF: Class flags could not be determined
-   internal class DefaultImpls {
-      @JvmStatic
-      fun run(`$this`: IReportConsumer, locator: IProjectFileLocator, `$completion`: Continuation<? super Unit>): Any? {
-         return Unit.INSTANCE;
-      }
-   }
+    internal object DefaultImpls {
+        @JvmStatic
+        fun run(`$this`: IReportConsumer, locator: IProjectFileLocator, `$completion`: Continuation<in Unit>): Any? {
+            return Unit
+        }
+    }
 }

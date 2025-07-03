@@ -1,35 +1,30 @@
 package cn.sast.framework.validator
 
-internal data class RowUnknownType(type: String) : RowType() {
-   public open val type: String
+internal data class RowUnknownType(val type: String) : RowType() {
 
-   init {
-      this.type = type;
-   }
+    override fun toString(): String {
+        return this.type
+    }
 
-   public override fun toString(): String {
-      return this.getType();
-   }
+    operator fun component1(): String {
+        return this.type
+    }
 
-   public operator fun component1(): String {
-      return this.type;
-   }
+    fun copy(type: String = this.type): RowUnknownType {
+        return RowUnknownType(type)
+    }
 
-   public fun copy(type: String = this.type): RowUnknownType {
-      return new RowUnknownType(type);
-   }
+    override fun hashCode(): Int {
+        return this.type.hashCode()
+    }
 
-   public override fun hashCode(): Int {
-      return this.type.hashCode();
-   }
-
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is RowUnknownType) {
-         return false;
-      } else {
-         return this.type == (other as RowUnknownType).type;
-      }
-   }
+    override fun equals(other: Any?): Boolean {
+        if (this === other) {
+            return true
+        } else if (other !is RowUnknownType) {
+            return false
+        } else {
+            return this.type == other.type
+        }
+    }
 }

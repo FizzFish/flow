@@ -10,70 +10,49 @@ import java.io.IOException
 import mu.KLogger
 import mu.KotlinLogging
 
-public object EmptyWrapperFileGenerator : IWrapperFileGenerator {
-   private final val logger: KLogger = KotlinLogging.INSTANCE.logger(EmptyWrapperFileGenerator::logger$lambda$0)
+object EmptyWrapperFileGenerator : IWrapperFileGenerator {
+    private val logger: KLogger = KotlinLogging.logger { }
 
-   public open val name: String
-      public open get() {
-         return "empty";
-      }
+    override val name: String
+        get() = "empty"
 
+    private fun makeWrapperFileContent(resInfo: IBugResInfo): String {
+        return if (resInfo is ClassResInfo) {
+            var maxLine = resInfo.getMaxLine()
+            if (maxLine > 8000) {
+                maxLine = 8000
+            }
+            "\n".repeat(maxLine)
+        } else {
+            "\n"
+        }
+    }
 
-   private fun makeWrapperFileContent(resInfo: IBugResInfo): String {
-      val var10000: java.lang.String;
-      if (resInfo is ClassResInfo) {
-         var maxLine: Int = (resInfo as ClassResInfo).getMaxLine();
-         if (maxLine > 8000) {
-            maxLine = 8000;
-         }
+    override fun makeWrapperFile(fileWrapperOutPutDir: IResDirectory, resInfo: IBugResInfo): IResFile? {
+        val missingSourceFile = fileWrapperOutPutDir.resolve(name).resolve(getInternalFileName(resInfo)).toFile()
+        return if (missingSourceFile.exists()) {
+            if (missingSourceFile.isFile) {
+                missingSourceFile
+            } else {
+                logger.error { "duplicate folder exists $missingSourceFile" }
+                null
+            }
+        } else {
+            val text = makeWrapperFileContent(resInfo)
 
-         var10000 = StringsKt.repeat("\n", maxLine);
-      } else {
-         var10000 = "\n";
-      }
-
-      return var10000;
-   }
-
-   public override fun makeWrapperFile(fileWrapperOutPutDir: IResDirectory, resInfo: IBugResInfo): IResFile? {
-      val missingSourceFile: IResFile = fileWrapperOutPutDir.resolve(this.getName()).resolve(this.getInternalFileName(resInfo)).toFile();
-      if (missingSourceFile.getExists()) {
-         if (missingSourceFile.isFile()) {
-            return missingSourceFile;
-         } else {
-            logger.error(EmptyWrapperFileGenerator::makeWrapperFile$lambda$1);
-            return null;
-         }
-      } else {
-         val text: java.lang.String = this.makeWrapperFileContent(resInfo);
-
-         try {
-            val var10000: IResource = missingSourceFile.getParent();
-            if (var10000 != null) {
-               var10000.mkdirs();
+            try {
+                missingSourceFile.parent?.mkdirs()
+                ResourceKt.writeText(missingSourceFile, text)
+            } catch (e: IOException) {
+                e.printStackTrace()
+                null
             }
 
-            ResourceKt.writeText$default(missingSourceFile, text, null, 2, null);
-         } catch (var7: IOException) {
-            var7.printStackTrace();
-            return null;
-         }
+            missingSourceFile.toFile()
+        }
+    }
 
-         return missingSourceFile.toFile();
-      }
-   }
-
-   override fun getInternalFileName(resInfo: IBugResInfo): java.lang.String {
-      return IWrapperFileGenerator.DefaultImpls.getInternalFileName(this, resInfo);
-   }
-
-   @JvmStatic
-   fun `logger$lambda$0`(): Unit {
-      return Unit.INSTANCE;
-   }
-
-   @JvmStatic
-   fun `makeWrapperFile$lambda$1`(`$missingSourceFile`: IResFile): Any {
-      return "duplicate folder exists $`$missingSourceFile`";
-   }
+    override fun getInternalFileName(resInfo: IBugResInfo): String {
+        return IWrapperFileGenerator.DefaultImpls.getInternalFileName(this, resInfo)
+    }
 }

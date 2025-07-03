@@ -4,18 +4,22 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 
 @Serializable
-public sealed class ConfigSerializable protected constructor() : IConfig, java.lang.Comparable<ConfigSerializable> {
-   public abstract val name: String
+public sealed class ConfigSerializable protected constructor() : IConfig, Comparable<ConfigSerializable> {
+    public abstract val name: String
 
-   public open operator fun compareTo(other: ConfigSerializable): Int {
-      val var10000: java.lang.String = other.getClass().getName();
-      val var10001: java.lang.String = this.getClass().getName();
-      return if (var10000.compareTo(var10001) == 0) this.getName().compareTo(other.getName()) else 0;
-   }
+    public open override operator fun compareTo(other: ConfigSerializable): Int {
+        val otherClassName = other::class.java.name
+        val thisClassName = this::class.java.name
+        return if (otherClassName.compareTo(thisClassName) == 0) {
+            this.name.compareTo(other.name)
+        } else {
+            0
+        }
+    }
 
-   public companion object {
-      public fun serializer(): KSerializer<ConfigSerializable> {
-         return this.get$cachedSerializer();
-      }
-   }
+    public companion object {
+        public fun serializer(): KSerializer<ConfigSerializable> {
+            return ConfigSerializable.serializer()
+        }
+    }
 }

@@ -2,36 +2,30 @@ package cn.sast.framework.report.coverage
 
 import com.feysh.corax.cache.AnalysisKey
 
-public data class ClassSourceOfSCKey(className: String) : AnalysisKey(ClassSourceOfSCFactory.INSTANCE.getKey()) {
-   public final val className: String
+public data class ClassSourceOfSCKey(public val className: String) : AnalysisKey(ClassSourceOfSCFactory.INSTANCE.getKey()) {
+    public operator fun component1(): String {
+        return this.className
+    }
 
-   init {
-      this.className = className;
-   }
+    public fun copy(className: String = this.className): ClassSourceOfSCKey {
+        return ClassSourceOfSCKey(className)
+    }
 
-   public operator fun component1(): String {
-      return this.className;
-   }
+    public override fun toString(): String {
+        return "ClassSourceOfSCKey(className=${this.className})"
+    }
 
-   public fun copy(className: String = this.className): ClassSourceOfSCKey {
-      return new ClassSourceOfSCKey(className);
-   }
+    public override fun hashCode(): Int {
+        return this.className.hashCode()
+    }
 
-   public override fun toString(): String {
-      return "ClassSourceOfSCKey(className=${this.className})";
-   }
-
-   public override fun hashCode(): Int {
-      return this.className.hashCode();
-   }
-
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is ClassSourceOfSCKey) {
-         return false;
-      } else {
-         return this.className == (other as ClassSourceOfSCKey).className;
-      }
-   }
+    public override operator fun equals(other: Any?): Boolean {
+        if (this === other) {
+            return true
+        } else if (other !is ClassSourceOfSCKey) {
+            return false
+        } else {
+            return this.className == other.className
+        }
+    }
 }

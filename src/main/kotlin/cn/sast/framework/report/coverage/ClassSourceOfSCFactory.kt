@@ -8,12 +8,13 @@ import com.feysh.corax.cache.AnalysisDataFactory.Key
 import com.github.benmanes.caffeine.cache.LoadingCache
 
 public object ClassSourceOfSCFactory : AnalysisDataFactory<ClassSourceInfo, ClassSourceOfSCKey> {
-   public open val cache: LoadingCache<ClassSourceOfSCKey, XOptional<ClassSourceInfo?>> =
-      AnalysisCacheKt.buildX(AnalysisDataFactory.Companion.getDefaultBuilder(), <unrepresentable>.INSTANCE)
-      public open val key: Key<ClassSourceInfo?> = (new AnalysisDataFactory.Key<ClassSourceInfo>() {}) as AnalysisDataFactory.Key
+    public open val cache: LoadingCache<ClassSourceOfSCKey, XOptional<ClassSourceInfo?>> =
+        AnalysisCacheKt.buildX(AnalysisDataFactory.Companion.getDefaultBuilder(), TODO("FIXME — unrepresentable instance"))
 
-   @JvmStatic
-   fun {
-      AnalysisCache.G.INSTANCE.registerFactory(INSTANCE);
-   }
+    public open val key: Key<ClassSourceInfo?> = object : Key<ClassSourceInfo>() {} as Key<ClassSourceInfo?>
+
+    @JvmStatic
+    fun init() {
+        AnalysisCache.G.INSTANCE.registerFactory(INSTANCE)
+    }
 }

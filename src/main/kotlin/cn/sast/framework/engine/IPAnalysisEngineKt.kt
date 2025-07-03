@@ -8,14 +8,11 @@ import kotlinx.serialization.json.JsonBuilder
 import kotlinx.serialization.json.JsonKt
 import kotlinx.serialization.modules.SerializersModule
 
-public final val graphSerializersModule: SerializersModule
-public final val graphJson: Json = JsonKt.Json$default(null, IPAnalysisEngineKt::graphJson$lambda$1, 1, null)
-
-fun JsonBuilder.`graphJson$lambda$1`(): Unit {
-   `$this$Json`.setEncodeDefaults(true);
-   `$this$Json`.setUseArrayPolymorphism(true);
-   `$this$Json`.setLenient(true);
-   `$this$Json`.setPrettyPrint(true);
-   `$this$Json`.setSerializersModule(graphSerializersModule);
-   return Unit.INSTANCE;
-}
+public val graphSerializersModule: SerializersModule = TODO("FIXME — initialize SerializersModule")
+public val graphJson: Json = Json(builderAction = { 
+    encodeDefaults = true
+    useArrayPolymorphism = true
+    lenient = true
+    prettyPrint = true
+    serializersModule = graphSerializersModule
+})

@@ -14,18 +14,18 @@ import soot.SootMethod
 
 @Serializer(forClass = SootMethod::class)
 @SourceDebugExtension(["SMAP\nIPAnalysisEngine.kt\nKotlin\n*S Kotlin\n*F\n+ 1 IPAnalysisEngine.kt\ncn/sast/framework/engine/SootMethodSerializer\n+ 2 Encoding.kt\nkotlinx/serialization/encoding/EncodingKt\n*L\n1#1,344:1\n475#2,4:345\n*S KotlinDebug\n*F\n+ 1 IPAnalysisEngine.kt\ncn/sast/framework/engine/SootMethodSerializer\n*L\n69#1:345,4\n*E\n"])
-public object SootMethodSerializer : KSerializer<SootMethod> {
-   public open val descriptor: SerialDescriptor = SerialDescriptorsKt.PrimitiveSerialDescriptor("SootMethod", STRING.INSTANCE as PrimitiveKind)
+object SootMethodSerializer : KSerializer<SootMethod> {
+    override val descriptor: SerialDescriptor = SerialDescriptorsKt.PrimitiveSerialDescriptor("SootMethod", STRING)
 
-   public open fun deserialize(decoder: Decoder): SootMethod {
-      throw new IllegalStateException("Not yet implemented".toString());
-   }
+    override fun deserialize(decoder: Decoder): SootMethod {
+        throw IllegalStateException("Not yet implemented")
+    }
 
-   public open fun serialize(encoder: Encoder, value: SootMethod) {
-      val `descriptor$iv`: SerialDescriptor = this.getDescriptor();
-      val `composite$iv`: CompositeEncoder = encoder.beginStructure(`descriptor$iv`);
-      val var10001: java.lang.String = value.toString();
-      encoder.encodeString(var10001);
-      `composite$iv`.endStructure(`descriptor$iv`);
-   }
+    override fun serialize(encoder: Encoder, value: SootMethod) {
+        val descriptor = this.descriptor
+        val composite = encoder.beginStructure(descriptor)
+        val stringValue = value.toString()
+        encoder.encodeString(stringValue)
+        composite.endStructure(descriptor)
+    }
 }

@@ -10,90 +10,78 @@ import com.feysh.corax.cache.analysis.SootInfoCache
 import com.feysh.corax.config.api.IFieldCheckPoint
 import com.feysh.corax.config.api.report.Region
 import com.github.javaparser.ast.body.BodyDeclaration
+import kotlin.LazyThreadSafetyMode
+import kotlin.lazy
 import soot.SootClass
 import soot.SootField
 import soot.tagkit.AbstractHost
 import soot.tagkit.VisibilityAnnotationTag
 
-public class FieldCheckPoint(sootField: SootField, info: SootInfoCache) : CheckPoint, IFieldCheckPoint, SootInfoCache {
-   public open val sootField: SootField
-   public final val info: SootInfoCache
+public class FieldCheckPoint(
+    public open val sootField: SootField,
+    public val info: SootInfoCache
+) : CheckPoint, IFieldCheckPoint, SootInfoCache {
 
-   public open val visibilityAnnotationTag: VisibilityAnnotationTag?
-      public open get() {
-         return this.getSootField().getTag("VisibilityAnnotationTag") as VisibilityAnnotationTag;
-      }
+    public open val visibilityAnnotationTag: VisibilityAnnotationTag?
+        get() = sootField.getTag("VisibilityAnnotationTag") as? VisibilityAnnotationTag
 
+    public open val region: Region
+        get() = Region.Companion.invoke(this, sootField as AbstractHost) ?: Region.Companion.getERROR()
 
-   public open val region: Region
-      public open get() {
-         var var10000: Region = Region.Companion.invoke(this, this.getSootField() as AbstractHost);
-         if (var10000 == null) {
-            var10000 = Region.Companion.getERROR();
-         }
+    public open val file: IBugResInfo
 
-         return var10000;
-      }
+    private val env$delegate by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        env_delegate$lambda$0(this)
+    }
 
+    internal open val env: DefaultEnv
+        get() = env$delegate
 
-   public open val file: IBugResInfo
+    public open val cache: AnalysisCache
+        get() = TODO("FIXME — cache property implementation missing")
 
-   internal open val env: DefaultEnv
-      internal open get() {
-         return this.env$delegate.getValue() as DefaultEnv;
-      }
+    public open val ext: SootHostExtend?
+        get() = info.getExt(this)
 
+    public open val hostKey: Key<SootHostExtend?>
+        get() = TODO("FIXME — hostKey property implementation missing")
 
-   public open val cache: AnalysisCache
+    public open val javaNameSourceEndColumnNumber: Int
+        get() = info.getJavaNameSourceEndColumnNumber(this)
 
-   public open val ext: SootHostExtend?
-      public open get() {
-         return this.info.getExt(`$this$ext`);
-      }
+    public open val javaNameSourceEndLineNumber: Int
+        get() = info.getJavaNameSourceEndLineNumber(this)
 
+    public open val javaNameSourceStartColumnNumber: Int
+        get() = info.getJavaNameSourceStartColumnNumber(this)
 
-   public open val hostKey: Key<SootHostExtend?>
+    public open val javaNameSourceStartLineNumber: Int
+        get() = info.getJavaNameSourceStartLineNumber(this)
 
-   public open val javaNameSourceEndColumnNumber: Int
-      public open get() {
-         return this.info.getJavaNameSourceEndColumnNumber(`$this$javaNameSourceEndColumnNumber`);
-      }
+    init {
+        file = ClassResInfo(sootField.declaringClass)
+    }
 
+    public override fun SootClass.getMemberAtLine(ln: Int): BodyDeclaration<*>? {
+        return info.getMemberAtLine(this, ln)
+    }
 
-   public open val javaNameSourceEndLineNumber: Int
-      public open get() {
-         return this.info.getJavaNameSourceEndLineNumber(`$this$javaNameSourceEndLineNumber`);
-      }
-
-
-   public open val javaNameSourceStartColumnNumber: Int
-      public open get() {
-         return this.info.getJavaNameSourceStartColumnNumber(`$this$javaNameSourceStartColumnNumber`);
-      }
-
-
-   public open val javaNameSourceStartLineNumber: Int
-      public open get() {
-         return this.info.getJavaNameSourceStartLineNumber(`$this$javaNameSourceStartLineNumber`);
-      }
-
-
-   init {
-      this.sootField = sootField;
-      this.info = info;
-      val var10003: SootClass = this.getSootField().getDeclaringClass();
-      this.file = new ClassResInfo(var10003);
-      this.env$delegate = LazyKt.lazy(LazyThreadSafetyMode.PUBLICATION, FieldCheckPoint::env_delegate$lambda$0);
-   }
-
-   public override fun SootClass.getMemberAtLine(ln: Int): BodyDeclaration<*>? {
-      return this.info.getMemberAtLine(`$this$getMemberAtLine`, ln);
-   }
-
-   @JvmStatic
-   fun `env_delegate$lambda$0`(`this$0`: FieldCheckPoint): DefaultEnv {
-      return new DefaultEnv(
-         `this$0`.getRegion().getMutable(), null, null, null, null, null, `this$0`.getSootField().getDeclaringClass(), `this$0`.getSootField(), null, 318, null
-      );
-   }
+    companion object {
+        @JvmStatic
+        private fun env_delegate$lambda$0(this$0: FieldCheckPoint): DefaultEnv {
+            return DefaultEnv(
+                this$0.region.mutable,
+                null,
+                null,
+                null,
+                null,
+                null,
+                this$0.sootField.declaringClass,
+                this$0.sootField,
+                null,
+                318,
+                null
+            )
+        }
+    }
 }

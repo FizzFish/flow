@@ -4,19 +4,15 @@ import com.feysh.corax.config.api.IPreAnalysisConfig
 import com.feysh.corax.config.api.rules.ProcessRule
 import com.feysh.corax.config.api.rules.ProcessRule.IMatchItem
 
-internal abstract class PreAnalysisAbsConfig : IPreAnalysisConfig {
-   public open var processRules: List<IMatchItem>
-      internal final set
+internal abstract class PreAnalysisAbsConfig(
+    processRules: MutableList<ProcessRule.IMatchItem>,
+    incrementalAnalyze: Boolean
+) : IPreAnalysisConfig {
+    public open var processRules: List<IMatchItem> = processRules
+        internal set
 
-   public open var incrementalAnalyze: Boolean
-      internal final set
+    public open var incrementalAnalyze: Boolean = incrementalAnalyze
+        internal set
 
-   open fun PreAnalysisAbsConfig(processRules: MutableList<ProcessRule.IMatchItem>, incrementalAnalyze: Boolean) {
-      this.processRules = processRules;
-      this.incrementalAnalyze = incrementalAnalyze;
-   }
-
-   open fun PreAnalysisAbsConfig() {
-      this(null, false, 3, null);
-   }
+    constructor() : this(mutableListOf(), false)
 }

@@ -25,152 +25,102 @@ import soot.IFoundFile
 import soot.SourceLocator
 
 @SourceDebugExtension(["SMAP\nSourceLocatorPlus.kt\nKotlin\n*S Kotlin\n*F\n+ 1 SourceLocatorPlus.kt\ncn/sast/framework/SourceLocatorPlus\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n+ 3 _Sequences.kt\nkotlin/sequences/SequencesKt___SequencesKt\n+ 4 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n*L\n1#1,116:1\n1#2:117\n183#3,2:118\n1628#4,3:120\n*S KotlinDebug\n*F\n+ 1 SourceLocatorPlus.kt\ncn/sast/framework/SourceLocatorPlus\n*L\n69#1:118,2\n77#1:120,3\n*E\n"])
-public class SourceLocatorPlus(mainConfig: MainConfig) : SourceLocator(null) {
-   public final val mainConfig: MainConfig
-   private final val cacheClassNameMap: LoadingCache<Path, String?>
-   private final val cacheClassLookMap: LoadingCache<String, XOptional<FoundFile?>>
+class SourceLocatorPlus(mainConfig: MainConfig) : SourceLocator(null) {
+    val mainConfig: MainConfig
+    private val cacheClassNameMap: LoadingCache<Path, String?>
+    private val cacheClassLookMap: LoadingCache<String, XOptional<FoundFile?>>
+    private val locator$delegate by lazy { locator_delegate$lambda$10(this) }
 
-   public final val locator: ProjectFileLocator
-      public final get() {
-         return this.locator$delegate.getValue() as ProjectFileLocator;
-      }
+    val locator: ProjectFileLocator
+        get() = locator$delegate
 
+    init {
+        this.mainConfig = mainConfig
+        this.cacheClassNameMap = Caffeine.newBuilder()
+            .softValues()
+            .initialCapacity(5000)
+            .build(CacheLoader { path -> cacheClassNameMap$lambda$2(path) })
+        
+        this.cacheClassLookMap = Caffeine.newBuilder()
+            .softValues()
+            .initialCapacity(5000)
+            .build(CacheLoader { fileName -> cacheClassLookMap$lambda$7(this, fileName) })
+    }
 
-   init {
-      this.mainConfig = mainConfig;
-      var var2: Caffeine = Caffeine.newBuilder().softValues();
-      var2.initialCapacity(5000);
-      var var10: LoadingCache = var2.build(new CacheLoader(SourceLocatorPlus::cacheClassNameMap$lambda$2) {
-         {
-            this.function = function;
-         }
-      });
-      this.cacheClassNameMap = var10;
-      var2 = Caffeine.newBuilder().softValues();
-      var2.initialCapacity(5000);
-      var10 = var2.build(new CacheLoader(SourceLocatorPlus::cacheClassLookMap$lambda$7) {
-         {
-            this.function = function;
-         }
-      });
-      this.cacheClassLookMap = var10;
-      this.locator$delegate = LazyKt.lazy(SourceLocatorPlus::locator_delegate$lambda$10);
-   }
+    fun update() {
+    }
 
-   public fun update() {
-   }
+    fun getClassNameOf(cls: IResFile): String? {
+        return cacheClassNameMap.get(cls.getPath())
+    }
 
-   public fun getClassNameOf(cls: IResFile): String? {
-      return this.cacheClassNameMap.get(cls.getPath()) as java.lang.String;
-   }
+    fun isInvalidClassFile(fileName: String, cls: IResFile): Boolean {
+        val className = getClassNameOf(cls)
+        return className != null && className == fileName
+    }
 
-   public fun isInvalidClassFile(fileName: String, cls: IResFile): Boolean {
-      val var10000: java.lang.String = this.getClassNameOf(cls);
-      return var10000 != null && var10000 == fileName;
-   }
+    override fun lookupInClassPath(fileName: String): IFoundFile? {
+        if ("LinearLayout.class" == fileName) {
+            return null
+        }
+        
+        val optional = cacheClassLookMap.get(fileName)
+        return if (optional != null) {
+            optional.getValue()
+        } else {
+            super.lookupInClassPath(fileName) ?: null
+        }
+    }
 
-   public open fun lookupInClassPath(fileName: String): IFoundFile? {
-      if ("LinearLayout.class" == fileName) {
-         return null;
-      } else {
-         val var2: XOptional = this.cacheClassLookMap.get(fileName) as XOptional;
-         label13:
-         if (var2 != null) {
-            return var2.getValue() as IFoundFile;
-         } else {
-            val var5: IFoundFile = super.lookupInClassPath(fileName);
-            return var5 ?: null;
-         }
-      }
-   }
+    protected fun lookupInArchive(archivePath: String, fileName: String): IFoundFile? {
+        val optional = cacheClassLookMap.get(fileName)
+        return optional?.getValue()
+    }
 
-   protected open fun lookupInArchive(archivePath: String, fileName: String): IFoundFile? {
-      val var3: XOptional = this.cacheClassLookMap.get(fileName) as XOptional;
-      return if (var3 != null) var3.getValue() as IFoundFile else null;
-   }
-
-   @JvmStatic
-   fun `cacheClassNameMap$lambda$2`(cls: Path): java.lang.String {
-      try {
-         label35: {
-            val var10001: Array<OpenOption> = new OpenOption[0];
-            val var10000: InputStream = Files.newInputStream(cls, Arrays.copyOf(var10001, var10001.length));
-            val var1: Closeable = var10000;
-            var var2: java.lang.Throwable = null;
-
-            label30: {
-               try {
-                  try {
-                     val var13: java.lang.String = SourceLocator.getNameOfClassUnsafe(var1 as InputStream);
-                     if (var13 == null) {
-                        break label30;
-                     }
-
-                     val var5: java.lang.String = "${StringsKt.replace$default(var13, '.', '/', false, 4, null)}.class";
-                  } catch (var7: java.lang.Throwable) {
-                     var2 = var7;
-                     throw var7;
-                  }
-               } catch (var8: java.lang.Throwable) {
-                  CloseableKt.closeFinally(var1, var2);
-               }
-
-               CloseableKt.closeFinally(var1, null);
+    companion object {
+        @JvmStatic
+        fun cacheClassNameMap$lambda$2(cls: Path): String? {
+            try {
+                Files.newInputStream(cls).use { input ->
+                    val className = SourceLocator.getNameOfClassUnsafe(input)
+                    if (className != null) {
+                        return "${className.replace('.', '/')}.class"
+                    }
+                }
+            } catch (e: IOException) {
+                return null
             }
+            return null
+        }
 
-            CloseableKt.closeFinally(var1, null);
-         }
-      } catch (var9: IOException) {
-         return null;
-      }
-   }
-
-   @JvmStatic
-   fun `cacheClassLookMap$lambda$7`(`this$0`: SourceLocatorPlus, fileName: java.lang.String): XOptional {
-      label22: {
-         val it: java.util.Iterator = `this$0`.getLocator()
-            .findFromFileIndexMap(
-               StringsKt.split$default(fileName, new java.lang.String[]{"/"}, false, 0, 6, null), AbstractFileIndexer.Companion.getDefaultClassCompareMode()
-            )
-            .iterator();
-
-         var var13: Any;
-         while (true) {
-            if (it.hasNext()) {
-               val var6: Any = it.next();
-               if (!`this$0`.isInvalidClassFile(fileName, var6 as IResFile)) {
-                  continue;
-               }
-
-               var13 = var6;
-               break;
+        @JvmStatic
+        fun cacheClassLookMap$lambda$7(this$0: SourceLocatorPlus, fileName: String): XOptional<FoundFile?> {
+            val file = this$0.locator
+                .findFromFileIndexMap(
+                    fileName.split("/"),
+                    AbstractFileIndexer.Companion.getDefaultClassCompareMode()
+                )
+                .firstOrNull { !this$0.isInvalidClassFile(fileName, it as IResFile) }
+            
+            return if (file != null) {
+                XOptional.of(FoundFile((file as IResFile).getPath()))
+            } else {
+                XOptional.empty()
             }
+        }
 
-            var13 = null;
-            break;
-         }
-
-         return if (var13 as IResFile != null) XOptional.Companion.of(new FoundFile((var13 as IResFile).getPath())) else null;
-      }
-   }
-
-   @JvmStatic
-   fun `locator_delegate$lambda$10`(`this$0`: SourceLocatorPlus): ProjectFileLocator {
-      val `$this$mapTo$iv`: java.lang.Iterable = `this$0`.mainConfig.getSoot_process_dir();
-      val it: java.util.Collection = new LinkedHashSet();
-
-      for (Object item$iv : $this$mapTo$iv) {
-         it.add(Resource.INSTANCE.of(`item$iv` as java.lang.String));
-      }
-
-      val var10: ProjectFileLocator = new ProjectFileLocator(
-         `this$0`.mainConfig.getMonitor(),
-         SourceLocatorPlusKt.sootClassPathsCvt(it as MutableSet<IResource>),
-         null,
-         FileSystemLocator.TraverseMode.IndexArchive,
-         false
-      );
-      var10.update();
-      return var10;
-   }
+        @JvmStatic
+        fun locator_delegate$lambda$10(this$0: SourceLocatorPlus): ProjectFileLocator {
+            val resources = this$0.mainConfig.getSoot_process_dir()
+                .mapTo(LinkedHashSet()) { Resource.INSTANCE.of(it as String) }
+            
+            return ProjectFileLocator(
+                this$0.mainConfig.getMonitor(),
+                SourceLocatorPlusKt.sootClassPathsCvt(resources as MutableSet<IResource>),
+                null,
+                FileSystemLocator.TraverseMode.IndexArchive,
+                false
+            ).also { it.update() }
+        }
+    }
 }
