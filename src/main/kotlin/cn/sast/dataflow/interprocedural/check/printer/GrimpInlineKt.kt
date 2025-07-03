@@ -13,32 +13,33 @@ import soot.jimple.InvokeExpr
 import soot.jimple.StaticInvokeExpr
 
 public fun InvokeExpr.invokeToString(up: UnitPrinter) {
-   if (`$this$invokeToString` is InstanceInvokeExpr) {
-      (`$this$invokeToString` as InstanceInvokeExpr).getBaseBox().toString(up);
-      up.literal(".");
-   }
+    if (this is InstanceInvokeExpr) {
+        baseBox.toString(up)
+        up.literal(".")
+    }
 
-   if (`$this$invokeToString` is StaticInvokeExpr) {
-      up.literal((`$this$invokeToString` as StaticInvokeExpr).getMethodRef().getDeclaringClass().getShortName());
-      up.literal(".");
-   }
+    if (this is StaticInvokeExpr) {
+        up.literal(methodRef.declaringClass.shortName)
+        up.literal(".")
+    }
 
-   val var10001: SootMethodRef = `$this$invokeToString`.getMethodRef();
-   val args: SootMethodInterface = var10001 as SootMethodInterface;
-   val var7: SootClass = (var10001 as SootMethodInterface).getDeclaringClass();
-   val var10002: java.lang.String = args.getName();
-   up.literal(SimpleUnitPrinterKt.getPrettyMethodName(var7, var10002));
-   up.literal("(");
-   val var5: java.util.List = `$this$invokeToString`.getArgs();
-   var var6: Int = 0;
+    val methodRef = this.methodRef
+    val args = methodRef as SootMethodInterface
+    val declaringClass = args.declaringClass
+    val methodName = args.name
+    up.literal(SimpleUnitPrinterKt.getPrettyMethodName(declaringClass, methodName))
+    up.literal("(")
+    val arguments = this.args
+    var i = 0
 
-   for (int e = args.size(); i < e; i++) {
-      if (var6 != 0) {
-         up.literal(", ");
-      }
+    for (e in args.size()) {
+        if (i != 0) {
+            up.literal(", ")
+        }
 
-      (var5.get(var6) as Value).toString(up);
-   }
+        (arguments[i] as Value).toString(up)
+        i++
+    }
 
-   up.literal(")");
+    up.literal(")")
 }

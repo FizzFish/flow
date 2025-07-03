@@ -7,15 +7,14 @@ import com.feysh.corax.config.api.rules.ProcessRule.IMatchItem
 import kotlin.jvm.internal.SourceDebugExtension
 
 public fun List<IMatchItem>.validate() {
-   val `$this$forEach$iv`: java.lang.Iterable;
-   for (Object element$iv : $this$forEach$iv) {
-      val e: ProcessRule.IMatchItem = `element$iv` as ProcessRule.IMatchItem;
-      val var10000: ProcessRule.ErrorCommit = `element$iv` as ProcessRule.IMatchItem as? ProcessRule.ErrorCommit;
-      if ((e as? ProcessRule.ErrorCommit) != null) {
-         val var9: java.lang.String = var10000.getError();
-         if (var9 != null) {
-            throw new IllegalStateException(("Invalid process-regex: `$e`, error: $var9").toString());
-         }
-      }
-   }
+    for (element in this) {
+        val e: IMatchItem = element
+        val errorCommit = e as? ProcessRule.ErrorCommit
+        if (errorCommit != null) {
+            val error = errorCommit.error
+            if (error != null) {
+                throw IllegalStateException("Invalid process-regex: `$e`, error: $error")
+            }
+        }
+    }
 }

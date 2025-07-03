@@ -14,62 +14,52 @@ import org.objectweb.asm.ClassWriter
 
 @SourceDebugExtension(["SMAP\nUnsafeUtils.kt\nKotlin\n*S Kotlin\n*F\n+ 1 UnsafeUtils.kt\ncn/sast/api/util/UnsafeUtils\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,61:1\n1#2:62\n*E\n"])
 public object UnsafeUtils {
-   public fun <T> defineAnonymousConcreteSubclass(abstractClass: Class<T>): Class<out T> {
-      if (!Modifier.isAbstract(abstractClass.getModifiers())) {
-         throw new IllegalArgumentException(("$abstractClass is not abstract").toString());
-      } else {
-         val cw: ClassWriter = new ClassWriter(0);
-         var var10000: java.lang.String = abstractClass.getName();
-         val superClassName: java.lang.String = StringsKt.replace$default(var10000, '.', '/', false, 4, null);
-         var10000 = UnsafeUtils.class.getPackage().getName();
-         cw.visit(52, 0, "${StringsKt.replace$default(var10000, '.', '/', false, 4, null)}/Anonymous", null, superClassName, null);
-         cw.visitEnd();
+    public fun <T> defineAnonymousConcreteSubclass(abstractClass: Class<T>): Class<out T> {
+        if (!Modifier.isAbstract(abstractClass.modifiers)) {
+            throw IllegalArgumentException("$abstractClass is not abstract")
+        } else {
+            val cw = ClassWriter(0)
+            val superClassName = abstractClass.name.replace('.', '/')
+            val packageName = UnsafeUtils::class.java.`package`.name.replace('.', '/')
+            cw.visit(52, 0, "$packageName/Anonymous", null, superClassName, null)
+            cw.visitEnd()
 
-         try {
-            val defineHiddenClass: Optional = Arrays.stream(Lookup.class.getMethods())
-               .filter(new Predicate(UnsafeUtils::defineAnonymousConcreteSubclass$lambda$1) {
-                  {
-                     this.function = function;
-                  }
-               })
-               .findFirst();
-            val var14: Optional = Arrays.stream(Lookup.class.getClasses()).filter(new Predicate(UnsafeUtils::defineAnonymousConcreteSubclass$lambda$2) {
-               {
-                  this.function = function;
-               }
-            }).findFirst();
-            val var23: Class;
-            if (defineHiddenClass.isPresent() && var14.isPresent()) {
-               var10000 = (java.lang.String)(defineHiddenClass.get() as Method)
-                  .invoke(MethodHandles.lookup(), cw.toByteArray(), true, Array.newInstance(var14.get() as Class<?>, 0));
-               var23 = (var10000 as Lookup).lookupClass().asSubclass(abstractClass);
-            } else {
-               val var15: Any = UnsafeProvider.INSTANCE
-                  .getUnsafe()
-                  .getClass()
-                  .getMethod("defineAnonymousClass", Class.class, byte[].class, Object[].class)
-                  .invoke(UnsafeProvider.INSTANCE.getUnsafe(), UnsafeUtils.class, cw.toByteArray(), null);
-               var23 = var15 as Class;
+            try {
+                val defineHiddenClass = Arrays.stream(Lookup::class.java.methods)
+                    .filter(Predicate { method -> defineAnonymousConcreteSubclass$lambda$1(method) })
+                    .findFirst()
+                val classOption = Arrays.stream(Lookup::class.java.classes)
+                    .filter(Predicate { clazz -> defineAnonymousConcreteSubclass$lambda$2(clazz) })
+                    .findFirst()
+
+                return if (defineHiddenClass.isPresent && classOption.isPresent) {
+                    val lookup = (defineHiddenClass.get() as Method)
+                        .invoke(MethodHandles.lookup(), cw.toByteArray(), true, Array.newInstance(classOption.get() as Class<*>, 0))
+                    (lookup as Lookup).lookupClass().asSubclass(abstractClass)
+                } else {
+                    UnsafeProvider.INSTANCE
+                        .unsafe
+                        .javaClass
+                        .getMethod("defineAnonymousClass", Class::class.java, ByteArray::class.java, Array<Any>::class.java)
+                        .invoke(UnsafeProvider.INSTANCE.unsafe, UnsafeUtils::class.java, cw.toByteArray(), null) as Class<*>
+                } as Class<out T>
+            } catch (e: IllegalAccessException) {
+                throw IllegalStateException(e)
+            } catch (e: InvocationTargetException) {
+                throw IllegalStateException(e)
+            } catch (e: NoSuchMethodException) {
+                throw IllegalStateException(e)
             }
+        }
+    }
 
-            return var23;
-         } catch (var9: IllegalAccessException) {
-            throw new IllegalStateException(var9);
-         } catch (var10: InvocationTargetException) {
-            throw new IllegalStateException(var10);
-         } catch (var11: NoSuchMethodException) {
-            throw new IllegalStateException(var11);
-         }
-      }
-   }
+    @JvmStatic
+    fun `defineAnonymousConcreteSubclass$lambda$1`(method: Method): Boolean {
+        return method.name == "defineHiddenClass"
+    }
 
-   @JvmStatic
-   fun `defineAnonymousConcreteSubclass$lambda$1`(method: Method): Boolean {
-      return method.getName() == "defineHiddenClass";
-   }
-
-   @JvmStatic
-   fun `defineAnonymousConcreteSubclass$lambda$2`(clazz: Class): Boolean {
-      return clazz.getSimpleName() == "ClassOption";
-   }
+    @JvmStatic
+    fun `defineAnonymousConcreteSubclass$lambda$2`(clazz: Class<*>): Boolean {
+        return clazz.simpleName == "ClassOption"
+    }
 }

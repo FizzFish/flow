@@ -5,8 +5,9 @@ import soot.Unit
 import soot.jimple.internal.JNopStmt
 
 internal class HeapValuesEnvImpl(node: Unit) : HeapValuesEnv(node) {
-   public constructor(p: IPath) : this(p.getNode())
-   public companion object {
-      public final val phantomUnit: JNopStmt
-   }
+    constructor(p: IPath) : this(p.getNode())
+
+    companion object {
+        val phantomUnit: JNopStmt = TODO("FIXME — initialize phantomUnit")
+    }
 }

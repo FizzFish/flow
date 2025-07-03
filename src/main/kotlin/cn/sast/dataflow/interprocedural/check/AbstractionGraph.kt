@@ -9,209 +9,131 @@ import soot.jimple.infoflow.data.Abstraction
 import soot.toolkits.graph.DirectedGraph
 
 @SourceDebugExtension(["SMAP\nAbstractionGraph.kt\nKotlin\n*S Kotlin\n*F\n+ 1 AbstractionGraph.kt\ncn/sast/dataflow/interprocedural/check/AbstractionGraph\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n*L\n1#1,239:1\n360#2,7:240\n360#2,7:247\n360#2,7:254\n*S KotlinDebug\n*F\n+ 1 AbstractionGraph.kt\ncn/sast/dataflow/interprocedural/check/AbstractionGraph\n*L\n60#1:240,7\n119#1:247,7\n123#1:254,7\n*E\n"])
-public abstract class AbstractionGraph : DirectedGraph<Abstraction> {
-   public final val sink: Abstraction
-   public final val absChain: ArrayList<Abstraction>
+abstract class AbstractionGraph : DirectedGraph<Abstraction> {
+    val sink: Abstraction
+    val absChain: ArrayList<Abstraction> = ArrayList()
 
-   public final lateinit var unitToSuccs: IdentityHashMap<Abstraction, ArrayList<Abstraction>>
-      internal set
+    lateinit var unitToSuccs: IdentityHashMap<Abstraction, ArrayList<Abstraction>>
+        internal set
 
-   public final lateinit var unitToPreds: IdentityHashMap<Abstraction, ArrayList<Abstraction>>
-      internal set
+    lateinit var unitToPreds: IdentityHashMap<Abstraction, ArrayList<Abstraction>>
+        internal set
 
-   public final lateinit var mHeads: ArrayList<Abstraction>
-      internal set
+    lateinit var mHeads: ArrayList<Abstraction>
+        internal set
 
-   public final lateinit var mTails: ArrayList<Abstraction>
-      internal set
+    lateinit var mTails: ArrayList<Abstraction>
+        internal set
 
-   open fun AbstractionGraph(sink: Abstraction) {
-      this.sink = sink;
-      this.absChain = new ArrayList<>();
-      val abstractionQueue: LinkedList = new LinkedList();
-      abstractionQueue.add(this.sink);
-      val set: java.util.Set = Collections.newSetFromMap(new IdentityHashMap());
+    constructor(sink: Abstraction) {
+        this.sink = sink
+        val abstractionQueue = LinkedList<Abstraction>()
+        abstractionQueue.add(this.sink)
+        val set = Collections.newSetFromMap(IdentityHashMap<Abstraction, Boolean>())
 
-      while (!abstractionQueue.isEmpty()) {
-         val var10000: Any = abstractionQueue.remove(0);
-         val abstraction: Abstraction = var10000 as Abstraction;
-         this.absChain.add(var10000 as Abstraction);
-         if (abstraction.getSourceContext() != null) {
-            if (_Assertions.ENABLED && abstraction.getPredecessor() != null) {
-               throw new AssertionError("Assertion failed");
+        while (abstractionQueue.isNotEmpty()) {
+            val abstraction = abstractionQueue.removeAt(0)
+            absChain.add(abstraction)
+            if (abstraction.sourceContext != null) {
+                if (_Assertions.ENABLED && abstraction.predecessor != null) {
+                    throw AssertionError("Assertion failed")
+                }
+            } else if (set.add(abstraction.predecessor)) {
+                abstractionQueue.add(abstraction.predecessor)
             }
-         } else if (set.add(abstraction.getPredecessor())) {
-            abstractionQueue.add(abstraction.getPredecessor());
-         }
 
-         if (abstraction.getNeighbors() != null) {
-            for (Abstraction nb : abstraction.getNeighbors()) {
-               if (set.add(var8)) {
-                  abstractionQueue.add(var8);
-               }
+            abstraction.neighbors?.forEach { nb ->
+                if (set.add(nb)) {
+                    abstractionQueue.add(nb)
+                }
             }
-         }
-      }
-   }
+        }
+    }
 
-   public fun buildHeadsAndTails() {
-      this.setMTails(new ArrayList<>());
-      this.setMHeads(new ArrayList<>());
-      var var10000: java.util.Iterator = this.absChain.iterator();
-      val var1: java.util.Iterator = var10000;
-
-      while (var1.hasNext()) {
-         var10000 = (java.util.Iterator)var1.next();
-         val s: Abstraction = var10000 as Abstraction;
-         val preds: java.util.Collection = this.getUnitToSuccs().get(var10000 as Abstraction);
-         if (preds == null || preds.isEmpty()) {
-            this.getMTails().add(s);
-         }
-
-         val var5: java.util.Collection = this.getUnitToPreds().get(s);
-         if (var5 == null || var5.isEmpty()) {
-            this.getMHeads().add(s);
-         }
-      }
-   }
-
-   private fun addEdge(
-      currentAbs: Abstraction,
-      target: Abstraction,
-      successors: ArrayList<Abstraction>,
-      unitToPreds: IdentityHashMap<Abstraction, ArrayList<Abstraction>>
-   ) {
-      val preds: java.util.List = successors;
-      var `index$iv`: Int = 0;
-      val var8: java.util.Iterator = preds.iterator();
-
-      var var10000: Int;
-      while (true) {
-         if (!var8.hasNext()) {
-            var10000 = -1;
-            break;
-         }
-
-         if (var8.next() as Abstraction === target) {
-            var10000 = `index$iv`;
-            break;
-         }
-
-         `index$iv`++;
-      }
-
-      if (var10000 == -1) {
-         successors.add(target);
-         var var12: ArrayList = unitToPreds.get(target) as ArrayList;
-         if (var12 == null) {
-            var12 = new ArrayList();
-            unitToPreds.put(target, var12);
-         }
-
-         var12.add(currentAbs);
-      }
-   }
-
-   protected open fun buildUnexceptionalEdges(
-      unitToSuccs: IdentityHashMap<Abstraction, ArrayList<Abstraction>>,
-      unitToPreds: IdentityHashMap<Abstraction, ArrayList<Abstraction>>
-   ) {
-      val var10000: java.util.Iterator = this.absChain.iterator();
-      val unitIt: java.util.Iterator = var10000;
-      var nextAbs: Abstraction = if (var10000.hasNext()) var10000.next() as Abstraction else null;
-
-      while (nextAbs != null) {
-         val currentAbs: Abstraction = nextAbs;
-         nextAbs = if (unitIt.hasNext()) unitIt.next() as Abstraction else null;
-         val successors: ArrayList = new ArrayList();
-         if (currentAbs.getPredecessor() != null) {
-            val var10002: Abstraction = currentAbs.getPredecessor();
-            this.addEdge(currentAbs, var10002, successors, unitToPreds);
-            if (currentAbs.getPredecessor().getNeighbors() != null) {
-               val it: java.util.Set;
-               for (Abstraction targetBox : it) {
-                  this.addEdge(currentAbs, targetBox, successors, unitToPreds);
-               }
+    fun buildHeadsAndTails() {
+        mTails = ArrayList()
+        mHeads = ArrayList()
+        absChain.forEach { s ->
+            val preds = unitToSuccs[s]
+            if (preds == null || preds.isEmpty()) {
+                mTails.add(s)
             }
-         }
 
-         if (!successors.isEmpty()) {
-            successors.trimToSize();
-            unitToSuccs.put(currentAbs, successors);
-         }
-      }
-   }
+            val var5 = unitToPreds[s]
+            if (var5 == null || var5.isEmpty()) {
+                mHeads.add(s)
+            }
+        }
+    }
 
-   public open fun getHeads(): List<Abstraction> {
-      return this.getMHeads();
-   }
+    private fun addEdge(
+        currentAbs: Abstraction,
+        target: Abstraction,
+        successors: ArrayList<Abstraction>,
+        unitToPreds: IdentityHashMap<Abstraction, ArrayList<Abstraction>>
+    ) {
+        if (target !in successors) {
+            successors.add(target)
+            val predList = unitToPreds.getOrPut(target) { ArrayList() }
+            predList.add(currentAbs)
+        }
+    }
 
-   public open fun getTails(): List<Abstraction> {
-      return this.getMTails();
-   }
+    protected open fun buildUnexceptionalEdges(
+        unitToSuccs: IdentityHashMap<Abstraction, ArrayList<Abstraction>>,
+        unitToPreds: IdentityHashMap<Abstraction, ArrayList<Abstraction>>
+    ) {
+        val unitIt = absChain.iterator()
+        var nextAbs = if (unitIt.hasNext()) unitIt.next() else null
 
-   public open fun getPredsOf(s: Abstraction): List<Abstraction> {
-      val var10000: ArrayList = this.getUnitToPreds().get(s);
-      return (java.util.List<Abstraction>)(if (var10000 != null) var10000 else CollectionsKt.emptyList());
-   }
+        while (nextAbs != null) {
+            val currentAbs = nextAbs
+            nextAbs = if (unitIt.hasNext()) unitIt.next() else null
+            val successors = ArrayList<Abstraction>()
+            if (currentAbs.predecessor != null) {
+                val predecessor = currentAbs.predecessor
+                addEdge(currentAbs, predecessor, successors, unitToPreds)
+                currentAbs.predecessor.neighbors?.forEach { targetBox ->
+                    addEdge(currentAbs, targetBox, successors, unitToPreds)
+                }
+            }
 
-   public open fun getSuccsOf(s: Abstraction): List<Abstraction> {
-      val var10000: ArrayList = this.getUnitToSuccs().get(s);
-      return (java.util.List<Abstraction>)(if (var10000 != null) var10000 else CollectionsKt.emptyList());
-   }
+            if (successors.isNotEmpty()) {
+                successors.trimToSize()
+                unitToSuccs[currentAbs] = successors
+            }
+        }
+    }
 
-   public open fun size(): Int {
-      return this.absChain.size();
-   }
+    open fun getHeads(): List<Abstraction> {
+        return mHeads
+    }
 
-   public open operator fun iterator(): MutableIterator<Abstraction> {
-      val var10000: java.util.Iterator = this.absChain.iterator();
-      return var10000;
-   }
+    open fun getTails(): List<Abstraction> {
+        return mTails
+    }
 
-   public fun isTail(abs: Abstraction): Boolean {
-      val `$this$indexOfFirst$iv`: java.util.List = this.getTails();
-      var `index$iv`: Int = 0;
-      val var5: java.util.Iterator = `$this$indexOfFirst$iv`.iterator();
+    open fun getPredsOf(s: Abstraction): List<Abstraction> {
+        return unitToPreds[s] ?: emptyList()
+    }
 
-      var var10000: Int;
-      while (true) {
-         if (!var5.hasNext()) {
-            var10000 = -1;
-            break;
-         }
+    open fun getSuccsOf(s: Abstraction): List<Abstraction> {
+        return unitToSuccs[s] ?: emptyList()
+    }
 
-         if (var5.next() as Abstraction === abs) {
-            var10000 = `index$iv`;
-            break;
-         }
+    open fun size(): Int {
+        return absChain.size
+    }
 
-         `index$iv`++;
-      }
+    override fun iterator(): MutableIterator<Abstraction> {
+        return absChain.iterator()
+    }
 
-      return var10000 != -1;
-   }
+    fun isTail(abs: Abstraction): Boolean {
+        return tails.any { it === abs }
+    }
 
-   public fun isHead(abs: Abstraction): Boolean {
-      val `$this$indexOfFirst$iv`: java.util.List = this.getHeads();
-      var `index$iv`: Int = 0;
-      val var5: java.util.Iterator = `$this$indexOfFirst$iv`.iterator();
-
-      var var10000: Int;
-      while (true) {
-         if (!var5.hasNext()) {
-            var10000 = -1;
-            break;
-         }
-
-         if (var5.next() as Abstraction === abs) {
-            var10000 = `index$iv`;
-            break;
-         }
-
-         `index$iv`++;
-      }
-
-      return var10000 != -1;
-   }
+    fun isHead(abs: Abstraction): Boolean {
+        return heads.any { it === abs }
+    }
 }

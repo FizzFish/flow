@@ -27,155 +27,78 @@ import soot.SootMethod
 import soot.jimple.InvokeExpr
 import soot.jimple.Stmt
 
-public class CheckCallBack(atMethod: SootMethod, define: Checker) {
-   public final val atMethod: SootMethod
-   private final val define: Checker
+public class CheckCallBack(
+    public val atMethod: SootMethod,
+    private val define: Checker
+) {
+    public override fun toString(): String {
+        return "check ${this.atMethod}:  ${this.define.getGuard()}"
+    }
 
-   init {
-      this.atMethod = atMethod;
-      this.define = define;
-   }
+    public suspend fun check(
+        hf: AbstractHeapFactory<IValue>,
+        env: HookEnv,
+        summaryCtxCalleeSite: ICallCB<IHeapValues<IValue>, Builder<IValue>>,
+        icfg: InterproceduralCFG
+    ): IFact<IValue>? {
+        val callStack: CallStackContext = (summaryCtxCalleeSite.getOut() as IFact.Builder).getCallStack()
+        val fact: IFact.Builder = summaryCtxCalleeSite.getOut() as IFact.Builder
 
-   public override fun toString(): String {
-      return "check ${this.atMethod}:  ${this.define.getGuard()}";
-   }
+        for (isBug in SequencesKt.toList(hf.resolve(env, summaryCtxCalleeSite, this.define.getGuard().getExpr()))) {
+            val var10000 = isBug as? CompanionV
+            if (var10000 != null) {
+                val var22 = when (val var21 = var10000 as? PathCompanionV) {
+                    null -> UnknownPath.Companion.v(env)
+                    else -> var21.getPath() ?: UnknownPath.Companion.v(env)
+                }
 
-   public suspend fun check(
-      hf: AbstractHeapFactory<IValue>,
-      env: HookEnv,
-      summaryCtxCalleeSite: ICallCB<IHeapValues<IValue>, Builder<IValue>>,
-      icfg: InterproceduralCFG
-   ): IFact<IValue>? {
-      val callStack: CallStackContext = (summaryCtxCalleeSite.getOut() as IFact.Builder).getCallStack();
-      val fact: IFact.Builder = summaryCtxCalleeSite.getOut() as IFact.Builder;
+                val bool = var10000.getValue()
+                if (bool is ConstVal && FactValuesKt.getBooleanValue$default(bool, false, 1, null) == Boxing.boxBoolean(true)) {
+                    logger.debug { check$lambda$0(this) }
+                    val container = icfg.getMethodOf(env.getNode())
+                    var var23 = Region.Companion.invoke(env.getNode()) ?: Region.Companion.getERROR()
 
-      for (Object isBug : SequencesKt.toList(hf.resolve(env, summaryCtxCalleeSite, this.define.getGuard().getExpr()))) {
-         val var10000: CompanionV = isBug as? CompanionV;
-         if ((isBug as? CompanionV) != null) {
-            label35: {
-               val var21: PathCompanionV = var10000 as? PathCompanionV;
-               if ((var10000 as? PathCompanionV) != null) {
-                  var22 = var21.getPath();
-                  if (var22 != null) {
-                     break label35;
-                  }
-               }
+                    val ctx = object : ProgramStateContext(
+                        this, container, var23.getMutable(), ClassResInfo.Companion.of(container), 
+                        env.getNode(), this.atMethod, this.define.getGuard().getExpr()
+                    ) {
+                        private val args = LinkedHashMap<Any, Any>()
+                        private var callee: SootMethod = this@CheckCallBack.atMethod
+                        private var fileName: String? = null
+                        private var invokeExpr: InvokeExpr? = null
+                        private var method: SootMethod? = null
+                        private var clazz: SootClass? = null
+                        private var field: SootField? = null
 
-               var22 = UnknownPath.Companion.v(env);
+                        override fun getArgs(): Map<Any, Any> = args
+                        override fun getCallee(): SootMethod = callee
+                        override fun setCallee(var1: SootMethod) { callee = var1 }
+                        override fun getFileName(): String? = fileName
+                        override fun setFileName(var1: String?) { fileName = var1 }
+                        override fun getInvokeExpr(): InvokeExpr? = invokeExpr
+                        override fun setInvokeExpr(var1: InvokeExpr?) { invokeExpr = var1 }
+                        override fun getMethod(): SootMethod? = method
+                        override fun setMethod(var1: SootMethod?) { method = var1 }
+                        override fun getClazz(): SootClass? = clazz
+                        override fun setClazz(var1: SootClass?) { clazz = var1 }
+                        override fun getField(): SootField? = field
+                        override fun setField(var1: SootField?) { field = var1 }
+                    }
+                    this.define.getEnv().invoke(ctx)
+                    env.getCtx().report(var22, ctx, this.define)
+                }
             }
+        }
 
-            val bool: Any = var10000.getValue();
-            if (bool is ConstVal && FactValuesKt.getBooleanValue$default(bool as IValue, false, 1, null) == Boxing.boxBoolean(true)) {
-               logger.debug(CheckCallBack::check$lambda$0);
-               val container: SootMethod = icfg.getMethodOf(env.getNode());
-               var var23: Region = Region.Companion.invoke(env.getNode());
-               if (var23 == null) {
-                  var23 = Region.Companion.getERROR();
-               }
+        return null
+    }
 
-               val ctx: <unrepresentable> = new ProgramStateContext(
-                  this, container, var23.getMutable(), ClassResInfo.Companion.of(container), env.getNode(), this.atMethod, this.define.getGuard().getExpr()
-               ) {
-                  private final java.util.Map<Object, Object> args;
-                  private SootMethod callee;
-                  private java.lang.String fileName;
-                  private InvokeExpr invokeExpr;
-                  private SootMethod method;
-                  private SootClass clazz;
-                  private SootField field;
+    @JvmStatic
+    private fun check$lambda$0(this$0: CheckCallBack): Any {
+        return "found a bug at: method: ${this$0.atMethod}. define = ${this$0.define}"
+    }
 
-                  {
-                     val var10002: IBugResInfo = `$super_call_param$2`;
-                     super(`$super_call_param$1`, var10002, `$super_call_param$3` as Stmt, `$container`, `$super_call_param$4`, `$super_call_param$5`);
-                     this.args = new LinkedHashMap<>();
-                     this.callee = `$receiver`.getAtMethod();
-                  }
-
-                  @Override
-                  public java.util.Map<Object, Object> getArgs() {
-                     return this.args;
-                  }
-
-                  @Override
-                  public SootMethod getCallee() {
-                     return this.callee;
-                  }
-
-                  @Override
-                  public void setCallee(SootMethod var1) {
-                     this.callee = var1;
-                  }
-
-                  @Override
-                  public java.lang.String getFileName() {
-                     return this.fileName;
-                  }
-
-                  @Override
-                  public void setFileName(java.lang.String var1) {
-                     this.fileName = var1;
-                  }
-
-                  @Override
-                  public InvokeExpr getInvokeExpr() {
-                     return this.invokeExpr;
-                  }
-
-                  @Override
-                  public void setInvokeExpr(InvokeExpr var1) {
-                     this.invokeExpr = var1;
-                  }
-
-                  @Override
-                  public SootMethod getMethod() {
-                     return this.method;
-                  }
-
-                  @Override
-                  public void setMethod(SootMethod var1) {
-                     this.method = var1;
-                  }
-
-                  @Override
-                  public SootClass getClazz() {
-                     return this.clazz;
-                  }
-
-                  @Override
-                  public void setClazz(SootClass var1) {
-                     this.clazz = var1;
-                  }
-
-                  @Override
-                  public SootField getField() {
-                     return this.field;
-                  }
-
-                  @Override
-                  public void setField(SootField var1) {
-                     this.field = var1;
-                  }
-               };
-               this.define.getEnv().invoke(ctx);
-               env.getCtx().report(var22, ctx, this.define);
-            }
-         }
-      }
-
-      return null;
-   }
-
-   @JvmStatic
-   fun `check$lambda$0`(`this$0`: CheckCallBack): Any {
-      return "found a bug at: method: ${`this$0`.atMethod}. define = ${`this$0`.define}";
-   }
-
-   @JvmStatic
-   fun `logger$lambda$1`(): Unit {
-      return Unit.INSTANCE;
-   }
-
-   public companion object {
-      private final val logger: KLogger
-   }
+    public companion object {
+        private val logger: KLogger
+    }
 }

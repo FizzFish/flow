@@ -9,40 +9,31 @@ import kotlin.jvm.internal.SourceDebugExtension
 public const val CONVERT_TO_SECONDS: Double = 1.0E9
 
 public fun retainDecimalPlaces(value: Double, scale: Int, roundingMode: RoundingMode = RoundingMode.HALF_EVEN): Double {
-   return if (java.lang.Double.isInfinite(value) || java.lang.Double.isNaN(value)) value else new BigDecimal(value).setScale(scale, roundingMode).doubleValue();
+    return if (value.isInfinite() || value.isNaN()) value else BigDecimal(value).setScale(scale, roundingMode).toDouble()
 }
 
 @JvmSynthetic
-fun `retainDecimalPlaces$default`(var0: Double, var2: Int, var3: RoundingMode, var4: Int, var5: Any): Double {
-   if ((var4 and 4) != 0) {
-      var3 = RoundingMode.HALF_EVEN;
-   }
-
-   return retainDecimalPlaces(var0, var2, var3);
+internal fun retainDecimalPlaces$default(value: Double, scale: Int, roundingMode: RoundingMode?, flags: Int): Double {
+    val actualRoundingMode = if ((flags and 4) != 0) RoundingMode.HALF_EVEN else roundingMode!!
+    return retainDecimalPlaces(value, scale, actualRoundingMode)
 }
 
 public fun Number?.nanoTimeInSeconds(scale: Int = 3): Double {
-   if (`$this$nanoTimeInSeconds` != null) {
-      val var2: java.lang.Double = `$this$nanoTimeInSeconds`.doubleValue();
-      val it: Double = var2.doubleValue();
-      val var10000: java.lang.Double = if (!java.lang.Double.isInfinite(it) && !java.lang.Double.isNaN(it)) var2 else null;
-      if (var10000 != null) {
-         return retainDecimalPlaces$default(var10000 / 1.0E9, scale, null, 4, null);
-      }
-   }
-
-   return -1.0;
+    if (this != null) {
+        val doubleValue = this.toDouble()
+        if (!doubleValue.isInfinite() && !doubleValue.isNaN()) {
+            return retainDecimalPlaces$default(doubleValue / CONVERT_TO_SECONDS, scale, null, 4)
+        }
+    }
+    return -1.0
 }
 
 @JvmSynthetic
-fun `nanoTimeInSeconds$default`(var0: java.lang.Number, var1: Int, var2: Int, var3: Any): Double {
-   if ((var2 and 1) != 0) {
-      var1 = 3;
-   }
-
-   return nanoTimeInSeconds(var0, var1);
+internal fun nanoTimeInSeconds$default(number: Number?, scale: Int, flags: Int): Double {
+    val actualScale = if ((flags and 1) != 0) 3 else scale
+    return nanoTimeInSeconds(number, actualScale)
 }
 
 public fun currentNanoTime(): Long {
-   return System.nanoTime();
+    return System.nanoTime()
 }

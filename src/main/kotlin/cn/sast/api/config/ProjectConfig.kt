@@ -10,61 +10,52 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
 @Serializable
-public data class ProjectConfig(processRegex: ProcessRegex = new ProcessRegex(null, null, null, 7, null)) {
-   @SerialName("process-regex")
-   public final val processRegex: ProcessRegex
+public data class ProjectConfig(
+    @SerialName("process-regex")
+    public val processRegex: ProcessRegex = ProcessRegex(null, null, null, 7, null)
+) {
+    @Transient
+    public var ymlFile: File? = null
 
-   @Transient
-   public final var ymlFile: File?
+    public operator fun component1(): ProcessRegex {
+        return this.processRegex
+    }
 
-   init {
-      this.processRegex = processRegex;
-   }
+    public fun copy(processRegex: ProcessRegex = this.processRegex): ProjectConfig {
+        return ProjectConfig(processRegex)
+    }
 
-   public operator fun component1(): ProcessRegex {
-      return this.processRegex;
-   }
+    public override fun toString(): String {
+        return "ProjectConfig(processRegex=${this.processRegex})"
+    }
 
-   public fun copy(processRegex: ProcessRegex = this.processRegex): ProjectConfig {
-      return new ProjectConfig(processRegex);
-   }
+    public override fun hashCode(): Int {
+        return this.processRegex.hashCode()
+    }
 
-   public override fun toString(): String {
-      return "ProjectConfig(processRegex=${this.processRegex})";
-   }
+    public override operator fun equals(other: Any?): Boolean {
+        if (this === other) {
+            return true
+        } else if (other !is ProjectConfig) {
+            return false
+        } else {
+            return this.processRegex == other.processRegex
+        }
+    }
 
-   public override fun hashCode(): Int {
-      return this.processRegex.hashCode();
-   }
+    @SourceDebugExtension(["SMAP\nProjectConfig.kt\nKotlin\n*S Kotlin\n*F\n+ 1 ProjectConfig.kt\ncn/sast/api/config/ProjectConfig$Companion\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,45:1\n1#2:46\n*E\n"])
+    public companion object {
+        public const val RECORD_FILE_NAME: String = TODO("FIXME — missing constant value")
 
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is ProjectConfig) {
-         return false;
-      } else {
-         return this.processRegex == (other as ProjectConfig).processRegex;
-      }
-   }
+        public fun load(yamlFile: File): ProjectConfig {
+            val var2 = Yaml.default
+                .decodeFromString(serializer(), yamlFile.readText())
+            (var2 as ProjectConfig).ymlFile = yamlFile
+            return var2
+        }
 
-   fun ProjectConfig() {
-      this(null, 1, null);
-   }
-
-   @SourceDebugExtension(["SMAP\nProjectConfig.kt\nKotlin\n*S Kotlin\n*F\n+ 1 ProjectConfig.kt\ncn/sast/api/config/ProjectConfig$Companion\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,45:1\n1#2:46\n*E\n"])
-   public companion object {
-      public const val RECORD_FILE_NAME: String
-
-      public fun load(yamlFile: File): ProjectConfig {
-         val var2: Any = Yaml.Companion
-            .getDefault()
-            .decodeFromString(this.serializer() as DeserializationStrategy, FilesKt.readText$default(yamlFile, null, 1, null));
-         (var2 as ProjectConfig).setYmlFile(yamlFile);
-         return var2 as ProjectConfig;
-      }
-
-      public fun serializer(): KSerializer<ProjectConfig> {
-         return ProjectConfig.$serializer.INSTANCE as KSerializer<ProjectConfig>;
-      }
-   }
+        public fun serializer(): KSerializer<ProjectConfig> {
+            return ProjectConfig.serializer()
+        }
+    }
 }

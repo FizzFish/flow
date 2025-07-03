@@ -1,41 +1,49 @@
 package cn.sast.dataflow.interprocedural.override.lang
 
-import cn.sast.dataflow.interprocedural.analysis.*
-import cn.sast.dataflow.interprocedural.check.callback.CallerSiteCBImpl.EvalCall
+import cn.sast.dataflow.interprocedural.analysis.ACheckCallAnalysis
+import cn.sast.dataflow.interprocedural.analysis.IHeapValues
+import cn.sast.dataflow.interprocedural.analysis.IValue
+import cn.sast.dataflow.interprocedural.analysis.SummaryHandlePackage
+import cn.sast.dataflow.interprocedural.check.callback.CallerSiteCBImpl
 import com.feysh.corax.config.api.utils.UtilsKt
-import mu.KotlinLogging
 import kotlin.reflect.KCallable
+import mu.KLogger
+import mu.KotlinLogging
 
-/**
- * 简单 Debug hook：打印 `break()` 与 `print(any)`。
- */
-class Debug : SummaryHandlePackage<IValue> {
+public class Debug : SummaryHandlePackage<IValue> {
+    public override fun ACheckCallAnalysis.register() {
+        val logger: KLogger = KotlinLogging.logger { "Debug.register" }
+        this.evalCallAtCaller(UtilsKt.getSootSignature(TODO("FIXME — unrepresentable instance") as KCallable<*>), ::register$lambda$2)
+        this.evalCallAtCaller(UtilsKt.getSootSignature(TODO("FIXME — unrepresentable instance") as KCallable<*>), ::register$lambda$4)
+    }
 
-   private val logger = KotlinLogging.logger {}
+    @JvmStatic
+    fun register$lambda$0() {
+    }
 
-   override fun ACheckCallAnalysis.register() {
-      // 函数引用
-      val breakSig = UtilsKt.getSootSignature((::breakPoint as KCallable<*>))
-      val printSig = UtilsKt.getSootSignature((::printValue as KCallable<*>))
+    @JvmStatic
+    fun register$lambda$2$lambda$1(): Any {
+        return "debug break"
+    }
 
-      // break()
-      evalCallAtCaller(breakSig) { eval ->
-         logger.debug { "debug break" }
-      }
+    @JvmStatic
+    fun register$lambda$2(logger: KLogger, this$evalCallAtCaller: CallerSiteCBImpl.EvalCall) {
+        logger.debug { register$lambda$2$lambda$1() }
+    }
 
-      // print(Object)
-      evalCallAtCaller(printSig) { eval ->
-         logger.debug { "debug print(${eval.arg(0)})" }
-      }
-   }
+    @JvmStatic
+    fun register$lambda$4$lambda$3(res: IHeapValues): Any {
+        return "debug print($res)"
+    }
 
-   /* ---------- 实际业务方法（仅签名占位） ---------- */
+    @JvmStatic
+    fun register$lambda$4(logger: KLogger, this$evalCallAtCaller: CallerSiteCBImpl.EvalCall) {
+        logger.debug { register$lambda$4$lambda$3(TODO("FIXME — missing res parameter")) }
+    }
 
-   @Suppress("UNUSED_PARAMETER")
-   fun breakPoint() = Unit
-
-   @Suppress("UNUSED_PARAMETER")
-   fun printValue(any: Any?) = Unit
-
-   companion object { fun v() = Debug() }
+    public companion object {
+        public fun v(): Debug {
+            return Debug()
+        }
+    }
 }

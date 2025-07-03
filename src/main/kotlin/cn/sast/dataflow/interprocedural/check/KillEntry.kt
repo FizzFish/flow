@@ -9,45 +9,29 @@ import java.util.LinkedHashSet
 import kotlinx.collections.immutable.PersistentList
 import soot.SootMethod
 
-public class KillEntry(method: SootMethod, env: HeapValuesEnv) {
-   public final val method: SootMethod
-   public final val env: HeapValuesEnv
-   public final val entries: MutableSet<EntryPath>
-   public final val factory: IReNew<IValue>
+public class KillEntry(public val method: SootMethod, public val env: HeapValuesEnv) {
+    public val entries: MutableSet<EntryPath> = LinkedHashSet()
+    public val factory: IReNew<IValue> = EntryReplace()
 
-   init {
-      this.method = method;
-      this.env = env;
-      this.entries = new LinkedHashSet<>();
-      this.factory = new KillEntry.EntryReplace(this, null, 1, null);
-   }
+    internal inner class EntryReplace(
+        private val special: PersistentList<ReferenceContext> = TODO("FIXME — initialize special properly")
+    ) : IReNew<IValue> {
+        override fun checkNeedReplace(c: CompanionV<IValue>): CompanionV<IValue> {
+            val p = EntryPath.Companion.v(special, this@KillEntry.method, this@KillEntry.env)
+            this@KillEntry.entries.add(p)
+            return when (c) {
+                is CompanionValueOfConst -> CompanionValueOfConst(c.getValue(), p, c.getAttr())
+                is CompanionValueImpl1 -> CompanionValueImpl1(c.getValue(), p)
+                else -> throw NotImplementedError()
+            }
+        }
 
-   internal inner class EntryReplace(special: PersistentList<ReferenceContext> = ...) : IReNew<IValue> {
-      public final val special: PersistentList<ReferenceContext>
+        override fun context(value: Any): IReNew<IValue> {
+            return EntryReplace(special.add(value as ReferenceContext))
+        }
 
-      init {
-         this.this$0 = `this$0`;
-         this.special = special;
-      }
-
-      public override fun checkNeedReplace(c: CompanionV<IValue>): CompanionV<IValue> {
-         val p: EntryPath = EntryPath.Companion.v(this.special, this.this$0.getMethod(), this.this$0.getEnv());
-         this.this$0.getEntries().add(p);
-         if (c is CompanionValueOfConst) {
-            return new CompanionValueOfConst((c as CompanionValueOfConst).getValue(), p, (c as CompanionValueOfConst).getAttr());
-         } else if (c is CompanionValueImpl1) {
-            return new CompanionValueImpl1((c as CompanionValueImpl1).getValue(), p);
-         } else {
-            throw new NotImplementedError(null, 1, null);
-         }
-      }
-
-      public override fun context(value: Any): IReNew<IValue> {
-         return this.this$0.new EntryReplace(this.this$0, this.special.add(value as ReferenceContext));
-      }
-
-      fun checkNeedReplace(old: IValue): IValue? {
-         return IReNew.DefaultImpls.checkNeedReplace(this, old);
-      }
-   }
+        override fun checkNeedReplace(old: IValue): IValue? {
+            return IReNew.DefaultImpls.checkNeedReplace(this, old)
+        }
+    }
 }

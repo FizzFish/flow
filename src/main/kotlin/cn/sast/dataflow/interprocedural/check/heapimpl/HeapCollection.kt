@@ -7,24 +7,27 @@ import cn.sast.dataflow.interprocedural.analysis.IHeapValues
 import cn.sast.dataflow.interprocedural.analysis.IReNew
 import kotlinx.collections.immutable.PersistentMap
 
-public class HeapCollection<E>(element: PersistentMap<Int, IHeapValues<Any>>, unreferenced: IHeapValues<Any>?) : HeapKVData(element, unreferenced) {
-   public open fun isValidKey(key: Int?): Boolean? {
-      return true;
-   }
+public class HeapCollection<E>(
+    element: PersistentMap<Int, IHeapValues<Any>>,
+    unreferenced: IHeapValues<Any>?
+) : HeapKVData<Int, Any>(element, unreferenced) {
+    public open fun isValidKey(key: Int?): Boolean? {
+        return true
+    }
 
-   public override fun getName(): String {
-      return "Collection";
-   }
+    public override fun getName(): String {
+        return "Collection"
+    }
 
-   public override fun builder(): IHeapKVData.Builder<Int, Any> {
-      val var10002: kotlinx.collections.immutable.PersistentMap.Builder = this.getMap().builder();
-      val var10003: IHeapValues = this.getUnreferenced();
-      return (new HeapCollectionBuilder<>(var10002, if (var10003 != null) var10003.builder() else null)) as IHeapKVDataBuilder<Integer, E>;
-   }
+    public override fun builder(): IHeapKVData.Builder<Int, Any> {
+        val var10002 = this.getMap().builder()
+        val var10003 = this.getUnreferenced()
+        return HeapCollectionBuilder(var10002, var10003?.builder()) as IHeapKVData.Builder<Int, Any>
+    }
 
-   public override fun cloneAndReNewObjects(re: IReNew<Any>): IData<Any> {
-      val b: IHeapKVData.Builder = this.builder();
-      b.cloneAndReNewObjects(re);
-      return b.build();
-   }
+    public override fun cloneAndReNewObjects(re: IReNew<Any>): IData<Any> {
+        val b = this.builder()
+        b.cloneAndReNewObjects(re)
+        return b.build()
+    }
 }

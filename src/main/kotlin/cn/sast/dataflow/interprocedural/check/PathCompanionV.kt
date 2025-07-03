@@ -1,5 +1,5 @@
 package cn.sast.dataflow.interprocedural.check
 
 public interface PathCompanionV {
-   public val path: IPath
+    public val path: IPath
 }

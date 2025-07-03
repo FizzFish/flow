@@ -8,56 +8,43 @@ import soot.SootMethod
 import soot.Unit
 import soot.jimple.InvokeExpr
 
-public open class DefaultEnv(region: Mutable,
-      fileName: String? = null,
-      callSite: Unit? = null,
-      callee: SootMethod? = null,
-      container: SootMethod? = null,
-      invokeExpr: InvokeExpr? = null,
-      clazz: SootClass? = null,
-      field: SootField? = null,
-      method: SootMethod? = null
-   )
-   : AbstractBugEnv {
-   public open var region: Mutable
-      internal final set
+public open class DefaultEnv(
+    region: Mutable,
+    fileName: String? = null,
+    callSite: Unit? = null,
+    callee: SootMethod? = null,
+    container: SootMethod? = null,
+    invokeExpr: InvokeExpr? = null,
+    clazz: SootClass? = null,
+    field: SootField? = null,
+    method: SootMethod? = null
+) : AbstractBugEnv {
+    public open var region: Mutable = region
+        internal set
 
-   public open var fileName: String?
-      internal final set
+    public open var fileName: String? = fileName
+        internal set
 
-   public open var callSite: Unit?
-      internal final set
+    public open var callSite: Unit? = callSite
+        internal set
 
-   public open var callee: SootMethod?
-      internal final set
+    public open var callee: SootMethod? = callee
+        internal set
 
-   public open var container: SootMethod?
-      internal final set
+    public open var container: SootMethod? = container
+        internal set
 
-   public open var invokeExpr: InvokeExpr?
-      internal final set
+    public open var invokeExpr: InvokeExpr? = invokeExpr
+        internal set
 
-   public open var clazz: SootClass?
-      internal final set
+    public open var clazz: SootClass? = clazz
+        internal set
 
-   public open var field: SootField?
-      internal final set
+    public open var field: SootField? = field
+        internal set
 
-   public open var method: SootMethod?
-      internal final set
+    public open var method: SootMethod? = method
+        internal set
 
-   public open val args: MutableMap<Any, Any>
-
-   init {
-      this.region = region;
-      this.fileName = fileName;
-      this.callSite = callSite;
-      this.callee = callee;
-      this.container = container;
-      this.invokeExpr = invokeExpr;
-      this.clazz = clazz;
-      this.field = field;
-      this.method = method;
-      this.args = new LinkedHashMap<>();
-   }
+    public open val args: MutableMap<Any, Any> = LinkedHashMap()
 }

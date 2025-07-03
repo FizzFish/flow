@@ -12,23 +12,26 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.util.Arrays
 import mu.KLogger
+import kotlin.Lazy
+import kotlin.LazyThreadSafetyMode.NONE
+import kotlin.lazy
 
 public class CheckerInfoCompareOptions : OptionGroup("Compare checker_info.json Options", null, 2) {
-   private final val compareRight: File by OptionWithValuesKt.required(
-         FileKt.file$default(
+    private val compareRight: File by OptionWithValuesKt.required(
+        FileKt.file$default(
             OptionWithValuesKt.option$default(
-               this as ParameterHolder,
-               new java.lang.String[0],
-               "Compare and diff an other checker_info.json",
-               null,
-               false,
-               null,
-               null,
-               null,
-               null,
-               false,
-               508,
-               null
+                this as ParameterHolder,
+                emptyArray(),
+                "Compare and diff an other checker_info.json",
+                null,
+                false,
+                null,
+                null,
+                null,
+                null,
+                false,
+                508,
+                null
             ),
             true,
             false,
@@ -38,29 +41,24 @@ public class CheckerInfoCompareOptions : OptionGroup("Compare checker_info.json 
             false,
             58,
             null
-         )
-      )
-      .provideDelegate(this as ParameterHolder, $$delegatedProperties[0])
-         private final get() {
-         return this.compareRight$delegate.getValue(this, $$delegatedProperties[0]) as File;
-      }
+        )
+    )
 
-
-   private final val compareLeft: File by OptionWithValuesKt.required(
-         FileKt.file$default(
+    private val compareLeft: File by OptionWithValuesKt.required(
+        FileKt.file$default(
             OptionWithValuesKt.option$default(
-               this as ParameterHolder,
-               new java.lang.String[0],
-               "Compare and diff an other checker_info.json",
-               null,
-               false,
-               null,
-               null,
-               null,
-               null,
-               false,
-               508,
-               null
+                this as ParameterHolder,
+                emptyArray(),
+                "Compare and diff an other checker_info.json",
+                null,
+                false,
+                null,
+                null,
+                null,
+                null,
+                false,
+                508,
+                null
             ),
             true,
             false,
@@ -70,57 +68,52 @@ public class CheckerInfoCompareOptions : OptionGroup("Compare checker_info.json 
             false,
             58,
             null
-         )
-      )
-      .provideDelegate(this as ParameterHolder, $$delegatedProperties[1])
-         private final get() {
-         return this.compareLeft$delegate.getValue(this, $$delegatedProperties[1]) as File;
-      }
+        )
+    )
 
+    public fun run() {
+        val output$delegate: Lazy<Path> = lazy(NONE) { run$lambda$3(this) }
+        val var10000 = CheckerInfoCompare()
+        val var10001 = run$lambda$4(output$delegate)
+        val var10002 = Resource.INSTANCE
+        val var10003 = compareLeft.path
+        val var2: IResFile = var10002.fileOf(var10003)
+        val var3 = Resource.INSTANCE
+        val var10004 = compareRight.path
+        var10000.compareWith(var10001, var2, var3.fileOf(var10004))
+        System.exit(0)
+        throw RuntimeException("System.exit returned normally, while it was supposed to halt JVM.")
+    }
 
-   public fun run() {
-      val `output$delegate`: Lazy = LazyKt.lazy(CheckerInfoCompareOptions::run$lambda$3);
-      val var10000: CheckerInfoCompare = new CheckerInfoCompare();
-      val var10001: Path = run$lambda$4(`output$delegate`);
-      val var10002: Resource = Resource.INSTANCE;
-      val var10003: java.lang.String = this.getCompareLeft().getPath();
-      val var2: IResFile = var10002.fileOf(var10003);
-      val var3: Resource = Resource.INSTANCE;
-      val var10004: java.lang.String = this.getCompareRight().getPath();
-      var10000.compareWith(var10001, var2, var3.fileOf(var10004));
-      System.exit(0);
-      throw new RuntimeException("System.exit returned normally, while it was supposed to halt JVM.");
-   }
+    @JvmStatic
+    private fun run$lambda$3$lambda$2$lambda$1(it: Path): Any {
+        return "The compare output path is: $it"
+    }
 
-   @JvmStatic
-   fun `run$lambda$3$lambda$2$lambda$1`(`$it`: Path): Any {
-      return "The compare output path is: $`$it`";
-   }
+    @JvmStatic
+    private fun run$lambda$3(this$0: CheckerInfoCompareOptions): Path {
+        var var1: Path = this$0.compareLeft.toPath().parent.resolve("compare-result")
+        val var10001 = emptyArray<LinkOption>()
+        if (!Files.exists(var1, Arrays.copyOf(var10001, var10001.size))) {
+            Files.createDirectories(var1)
+        }
 
-   @JvmStatic
-   fun `run$lambda$3`(`this$0`: CheckerInfoCompareOptions): Path {
-      var var1: Path = `this$0`.getCompareLeft().toPath().getParent().resolve("compare-result");
-      val var10001: Array<LinkOption> = new LinkOption[0];
-      if (!Files.exists(var1, Arrays.copyOf(var10001, var10001.length))) {
-         Files.createDirectories(var1);
-      }
+        var1 = var1.normalize()
+        logger.info { run$lambda$3$lambda$2$lambda$1(var1) }
+        return var1
+    }
 
-      var1 = var1.normalize();
-      logger.info(CheckerInfoCompareOptions::run$lambda$3$lambda$2$lambda$1);
-      return var1;
-   }
+    @JvmStatic
+    private fun run$lambda$4(output$delegate: Lazy<Path>): Path {
+        return output$delegate.value
+    }
 
-   @JvmStatic
-   fun `run$lambda$4`(`$output$delegate`: Lazy<? extends Path>): Path {
-      return `$output$delegate`.getValue() as Path;
-   }
+    @JvmStatic
+    private fun logger$lambda$5() {
+        return Unit
+    }
 
-   @JvmStatic
-   fun `logger$lambda$5`(): Unit {
-      return Unit.INSTANCE;
-   }
-
-   public companion object {
-      private final val logger: KLogger
-   }
+    public companion object {
+        private val logger: KLogger
+    }
 }

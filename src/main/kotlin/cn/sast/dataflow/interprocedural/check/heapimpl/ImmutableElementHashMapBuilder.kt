@@ -5,12 +5,13 @@ import cn.sast.dataflow.interprocedural.analysis.IHeapValues
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.PersistentMap.Builder
 
-public open class ImmutableElementHashMapBuilder<K, V>(fields: Builder<Any, IHeapValues<Any>>,
-   unreferenced: cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder<Any>?
+public open class ImmutableElementHashMapBuilder<K, V>(
+    fields: Builder<Any, IHeapValues<Any>>,
+    unreferenced: cn.sast.dataflow.interprocedural.analysis.IHeapValues.Builder<Any>?
 ) : HeapDataBuilder(fields, unreferenced) {
-   public open fun build(): ImmutableElementHashMap<Any, Any> {
-      val var10002: PersistentMap = this.getMap().build();
-      val var10003: IHeapValues.Builder = this.getUnreferenced();
-      return new ImmutableElementHashMap<>(var10002, if (var10003 != null) var10003.build() else null);
-   }
+    public open fun build(): ImmutableElementHashMap<Any, Any> {
+        val map: PersistentMap<Any, IHeapValues<Any>> = this.getMap().build()
+        val unreferenced: IHeapValues<Any>? = this.getUnreferenced()?.build()
+        return ImmutableElementHashMap(map, unreferenced)
+    }
 }

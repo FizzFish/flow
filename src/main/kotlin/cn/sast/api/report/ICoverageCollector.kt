@@ -6,14 +6,11 @@ import java.nio.charset.Charset
 import org.jacoco.core.analysis.ICounter
 
 public interface ICoverageCollector {
-   public val enableCoveredTaint: Boolean
+    public val enableCoveredTaint: Boolean
 
-   public abstract fun cover(coverInfo: CoverData) {
-   }
+    public fun cover(coverInfo: CoverData)
 
-   public abstract suspend fun flush(output: IResDirectory, sourceEncoding: Charset) {
-   }
+    public suspend fun flush(output: IResDirectory, sourceEncoding: Charset)
 
-   public abstract suspend fun getCoveredLineCounter(allSourceFiles: Set<IResFile>, encoding: Charset): ICounter {
-   }
+    public suspend fun getCoveredLineCounter(allSourceFiles: Set<IResFile>, encoding: Charset): ICounter
 }

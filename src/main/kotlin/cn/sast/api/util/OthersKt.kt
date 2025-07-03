@@ -9,61 +9,45 @@ import kotlin.jvm.internal.SourceDebugExtension
 import kotlin.reflect.KClass
 import soot.SootClass
 
-public final val isDummy: Boolean
-   public final get() {
-      if (!(`$this$isDummy`.getName() == "dummyMainMethod")) {
-         val var10000: SootClass = `$this$isDummy`.getDeclaringClass();
-         if (!isDummy(var10000)) {
-            return false;
-         }
-      }
+public val SootClass.isDummy: Boolean
+    get() {
+        if (name != "dummyMainMethod") {
+            val declaringClass = declaringClass
+            if (!declaringClass.isDummy) {
+                return false
+            }
+        }
+        return true
+    }
 
-      return true;
-   }
+public val SootClass.isDummy: Boolean
+    get() = name.contains("dummy", ignoreCase = true)
 
+public val SootClass.isSyntheticComponent: Boolean
+    get() = name.contains("synthetic", ignoreCase = true) || isDummy
 
-public final val isDummy: Boolean
-   public final get() {
-      val var10000: java.lang.String = `$this$isDummy`.getName();
-      return StringsKt.contains(var10000, "dummy", true);
-   }
+public val SootClass.isSyntheticComponent: Boolean
+    get() = name.contains("synthetic", ignoreCase = true) || isDummy
 
-
-public final val isSyntheticComponent: Boolean
-   public final get() {
-      val var10000: java.lang.String = `$this$isSyntheticComponent`.getName();
-      return StringsKt.contains(var10000, "synthetic", true) || isDummy(`$this$isSyntheticComponent`);
-   }
-
-
-public final val isSyntheticComponent: Boolean
-   public final get() {
-      val var10000: java.lang.String = `$this$isSyntheticComponent`.getName();
-      return StringsKt.contains(var10000, "synthetic", true) || isDummy(`$this$isSyntheticComponent`);
-   }
-
-
-public final val skipPathSensitive: Boolean
-   public final get() {
-      return isDummy(`$this$skipPathSensitive`) || isSyntheticComponent(`$this$skipPathSensitive`);
-   }
-
+public val SootClass.skipPathSensitive: Boolean
+    get() = isDummy || isSyntheticComponent
 
 public fun KClass<*>.asInputStream(): InputStream {
-   val var10000: InputStream = JvmClassMappingKt.getJavaClass(`$this$asInputStream`)
-      .getResourceAsStream("/${StringsKt.replace$default(SootUtilsKt.getClassName(`$this$asInputStream`), '.', '/', false, 4, null)}.class");
-   return var10000;
+    return java.getResourceAsStream(
+        "/${java.name.replace('.', '/')}.class"
+    )
 }
 
 public fun printMilliseconds(message: String, body: () -> Unit) {
-   val `start$iv`: Long = System.currentTimeMillis();
-   body.invoke();
-   System.out.println("$message: ${System.currentTimeMillis() - `start$iv`} ms");
+    val start = System.currentTimeMillis()
+    body()
+    println("$message: ${System.currentTimeMillis() - start} ms")
 }
 
 public fun methodSignatureToMatcher(signature: String): IMethodMatch? {
-   return if (StringsKt.startsWith$default(signature, "<", false, 2, null) && StringsKt.endsWith$default(signature, ">", false, 2, null))
-      MatchUtilsKt.matchSoot(signature)
-      else
-      (if (StringsKt.contains$default(signature, ":", false, 2, null)) MatchUtilsKt.matchSimpleSig(signature) else null);
+    return when {
+        signature.startsWith("<") && signature.endsWith(">") -> MatchUtilsKt.matchSoot(signature)
+        signature.contains(":") -> MatchUtilsKt.matchSimpleSig(signature)
+        else -> null
+    }
 }

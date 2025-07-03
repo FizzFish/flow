@@ -5,109 +5,66 @@ import kotlin.jvm.internal.Intrinsics
 import kotlin.jvm.internal.SourceDebugExtension
 
 @SourceDebugExtension(["SMAP\nReport.kt\nKotlin\n*S Kotlin\n*F\n+ 1 Report.kt\ncn/sast/api/report/MacroExpansion\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,451:1\n1#2:452\n*E\n"])
-public data class MacroExpansion(message: String, classname: IBugResInfo, line: Int, column: Int, range: Range? = null) : java.lang.Comparable<MacroExpansion> {
-   public final val message: String
-   public final val classname: IBugResInfo
-   public final val line: Int
-   public final val column: Int
-   public final val range: Range?
+data class MacroExpansion(
+    val message: String,
+    val classname: IBugResInfo,
+    val line: Int,
+    val column: Int,
+    val range: Range? = null
+) : Comparable<MacroExpansion> {
+    override fun compareTo(other: MacroExpansion): Int {
+        var result = message.compareTo(other.message)
+        if (result != 0) return result
+        
+        result = classname.compareTo(other.classname)
+        if (result != 0) return result
+        
+        result = Intrinsics.compare(line, other.line)
+        if (result != 0) return result
+        
+        result = Intrinsics.compare(column, other.column)
+        if (result != 0) return result
+        
+        return ComparatorUtilsKt.compareToNullable(range, other.range)
+    }
 
-   init {
-      this.message = message;
-      this.classname = classname;
-      this.line = line;
-      this.column = column;
-      this.range = range;
-   }
+    operator fun component1(): String = message
 
-   public open operator fun compareTo(other: MacroExpansion): Int {
-      var var3: Int = this.message.compareTo(other.message);
-      var var2: Int = if (var3.intValue() != 0) var3 else null;
-      if (var2 != null) {
-         return var2.intValue();
-      } else {
-         var3 = this.classname.compareTo(other.classname);
-         var2 = if (var3.intValue() != 0) var3 else null;
-         if (var2 != null) {
-            return var2.intValue();
-         } else {
-            var3 = Intrinsics.compare(this.line, other.line);
-            var2 = if (var3.intValue() != 0) var3 else null;
-            if (var2 != null) {
-               return var2.intValue();
-            } else {
-               var3 = Intrinsics.compare(this.column, other.column);
-               var2 = if (var3.intValue() != 0) var3 else null;
-               label51:
-               if (var2 != null) {
-                  return var2.intValue();
-               } else {
-                  var3 = ComparatorUtilsKt.compareToNullable(this.range, other.range);
-                  var2 = if (var3.intValue() != 0) var3 else null;
-                  return if (var2 != null) var2.intValue() else 0;
-               }
-            }
-         }
-      }
-   }
+    operator fun component2(): IBugResInfo = classname
 
-   public operator fun component1(): String {
-      return this.message;
-   }
+    operator fun component3(): Int = line
 
-   public operator fun component2(): IBugResInfo {
-      return this.classname;
-   }
+    operator fun component4(): Int = column
 
-   public operator fun component3(): Int {
-      return this.line;
-   }
+    operator fun component5(): Range? = range
 
-   public operator fun component4(): Int {
-      return this.column;
-   }
+    fun copy(
+        message: String = this.message,
+        classname: IBugResInfo = this.classname,
+        line: Int = this.line,
+        column: Int = this.column,
+        range: Range? = this.range
+    ): MacroExpansion {
+        return MacroExpansion(message, classname, line, column, range)
+    }
 
-   public operator fun component5(): Range? {
-      return this.range;
-   }
+    override fun toString(): String {
+        return "MacroExpansion(message=$message, classname=$classname, line=$line, column=$column, range=$range)"
+    }
 
-   public fun copy(
-      message: String = this.message,
-      classname: IBugResInfo = this.classname,
-      line: Int = this.line,
-      column: Int = this.column,
-      range: Range? = this.range
-   ): MacroExpansion {
-      return new MacroExpansion(message, classname, line, column, range);
-   }
+    override fun hashCode(): Int {
+        return (((message.hashCode() * 31 + classname.hashCode()) * 31 + line.hashCode()) * 31 + column.hashCode()) * 31 +
+            (range?.hashCode() ?: 0)
+    }
 
-   public override fun toString(): String {
-      return "MacroExpansion(message=${this.message}, classname=${this.classname}, line=${this.line}, column=${this.column}, range=${this.range})";
-   }
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is MacroExpansion) return false
 
-   public override fun hashCode(): Int {
-      return (((this.message.hashCode() * 31 + this.classname.hashCode()) * 31 + Integer.hashCode(this.line)) * 31 + Integer.hashCode(this.column)) * 31
-         + (if (this.range == null) 0 else this.range.hashCode());
-   }
-
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is MacroExpansion) {
-         return false;
-      } else {
-         val var2: MacroExpansion = other as MacroExpansion;
-         if (!(this.message == (other as MacroExpansion).message)) {
-            return false;
-         } else if (!(this.classname == var2.classname)) {
-            return false;
-         } else if (this.line != var2.line) {
-            return false;
-         } else if (this.column != var2.column) {
-            return false;
-         } else {
-            return this.range == var2.range;
-         }
-      }
-   }
+        return message == other.message &&
+            classname == other.classname &&
+            line == other.line &&
+            column == other.column &&
+            range == other.range
+    }
 }

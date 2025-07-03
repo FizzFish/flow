@@ -9,66 +9,58 @@ import cn.sast.dataflow.interprocedural.analysis.IValue
 import cn.sast.dataflow.interprocedural.check.heapimpl.ImmutableElementHashMap
 
 public class PathFactoryImpl : PathFactory<IValue> {
-   public open fun setModelData(env: HeapValuesEnv, obj: IValue, mt: Any, data: IData<IValue>): IData<IValue> {
-      return data.cloneAndReNewObjects(new IReNew<IValue>(data, env, obj, mt) {
-         {
-            this.$data = `$data`;
-            this.$env = `$env`;
-            this.$obj = `$obj`;
-            this.$mt = `$mt`;
-         }
+    public open fun setModelData(env: HeapValuesEnv, obj: IValue, mt: Any, data: IData<IValue>): IData<IValue> {
+        return data.cloneAndReNewObjects(object : IReNew<IValue> {
+            private val `$data`: IData<IValue> = data
+            private val `$env`: HeapValuesEnv = env
+            private val `$obj`: IValue = obj
+            private val `$mt`: Any = mt
 
-         @Override
-         public CompanionV<IValue> checkNeedReplace(CompanionV<IValue> c) {
-            if (this.$data is ImmutableElementHashMap) {
-               val p: ModelBind = ModelBind.Companion.v(this.$env, this.$obj, this.$mt, this.$data, (c as PathCompanionV).getPath());
-               if (c is CompanionValueOfConst) {
-                  return new CompanionValueOfConst((c as CompanionValueOfConst).getValue(), p, (c as CompanionValueOfConst).getAttr());
-               }
+            override fun checkNeedReplace(c: CompanionV<IValue>): CompanionV<IValue>? {
+                if (this.`$data` is ImmutableElementHashMap) {
+                    val p: ModelBind = ModelBind.Companion.v(this.`$env`, this.`$obj`, this.`$mt`, this.`$data`, (c as PathCompanionV).getPath())
+                    if (c is CompanionValueOfConst) {
+                        return CompanionValueOfConst((c as CompanionValueOfConst).getValue(), p, (c as CompanionValueOfConst).getAttr())
+                    }
 
-               if (c is CompanionValueImpl1) {
-                  return new CompanionValueImpl1((c as CompanionValueImpl1).getValue(), p);
-               }
+                    if (c is CompanionValueImpl1) {
+                        return CompanionValueImpl1((c as CompanionValueImpl1).getValue(), p)
+                    }
+                }
+
+                return null
             }
 
-            return null;
-         }
-
-         public IValue checkNeedReplace(IValue old) {
-            return IReNew.DefaultImpls.checkNeedReplace(this, old);
-         }
-
-         @Override
-         public IReNew<IValue> context(Object value) {
-            return IReNew.DefaultImpls.context(this, value);
-         }
-      });
-   }
-
-   public override fun updatePath(env: HeapValuesEnv, data: IHeapValues<IValue>, newPath: (IValue, IPath) -> IPath): IHeapValues<IValue> {
-      return data.cloneAndReNewObjects(new IReNew<IValue>(newPath) {
-         {
-            this.$newPath = `$newPath`;
-         }
-
-         @Override
-         public CompanionV<IValue> checkNeedReplace(CompanionV<IValue> c) {
-            val p: IPath = this.$newPath.invoke(c.getValue(), (c as PathCompanionV).getPath()) as IPath;
-            if (c is CompanionValueOfConst) {
-               return new CompanionValueOfConst((c as CompanionValueOfConst).getValue(), p, (c as CompanionValueOfConst).getAttr());
-            } else {
-               return new CompanionValueImpl1((c as CompanionValueImpl1).getValue(), p) as? CompanionV;
+            override fun checkNeedReplace(old: IValue): IValue {
+                return IReNew.DefaultImpls.checkNeedReplace(this, old)
             }
-         }
 
-         public IValue checkNeedReplace(IValue old) {
-            return IReNew.DefaultImpls.checkNeedReplace(this, old);
-         }
+            override fun context(value: Any): IReNew<IValue> {
+                return IReNew.DefaultImpls.context(this, value)
+            }
+        })
+    }
 
-         @Override
-         public IReNew<IValue> context(Object value) {
-            return IReNew.DefaultImpls.context(this, value);
-         }
-      });
-   }
+    public override fun updatePath(env: HeapValuesEnv, data: IHeapValues<IValue>, newPath: (IValue, IPath) -> IPath): IHeapValues<IValue> {
+        return data.cloneAndReNewObjects(object : IReNew<IValue> {
+            private val `$newPath`: (IValue, IPath) -> IPath = newPath
+
+            override fun checkNeedReplace(c: CompanionV<IValue>): CompanionV<IValue>? {
+                val p: IPath = this.`$newPath`.invoke(c.getValue(), (c as PathCompanionV).getPath())
+                if (c is CompanionValueOfConst) {
+                    return CompanionValueOfConst((c as CompanionValueOfConst).getValue(), p, (c as CompanionValueOfConst).getAttr())
+                } else {
+                    return CompanionValueImpl1((c as CompanionValueImpl1).getValue(), p)
+                }
+            }
+
+            override fun checkNeedReplace(old: IValue): IValue {
+                return IReNew.DefaultImpls.checkNeedReplace(this, old)
+            }
+
+            override fun context(value: Any): IReNew<IValue> {
+                return IReNew.DefaultImpls.context(this, value)
+            }
+        })
+    }
 }

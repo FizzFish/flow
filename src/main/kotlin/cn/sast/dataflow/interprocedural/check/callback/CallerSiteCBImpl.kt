@@ -23,188 +23,113 @@ import soot.jimple.InvokeExpr
 import soot.jimple.Stmt
 
 @SourceDebugExtension(["SMAP\nCallCallBackImpl.kt\nKotlin\n*S Kotlin\n*F\n+ 1 CallCallBackImpl.kt\ncn/sast/dataflow/interprocedural/check/callback/CallerSiteCBImpl\n+ 2 SootUtils.kt\ncn/sast/api/util/SootUtilsKt\n*L\n1#1,164:1\n310#2:165\n*S KotlinDebug\n*F\n+ 1 CallCallBackImpl.kt\ncn/sast/dataflow/interprocedural/check/callback/CallerSiteCBImpl\n*L\n63#1:165\n*E\n"])
-public class CallerSiteCBImpl(hf: AbstractHeapFactory<IValue>, caller: SootMethod, stmt: Stmt, out: Builder<IValue>, returnType: Type, env: HookEnv) :
-   ICallerSiteCBImpl {
-   public open val hf: AbstractHeapFactory<IValue>
-   public open val caller: SootMethod
-   public open val stmt: Stmt
+class CallerSiteCBImpl(
+    val hf: AbstractHeapFactory<IValue>,
+    val caller: SootMethod,
+    val stmt: Stmt,
+    var out: Builder<IValue>,
+    private val returnType: Type,
+    val env: HookEnv
+) : ICallerSiteCBImpl {
+    val newEnv: AnyNewExprEnv
+        get() = AnyNewExprEnv(caller, stmt as Unit)
 
-   public open var out: Builder<IValue>
-      internal final set
+    val global: IHeapValues<IValue>
+        get() = if (hf.vg.staticFieldTrackingMode != StaticFieldTrackingMode.None)
+            hf.push(env, hf.vg.GLOBAL_SITE).popHV()
+        else
+            hf.empty()
 
-   private final val returnType: Type
-   public open val env: HookEnv
+    var `return`: IHeapValues<IValue>
 
-   public open val newEnv: AnyNewExprEnv
-      public open get() {
-         return new AnyNewExprEnv(this.getCaller(), this.getStmt() as Unit);
-      }
+    val `this`: IHeapValues<IValue>
+        get() = arg(-1)
 
+    init {
+        val definitionStmt = stmt as? DefinitionStmt
+        val leftOp = definitionStmt?.leftOp
+        `return` = hf.push(
+            env,
+            hf.newSummaryVal(
+                env,
+                returnType,
+                leftOp ?: "return" as Serializable
+            )
+        )
+            .markSummaryReturnValueInCalleeSite()
+            .popHV()
+    }
 
-   public open val global: IHeapValues<IValue>
-      public open get() {
-         return if (this.getHf().getVg().getStaticFieldTrackingMode() != StaticFieldTrackingMode.None)
-            this.getHf().push(this.getEnv(), this.getHf().getVg().getGLOBAL_SITE()).popHV()
-            else
-            this.getHf().empty();
-      }
+    override fun argToValue(argIndex: Int): Any {
+        val iee = stmt.invokeExpr
+        val (sootValue, _) = SootUtilsKt.argToOpAndType(iee, argIndex)
+        return sootValue
+    }
 
+    fun arg(argIndex: Int): IHeapValues<IValue> {
+        if (!stmt.containsInvokeExpr()) {
+            throw IllegalStateException("env: $env\nstmt = $stmt\nargIndex=$argIndex")
+        }
+        val iee = stmt.invokeExpr
+        val (value, type) = SootUtilsKt.argToOpAndType(iee, argIndex)
+        return out.getOfSootValue(env, value, type)
+    }
 
-   public open var `return`: IHeapValues<IValue>
-      internal final set
+    class EvalCall(private val delegate: CallerSiteCBImpl) : ICallerSiteCB.IEvalCall<IHeapValues<IValue>, Builder<IValue>>, ICallerSiteCBImpl {
+        var isEvalAble: Boolean = true
+        override val caller: SootMethod get() = delegate.caller
+        override val env: HookEnv get() = delegate.env
+        override val global: IHeapValues<IValue> get() = delegate.global
+        override val hf: AbstractHeapFactory<IValue> get() = delegate.hf
+        override val newEnv: AnyNewExprEnv get() = delegate.newEnv
+        override var out: Builder<IValue> = delegate.out
+        override var `return`: IHeapValues<IValue> = delegate.`return`
+        override val stmt: Stmt get() = delegate.stmt
+        override val `this`: IHeapValues<IValue> get() = delegate.`this`
 
-   public open val `this`: IHeapValues<IValue>
-      public open get() {
-         return this.arg(-1);
-      }
+        override fun emit(fact: IIFact<IValue>) {}
 
+        override fun arg(argIndex: Int): IHeapValues<IValue> = delegate.arg(argIndex)
 
-   init {
-      this.hf = hf;
-      this.caller = caller;
-      this.stmt = stmt;
-      this.out = out;
-      this.returnType = returnType;
-      this.env = env;
-      val var10000: AbstractHeapFactory = this.getHf();
-      val var10001: HeapValuesEnv = this.getEnv();
-      val var10002: AbstractHeapFactory = this.getHf();
-      val var10003: HeapValuesEnv = this.getEnv();
-      val var10004: Type = this.returnType;
-      val `$this$leftOp$iv`: Unit = this.getStmt() as Unit;
-      val var10005: Value = if ((`$this$leftOp$iv` as? DefinitionStmt) != null) (`$this$leftOp$iv` as? DefinitionStmt).getLeftOp() else null;
-      this.return = var10000.push(var10001, var10002.newSummaryVal(var10003, var10004, if (var10005 != null) var10005 as Serializable else "return"))
-         .markSummaryReturnValueInCalleeSite()
-         .popHV();
-   }
+        override fun argToValue(argIndex: Int): Any = delegate.argToValue(argIndex)
+    }
 
-   public override fun argToValue(argIndex: Int): Any {
-      val iee: InvokeExpr = this.getStmt().getInvokeExpr();
-      val var3: Pair = SootUtilsKt.argToOpAndType(iee, argIndex);
-      val sootValue: Value = var3.component1() as Value;
-      val type: Type = var3.component2() as Type;
-      return sootValue;
-   }
+    class PostCall(private val delegate: CallerSiteCBImpl) : ICallerSiteCB.IPostCall<IHeapValues<IValue>, Builder<IValue>>, ICallerSiteCBImpl {
+        override val caller: SootMethod get() = delegate.caller
+        override val env: HookEnv get() = delegate.env
+        override val global: IHeapValues<IValue> get() = delegate.global
+        override val hf: AbstractHeapFactory<IValue> get() = delegate.hf
+        override val newEnv: AnyNewExprEnv get() = delegate.newEnv
+        override var out: Builder<IValue> = delegate.out
+        override var `return`: IHeapValues<IValue> = delegate.`return`
+        override val stmt: Stmt get() = delegate.stmt
+        override val `this`: IHeapValues<IValue> get() = delegate.`this`
 
-   public open fun arg(argIndex: Int): IHeapValues<IValue> {
-      if (!this.getStmt().containsInvokeExpr()) {
-         throw new IllegalStateException(("env: ${this.getEnv()}\nstmt = ${this.getStmt()}\nargIndex=$argIndex").toString());
-      } else {
-         val iee: InvokeExpr = this.getStmt().getInvokeExpr();
-         val var3: Pair = SootUtilsKt.argToOpAndType(iee, argIndex);
-         return this.getOut().getOfSootValue(this.getEnv(), var3.component1() as Value, var3.component2() as Type);
-      }
-   }
+        override fun emit(fact: IIFact<IValue>) {}
 
-   public class EvalCall(delegate: CallerSiteCBImpl) : ICallerSiteCB.IEvalCall<IHeapValues<IValue>, IFact.Builder<IValue>>, ICallerSiteCBImpl {
-      private final val delegate: CallerSiteCBImpl
+        override fun arg(argIndex: Int): IHeapValues<IValue> = delegate.arg(argIndex)
 
-      public open var isEvalAble: Boolean
-         internal final set
+        override fun argToValue(argIndex: Int): Any = delegate.argToValue(argIndex)
+    }
 
-      public open val caller: SootMethod
-      public open val env: HookEnv
-      public open val global: IHeapValues<IValue>
-      public open val hf: AbstractHeapFactory<IValue>
-      public open val newEnv: AnyNewExprEnv
+    class PrevCall(private val delegate: CallerSiteCBImpl) : ICallerSiteCB.IPrevCall<IHeapValues<IValue>, Builder<IValue>>, ICallerSiteCBImpl {
+        override var `return`: IHeapValues<IValue>
+            get() = throw IllegalStateException("prev call has no return")
+            set(_) = throw IllegalStateException("prev call has no return")
 
-      public open var out: Builder<IValue>
-         internal final set
+        override val caller: SootMethod get() = delegate.caller
+        override val env: HookEnv get() = delegate.env
+        override val global: IHeapValues<IValue> get() = delegate.global
+        override val hf: AbstractHeapFactory<IValue> get() = delegate.hf
+        override val newEnv: AnyNewExprEnv get() = delegate.newEnv
+        override var out: Builder<IValue> = delegate.out
+        override val stmt: Stmt get() = delegate.stmt
+        override val `this`: IHeapValues<IValue> get() = delegate.`this`
 
-      public open var `return`: IHeapValues<IValue>
-         internal final set
+        override fun emit(fact: IIFact<IValue>) {}
 
-      public open val stmt: Stmt
-      public open val `this`: IHeapValues<IValue>
+        override fun arg(argIndex: Int): IHeapValues<IValue> = delegate.arg(argIndex)
 
-      init {
-         this.delegate = delegate;
-         this.isEvalAble = true;
-      }
-
-      public fun emit(fact: IIFact<IValue>) {
-      }
-
-      public open fun arg(argIndex: Int): IHeapValues<IValue> {
-         return this.delegate.arg(argIndex);
-      }
-
-      public override fun argToValue(argIndex: Int): Any {
-         return this.delegate.argToValue(argIndex);
-      }
-   }
-
-   public class PostCall(delegate: CallerSiteCBImpl) : ICallerSiteCB.IPostCall<IHeapValues<IValue>, IFact.Builder<IValue>>, ICallerSiteCBImpl {
-      private final val delegate: CallerSiteCBImpl
-      public open val caller: SootMethod
-      public open val env: HookEnv
-      public open val global: IHeapValues<IValue>
-      public open val hf: AbstractHeapFactory<IValue>
-      public open val newEnv: AnyNewExprEnv
-
-      public open var out: Builder<IValue>
-         internal final set
-
-      public open var `return`: IHeapValues<IValue>
-         internal final set
-
-      public open val stmt: Stmt
-      public open val `this`: IHeapValues<IValue>
-
-      init {
-         this.delegate = delegate;
-      }
-
-      public fun emit(fact: IIFact<IValue>) {
-      }
-
-      public open fun arg(argIndex: Int): IHeapValues<IValue> {
-         return this.delegate.arg(argIndex);
-      }
-
-      public override fun argToValue(argIndex: Int): Any {
-         return this.delegate.argToValue(argIndex);
-      }
-   }
-
-   public class PrevCall(delegate: CallerSiteCBImpl) : ICallerSiteCB.IPrevCall<IHeapValues<IValue>, IFact.Builder<IValue>>, ICallerSiteCBImpl {
-      private final val delegate: CallerSiteCBImpl
-
-      public open var `return`: IHeapValues<IValue>
-         public open get() {
-            throw new IllegalStateException("prev call has no return".toString());
-         }
-
-         public open set(value) {
-            throw new IllegalStateException("prev call has no return".toString());
-         }
-
-
-      public open val caller: SootMethod
-      public open val env: HookEnv
-      public open val global: IHeapValues<IValue>
-      public open val hf: AbstractHeapFactory<IValue>
-      public open val newEnv: AnyNewExprEnv
-
-      public open var out: Builder<IValue>
-         internal final set
-
-      public open val stmt: Stmt
-      public open val `this`: IHeapValues<IValue>
-
-      init {
-         this.delegate = delegate;
-      }
-
-      public fun emit(fact: IIFact<IValue>) {
-      }
-
-      public open fun arg(argIndex: Int): IHeapValues<IValue> {
-         return this.delegate.arg(argIndex);
-      }
-
-      public override fun argToValue(argIndex: Int): Any {
-         return this.delegate.argToValue(argIndex);
-      }
-   }
+        override fun argToValue(argIndex: Int): Any = delegate.argToValue(argIndex)
+    }
 }

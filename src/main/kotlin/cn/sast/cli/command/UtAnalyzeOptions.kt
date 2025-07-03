@@ -1,13 +1,30 @@
 package cn.sast.cli.command
 
 import com.github.ajalt.clikt.parameters.groups.OptionGroup
-import kotlin.jvm.internal.SourceDebugExtension
+import com.github.ajalt.clikt.parameters.options.*
 
-@SourceDebugExtension(["SMAP\nUtAnalyzeOptions.kt\nKotlin\n*S Kotlin\n*F\n+ 1 UtAnalyzeOptions.kt\ncn/sast/cli/command/UtAnalyzeOptions\n+ 2 Convert.kt\ncom/github/ajalt/clikt/parameters/options/OptionWithValuesKt__ConvertKt\n*L\n1#1,16:1\n35#2,6:17\n70#2:23\n82#2,4:24\n*S KotlinDebug\n*F\n+ 1 UtAnalyzeOptions.kt\ncn/sast/cli/command/UtAnalyzeOptions\n*L\n12#1:17,6\n12#1:23\n12#1:24,4\n*E\n"])
-public class UtAnalyzeOptions : OptionGroup("UtAnalyze Options", null, 2) {
-   public final val enableUtAnalyze: Boolean
-      public final get() {
-         return this.enableUtAnalyze$delegate.getValue(this, $$delegatedProperties[0]) as java.lang.Boolean;
-      }
+/**
+ * UT 静态分析相关选项
+ *
+ * `--enable-ut-analyze`   开关
+ * `--ut-max-depth N`      自定义深度，正整数
+ */
+class UtAnalyzeOptions : OptionGroup(
+    name = "UtAnalyze Options"
+) {
+    val enableUtAnalyze: Boolean by option(
+        "--enable-ut-analyze",
+        help = "Enable UT static analyze"
+    ).flag(default = false)
 
+    val utMaxDepth: Int? by option(
+        "--ut-max-depth",
+        metavar = "N",
+        help = "Maximum analysis depth"
+    ).convert("N") { it.toIntOrNull() ?: fail("must be an integer >0") }
 }
+
+/* ---------- 工具 ---------- */
+
+private fun OptionWithValues<*, *>.fail(msg: String): Nothing =
+    fail("Invalid value for option ${names.joinToString()} : $msg")

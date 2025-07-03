@@ -6,6 +6,6 @@ import cn.sast.dataflow.interprocedural.analysis.IValue
 import cn.sast.idfa.check.ICallerSiteCB
 import soot.SootMethod
 
-public interface ICallerSiteCBImpl : ICallerSiteCB<IHeapValues<IValue>, IFact.Builder<IValue>>, ICallCBImpl<IHeapValues<IValue>, IFact.Builder<IValue>> {
-   public val caller: SootMethod
+interface ICallerSiteCBImpl : ICallerSiteCB<IHeapValues<IValue>, IFact.Builder<IValue>>, ICallCBImpl<IHeapValues<IValue>, IFact.Builder<IValue>> {
+    val caller: SootMethod
 }

@@ -9,23 +9,25 @@ import cn.sast.dataflow.interprocedural.check.heapimpl.FieldHeapKV
 import kotlinx.collections.immutable.PersistentMap
 import soot.RefType
 
-public class FieldSpace<V>(clz: RefType, fields: PersistentMap<JFieldType, IHeapValues<Any>>, unreferenced: IHeapValues<Any>?) : FieldHeapKV(
-      clz, fields, unreferenced
-   ) {
-   public override fun builder(): IHeapKVData.Builder<JFieldType, Any> {
-      val var10003: RefType = this.getClz();
-      val var10004: kotlinx.collections.immutable.PersistentMap.Builder = this.getMap().builder();
-      val var10005: IHeapValues = this.getUnreferenced();
-      return (new FieldSpaceBuilder<>(this, var10003, var10004, if (var10005 != null) var10005.builder() else null)) as IHeapKVDataBuilder<JFieldType, V>;
-   }
+public class FieldSpace<V>(
+    clz: RefType,
+    fields: PersistentMap<JFieldType, IHeapValues<Any>>,
+    unreferenced: IHeapValues<Any>?
+) : FieldHeapKV(clz, fields, unreferenced) {
+    public override fun builder(): IHeapKVData.Builder<JFieldType, Any> {
+        val var10003: RefType = this.getClz()
+        val var10004 = this.getMap().builder()
+        val var10005: IHeapValues<Any>? = this.getUnreferenced()
+        return FieldSpaceBuilder<Any>(this, var10003, var10004, var10005?.builder()) as IHeapKVData.Builder<JFieldType, Any>
+    }
 
-   public override fun getName(): String {
-      return "field(${this.getClz()})";
-   }
+    public override fun getName(): String {
+        return "field(${this.getClz()})"
+    }
 
-   public override fun cloneAndReNewObjects(re: IReNew<Any>): IData<Any> {
-      val b: IHeapKVData.Builder = this.builder();
-      b.cloneAndReNewObjects(re);
-      return b.build();
-   }
+    public override fun cloneAndReNewObjects(re: IReNew<Any>): IData<Any> {
+        val b = this.builder()
+        b.cloneAndReNewObjects(re)
+        return b.build()
+    }
 }

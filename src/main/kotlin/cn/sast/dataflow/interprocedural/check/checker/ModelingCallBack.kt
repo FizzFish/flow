@@ -16,38 +16,31 @@ import cn.sast.idfa.check.IPrevCB
 import com.feysh.corax.config.api.IStmt
 import soot.SootMethod
 
-public class ModelingCallBack(method: SootMethod, stmt: IStmt) {
-   public final val method: SootMethod
-   public final val stmt: IStmt
+class ModelingCallBack(
+    val method: SootMethod,
+    val stmt: IStmt
+) {
+    override fun toString(): String {
+        return "${this.method}:  ${this.stmt}"
+    }
 
-   init {
-      this.method = method;
-      this.stmt = stmt;
-   }
-
-   public override fun toString(): String {
-      return "${this.method}:  ${this.stmt}";
-   }
-
-   public fun model(
-      icfg: InterproceduralCFG,
-      hf: AbstractHeapFactory<IValue>,
-      env: HookEnv,
-      summaryCtxCalleeSite: ICallCB<IHeapValues<IValue>, Builder<IValue>>
-   ): IFact<IValue>? {
-      this.stmt
-         .accept(
-            new FactModeling(
-                  hf,
-                  if (summaryCtxCalleeSite is IPrevCB)
-                     new StmtModelingEnv(env.getNode(), new PrevCallStmtInfo(this.stmt, this.method))
-                     else
-                     (if (summaryCtxCalleeSite is IPostCB) new StmtModelingEnv(env.getNode(), new PostCallStmtInfo(this.stmt, env.getNode())) else env),
-                  summaryCtxCalleeSite,
-                  summaryCtxCalleeSite.getOut() as IFactBuilder<IValue>
-               )
-               .getVisitor()
-         );
-      return null;
-   }
+    fun model(
+        icfg: InterproceduralCFG,
+        hf: AbstractHeapFactory<IValue>,
+        env: HookEnv,
+        summaryCtxCalleeSite: ICallCB<IHeapValues<IValue>, Builder<IValue>>
+    ): IFact<IValue>? {
+        this.stmt.accept(
+            FactModeling(
+                hf,
+                if (summaryCtxCalleeSite is IPrevCB)
+                    StmtModelingEnv(env.getNode(), PrevCallStmtInfo(this.stmt, this.method))
+                else
+                    if (summaryCtxCalleeSite is IPostCB) StmtModelingEnv(env.getNode(), PostCallStmtInfo(this.stmt, env.getNode())) else env,
+                summaryCtxCalleeSite,
+                summaryCtxCalleeSite.getOut() as IFact.Builder<IValue>
+            ).getVisitor()
+        )
+        return null
+    }
 }

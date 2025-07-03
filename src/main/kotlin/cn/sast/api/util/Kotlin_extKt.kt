@@ -7,34 +7,30 @@ import java.util.Collections
 import java.util.LinkedHashMap
 import java.util.Map.Entry
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.jvm.internal.SourceDebugExtension
 
 public fun <K, V> Map<K, V?>.nonNullValue(): Map<K, V> {
-   val `destination$iv$iv`: java.util.Collection = new ArrayList();
+    val destination = ArrayList<Pair<K, V>>()
 
-   for (Entry element$iv$iv$iv : $this$nonNullValue.entrySet()) {
-      val var10001: Any = `element$iv$iv$iv`.getValue();
-      val var17: Pair = if (var10001 == null) null else TuplesKt.to(`element$iv$iv$iv`.getKey(), var10001);
-      if (var17 != null) {
-         `destination$iv$iv`.add(var17);
-      }
-   }
+    for (element in this.entries) {
+        val value = element.value
+        if (value != null) {
+            destination.add(element.key to value)
+        }
+    }
 
-   return MapsKt.toMap(`destination$iv$iv` as java.util.List);
+    return destination.toMap()
 }
 
 public fun <E> concurrentHashSetOf(vararg pairs: E): MutableSet<E> {
-   val `result$iv`: LinkedHashMap = new LinkedHashMap(RangesKt.coerceAtLeast(MapsKt.mapCapacity(pairs.length), 16));
+    val result = LinkedHashMap<E, Boolean>(maxOf(MapsKt.mapCapacity(pairs.size), 16)
 
-   for (Object element$iv$iv : pairs) {
-      `result$iv`.put(`element$iv$iv`, true);
-   }
+    for (element in pairs) {
+        result[element] = true
+    }
 
-   val var10000: java.util.Set = Collections.newSetFromMap(new ConcurrentHashMap(`result$iv`));
-   return var10000;
+    return Collections.newSetFromMap(ConcurrentHashMap(result))
 }
 
 public fun <E> concurrentHashSetOf(): MutableSet<E> {
-   val var10000: java.util.Set = Collections.newSetFromMap(new ConcurrentHashMap());
-   return var10000;
+    return Collections.newSetFromMap(ConcurrentHashMap<E, Boolean>())
 }

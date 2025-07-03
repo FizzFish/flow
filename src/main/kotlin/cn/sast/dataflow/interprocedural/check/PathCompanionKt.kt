@@ -11,70 +11,41 @@ import java.util.HashSet
 import java.util.Map.Entry
 import kotlin.jvm.internal.SourceDebugExtension
 
-public final val bindDelegate: IValue
-   public final get() {
-      return if (`$this$bindDelegate` is CompanionValueOfConst)
-         (`$this$bindDelegate` as CompanionValueOfConst).getAttr()
-         else
-         `$this$bindDelegate`.getValue() as IValue;
-   }
+public val bindDelegate: IValue
+    get() = if (this is CompanionValueOfConst) {
+        (this as CompanionValueOfConst).getAttr()
+    } else {
+        this.getValue() as IValue
+    }
 
+private val <K, V> Map<K, V>.short: Map<K, V>
+    get() = when (size) {
+        0 -> Collections.emptyMap()
+        1 -> {
+            val entry = entries.iterator().next()
+            Collections.singletonMap(entry.key, entry.value)
+        }
+        else -> this
+    }
 
-private final val short: Map<K, V>
-   private final get() {
-      var var10000: java.util.Map;
-      switch ($this$short.size()) {
-         case 0:
-            val var6: java.util.Map = Collections.emptyMap();
-            var10000 = var6;
-            break;
-         case 1:
-            val var3: Entry = `$this$short`.entrySet().iterator().next() as Entry;
-            val var2: java.util.Map = Collections.singletonMap(var3.getKey(), var3.getValue());
-            var10000 = var2;
-            break;
-         default:
-            var10000 = `$this$short`;
-      }
-
-      return var10000;
-   }
-
-
-private final val short: Set<E>
-   private final get() {
-      var var10000: java.util.Set;
-      switch ($this$short.size()) {
-         case 0:
-            val var4: java.util.Set = Collections.emptySet();
-            var10000 = var4;
-            break;
-         case 1:
-            val var2: java.util.Set = Collections.singleton(`$this$short`.iterator().next());
-            var10000 = var2;
-            break;
-         default:
-            var10000 = `$this$short`;
-      }
-
-      return var10000;
-   }
-
+private val <E> Set<E>.short: Set<E>
+    get() = when (size) {
+        0 -> Collections.emptySet()
+        1 -> Collections.singleton(iterator().next())
+        else -> this
+    }
 
 public fun IHeapValues<IValue>.path(env: HeapValuesEnv): IPath {
-   val var10000: MergePath.Companion = MergePath.Companion;
-   val `$this$mapTo$iv`: java.lang.Iterable = `$this$path`.getValuesCompanion() as java.lang.Iterable;
-   val `destination$iv`: java.util.Collection = new HashSet(`$this$path`.getValuesCompanion().size());
+    val `$this$mapTo$iv`: Iterable<*> = getValuesCompanion() as Iterable<*>
+    val destination = HashSet<IPath>(getValuesCompanion().size)
 
-   for (Object item$iv : $this$mapTo$iv) {
-      val it: CompanionV = `item$iv` as CompanionV;
-      `destination$iv`.add((it as PathCompanionV).getPath());
-   }
+    for (item in `$this$mapTo$iv`) {
+        val it = item as CompanionV
+        destination.add((it as PathCompanionV).path)
+    }
 
-   return var10000.v(env, `destination$iv` as MutableSet<IPath>);
+    return MergePath.Companion.v(env, destination)
 }
 
 @JvmSynthetic
-fun `access$getShort`(`$receiver`: java.util.Map): java.util.Map {
-   return getShort(`$receiver`);
-}
+internal fun access$getShort(receiver: Map<*, *>): Map<*, *> = receiver.short

@@ -7,22 +7,21 @@ import kotlin.jvm.internal.SourceDebugExtension
 import mu.KLogger
 import mu.KotlinLogging
 
-private final val logger: KLogger = KotlinLogging.INSTANCE.logger(ExtSettingsKt::logger$lambda$0)
-internal final val coraxHomePath: String = "${System.getProperty("user.home")}${File.separatorChar}.corax"
+private val logger: KLogger = KotlinLogging.logger {}
+internal val coraxHomePath: String = "${System.getProperty("user.home")}${File.separatorChar}.corax"
 private const val SETTING_FILE_NAME: String = "settings.properties"
-private final val defaultSettingsPath: String
+private val defaultSettingsPath: String = "$coraxHomePath${File.separatorChar}$SETTING_FILE_NAME"
 private const val defaultKeyForSettingsPath: String = "corax.settings.path"
 
-fun `logger$lambda$0`(): Unit {
-   return Unit.INSTANCE;
+private fun logger$lambda$0() {
 }
 
 @JvmSynthetic
-fun `access$getLogger$p`(): KLogger {
-   return logger;
+internal fun access$getLogger$p(): KLogger {
+    return logger
 }
 
 @JvmSynthetic
-fun `access$getDefaultSettingsPath$p`(): java.lang.String {
-   return defaultSettingsPath;
+internal fun access$getDefaultSettingsPath$p(): String {
+    return defaultSettingsPath
 }

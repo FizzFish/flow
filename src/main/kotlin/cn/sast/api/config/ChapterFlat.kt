@@ -1,54 +1,33 @@
 package cn.sast.api.config
 
-public data class ChapterFlat(category: String, severity: String, ruleId: String) {
-   public final val category: String
-   public final val severity: String
-   public final val ruleId: String
+data class ChapterFlat(
+    val category: String,
+    val severity: String,
+    val ruleId: String
+) {
+    operator fun component1(): String = category
 
-   init {
-      this.category = category;
-      this.severity = severity;
-      this.ruleId = ruleId;
-   }
+    operator fun component2(): String = severity
 
-   public operator fun component1(): String {
-      return this.category;
-   }
+    operator fun component3(): String = ruleId
 
-   public operator fun component2(): String {
-      return this.severity;
-   }
+    fun copy(
+        category: String = this.category,
+        severity: String = this.severity,
+        ruleId: String = this.ruleId
+    ): ChapterFlat = ChapterFlat(category, severity, ruleId)
 
-   public operator fun component3(): String {
-      return this.ruleId;
-   }
+    override fun toString(): String =
+        "ChapterFlat(category=$category, severity=$severity, ruleId=$ruleId)"
 
-   public fun copy(category: String = this.category, severity: String = this.severity, ruleId: String = this.ruleId): ChapterFlat {
-      return new ChapterFlat(category, severity, ruleId);
-   }
+    override fun hashCode(): Int =
+        (category.hashCode() * 31 + severity.hashCode()) * 31 + ruleId.hashCode()
 
-   public override fun toString(): String {
-      return "ChapterFlat(category=${this.category}, severity=${this.severity}, ruleId=${this.ruleId})";
-   }
-
-   public override fun hashCode(): Int {
-      return (this.category.hashCode() * 31 + this.severity.hashCode()) * 31 + this.ruleId.hashCode();
-   }
-
-   public override operator fun equals(other: Any?): Boolean {
-      if (this === other) {
-         return true;
-      } else if (other !is ChapterFlat) {
-         return false;
-      } else {
-         val var2: ChapterFlat = other as ChapterFlat;
-         if (!(this.category == (other as ChapterFlat).category)) {
-            return false;
-         } else if (!(this.severity == var2.severity)) {
-            return false;
-         } else {
-            return this.ruleId == var2.ruleId;
-         }
-      }
-   }
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ChapterFlat) return false
+        return category == other.category &&
+                severity == other.severity &&
+                ruleId == other.ruleId
+    }
 }

@@ -7,60 +7,57 @@ import kotlin.jvm.internal.Intrinsics
 import kotlin.jvm.internal.SourceDebugExtension
 
 public fun <T> Comparator<T>.compareTo(a: Collection<T>, b: Collection<T>): Int {
-   val bI: java.util.Iterator = b.iterator();
+    val bI = b.iterator()
 
-   for (Object e : a) {
-      if (!bI.hasNext()) {
-         return 1;
-      }
+    for (e in a) {
+        if (!bI.hasNext()) {
+            return 1
+        }
 
-      val c: Int = `$this$compareTo`.compare(e, bI.next());
-      if (c != 0) {
-         return c;
-      }
-   }
+        val c = compare(e, bI.next())
+        if (c != 0) {
+            return c
+        }
+    }
 
-   return if (bI.hasNext()) -1 else 0;
+    return if (bI.hasNext()) -1 else 0
 }
 
 public fun <K : Comparable<K>, V : Comparable<V>> Comparator<Pair<K, V>>.compareToMap(a: Map<K, V>, b: Map<K, V>): Int {
-   val bSorted: Int = Intrinsics.compare(a.size(), b.size());
-   val aSorted: Int = if (bSorted.intValue() != 0) bSorted else null;
-   return if (aSorted != null)
-      aSorted.intValue()
-      else
-      compareTo(
-         `$this$compareToMap`,
-         CollectionsKt.sortedWith(MapsKt.toList(a), `$this$compareToMap`),
-         CollectionsKt.sortedWith(MapsKt.toList(b), `$this$compareToMap`)
-      );
+    val bSorted = Intrinsics.compare(a.size, b.size)
+    val aSorted = if (bSorted != 0) bSorted else null
+    return if (aSorted != null)
+        aSorted
+    else
+        compareTo(
+            this,
+            a.toList().sortedWith(this),
+            b.toList().sortedWith(this)
+        )
 }
 
 public fun <K : Comparable<K>, V : Comparable<V>> Map<K, V>.compareToMap(other: Map<K, V>): Int {
-   return compareToMap(
-      ComparisonsKt.then(new ComparatorUtilsKt$compareToMap$$inlined$compareBy$1(), new ComparatorUtilsKt$compareToMap$$inlined$compareBy$2()),
-      `$this$compareToMap`,
-      other
-   );
+    return Comparator<Pair<K, V>> { p1, p2 -> p1.first.compareTo(p2.first) }
+        .thenComparator { p1, p2 -> p1.second.compareTo(p2.second) }
+        .compareToMap(this, other)
 }
 
 public fun <E : Comparable<E>> Collection<E>.compareToCollection(other: Collection<E>): Int {
-   return compareTo(new ComparatorUtilsKt$compareToCollection$$inlined$compareBy$1(), `$this$compareToCollection`, other);
+    return Comparator<E> { a, b -> a.compareTo(b) }.compareTo(this, other)
 }
 
 public fun <T : Comparable<T>> T?.compareToNullable(other: T?): Int {
-   if (`$this$compareToNullable` == null && other == null) {
-      return 0;
-   } else if (`$this$compareToNullable` == null) {
-      return 1;
-   } else {
-      label26:
-      if (other == null) {
-         return -1;
-      } else {
-         val var3: Int = `$this$compareToNullable`.compareTo(other);
-         val var2: Int = if (var3.intValue() != 0) var3 else null;
-         return if (var2 != null) var2.intValue() else 0;
-      }
-   }
+    if (this == null && other == null) {
+        return 0
+    } else if (this == null) {
+        return 1
+    } else {
+        if (other == null) {
+            return -1
+        } else {
+            val var3 = this.compareTo(other)
+            val var2 = if (var3 != 0) var3 else null
+            return var2 ?: 0
+        }
+    }
 }

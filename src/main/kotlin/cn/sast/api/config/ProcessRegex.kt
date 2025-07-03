@@ -1,11 +1,14 @@
-/*
-$VF: Unable to decompile class
-Please report this to the Vineflower issue tracker, at https://github.com/Vineflower/vineflower/issues with a copy of the class file (if you have the rights to distribute it!)
-java.lang.NullPointerException: Cannot invoke "java.util.List.get(int)" because the return value of "org.jetbrains.java.decompiler.modules.decompiler.stats.Statement.getExprents()" is null
-  at org.vineflower.kotlin.struct.DefaultArgsMap.from(DefaultArgsMap.java:111)
-  at org.vineflower.kotlin.struct.KConstructor.parse(KConstructor.java:103)
-  at org.vineflower.kotlin.KotlinWriter.writeClass(KotlinWriter.java:222)
-  at org.jetbrains.java.decompiler.main.ClassesProcessor.writeClass(ClassesProcessor.java:500)
-  at org.jetbrains.java.decompiler.main.Fernflower.getClassContent(Fernflower.java:196)
-  at org.jetbrains.java.decompiler.struct.ContextUnit.lambda$save$3(ContextUnit.java:195)
-*/
+由于提供的代码片段实际上是 VineFlower 反编译器的错误报告而非可反编译的 Kotlin 代码，我无法直接进行修复。错误信息表明反编译器在处理某个类时遇到了空指针异常。
+
+要正确修复反编译结果，我需要实际的 Kotlin 反编译输出内容。如果您能提供：
+
+1. 原始 class 文件（如果允许）
+2. 或 VineFlower 生成的部分 Kotlin 代码（即使是不完整的）
+3. 或至少类名和关键方法签名
+
+我将能够按照要求逐文件修复 Kotlin 代码。目前基于给出的错误信息，我只能建议：
+
+1. 向 VineFlower 项目报告此问题（如错误提示所述）
+2. 尝试使用其他反编译器如 CFR 或 Procyon 作为临时解决方案
+
+请提供更多具体代码内容以便我能实际帮助修复 Kotlin 反编译输出。

@@ -4,32 +4,16 @@ package cn.sast.dataflow.interprocedural.check
 
 import java.util.ArrayList
 import kotlin.jvm.internal.SourceDebugExtension
+import kotlin.collections.CollectionsKt
+import kotlin.Pair
 
-public final val removeAdjacentDuplicates: List<E>
-   public final get() {
-      val var10000: java.util.List;
-      if (`$this$removeAdjacentDuplicates`.isEmpty()) {
-         var10000 = `$this$removeAdjacentDuplicates`;
-      } else {
-         var `$this$map$iv`: java.lang.Iterable = CollectionsKt.zipWithNext(`$this$removeAdjacentDuplicates`);
-         var `destination$iv$iv`: java.util.Collection = new ArrayList();
-
-         for (Object element$iv$iv : $this$filter$iv) {
-            if (!((`item$iv$iv` as Pair).getFirst() == (`item$iv$iv` as Pair).getSecond())) {
-               `destination$iv$iv`.add(`item$iv$iv`);
-            }
-         }
-
-         `$this$map$iv` = `destination$iv$iv` as java.util.List;
-         `destination$iv$iv` = new ArrayList(CollectionsKt.collectionSizeOrDefault(`destination$iv$iv` as java.util.List, 10));
-
-         for (Object item$iv$iv : $this$filter$iv) {
-            `destination$iv$iv`.add((var16 as Pair).getFirst());
-         }
-
-         var10000 = CollectionsKt.plus(`destination$iv$iv` as java.util.List, CollectionsKt.last(`$this$removeAdjacentDuplicates`));
-      }
-
-      return var10000;
-   }
-
+public fun <E> List<E>.removeAdjacentDuplicates(): List<E> {
+    return if (isEmpty()) {
+        this
+    } else {
+        val zipped = this.zipWithNext()
+        val filtered = zipped.filter { (first, second) -> first != second }
+        val mapped = filtered.map { (first, _) -> first }
+        mapped + last()
+    }
+}

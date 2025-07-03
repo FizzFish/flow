@@ -6,26 +6,17 @@ import com.github.benmanes.caffeine.cache.Interner
 import soot.Unit
 
 public sealed class IPath protected constructor() : InternerEquiv {
-   public abstract val node: Unit
+    public abstract val node: Unit
 
-   @JvmStatic
-   fun {
-      val var10000: Interner = Interner.newWeakInterner();
-      specialWeakInterner = var10000;
-   }
+    public companion object {
+        private val specialWeakInterner: Interner<Any> = Interner.newWeakInterner()
+        private val weakInterner: WeakInternerX
 
-   public companion object {
-      private final val specialWeakInterner: Interner<Any>
-      private final val weakInterner: WeakInternerX
+        val interner: Any
+            get() = weakInterner.intern(this)
 
-      public final val interner: T
-         public final get() {
-            return (T)IPath.access$getWeakInterner$cp().intern(`$this$interner`);
-         }
-
-
-      public fun <T> specialInterner(v: T): T {
-         return (T)IPath.access$getSpecialWeakInterner$cp().intern(v);
-      }
-   }
+        fun <T> specialInterner(v: T): T {
+            return specialWeakInterner.intern(v) as T
+        }
+    }
 }

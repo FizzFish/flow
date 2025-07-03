@@ -103,882 +103,415 @@ import soot.util.JasminOutputStream
 import soot.util.queue.ChunkedQueue
 import soot.util.queue.QueueReader
 
-public final val KClass: KClass<*>
-   public final get() {
-      var var10000: KClass;
-      if (`$this$KClass` is CallableReference) {
-         val var1: KDeclarationContainer = (`$this$KClass` as CallableReference).getOwner();
-         var10000 = var1 as? KClass;
-      } else {
-         label27: {
-            val var3: KParameter = KCallables.getInstanceParameter(`$this$KClass`);
-            if (var3 != null) {
-               val var4: KType = var3.getType();
-               if (var4 != null) {
-                  var5 = var4.getClassifier();
-                  break label27;
-               }
+val KCallable<*>.KClass: KClass<*>
+    get() {
+        val ownerClass = if (this is CallableReference) {
+            owner as? KClass<*>
+        } else {
+            val instanceParam = KCallables.instanceParameter(this)
+            instanceParam?.type?.classifier as? KClass<*>
+        }
+
+        return ownerClass ?: tryConstructor(this) ?: throw IllegalStateException("Can't get parent class for $this")
+    }
+
+val KCallable<*>.paramStringList: List<String>
+    get() = if (this is CallableReference) {
+        val signature = this.signature
+        val desc = AsmUtil.toJimpleDesc(signature.substringAfter("("), Optional.fromNullable(null))
+        desc.removeAt(desc.size - 1)
+        desc.map { UtilsKt.getTypename(it as Type) }
+    } else {
+        val params = parameters.drop(if (KCallables.instanceParameter(this) != null) 1 else 0)
+        params.map {
+            ReflectJvmMapping.getJavaType(it.type).typeName.substringBefore('<')
+        }
+    }
+
+val KCallable<*>.paramSignature: String
+    get() = paramStringList.joinToString(",")
+
+val KCallable<*>.subSignature: String
+    get() = if (this is CallableReference) {
+        val signature = this.signature
+        val sigTypes = AsmUtil.toJimpleDesc(signature.substringAfter("("), Optional.fromNullable(null))
+        val returnType = sigTypes.removeAt(sigTypes.size - 1) as Type
+        "$returnType ${this.name}(${sigTypes.joinToString(",") { UtilsKt.getTypename(it as Type) }})"
+    } else {
+        "${ReflectJvmMapping.getJavaType(returnType).typeName} ${name}(${paramSignature})"
+    }
+
+val KCallable<*>.returnSootType: Type
+    get() {
+        val typeName = if (this is CallableReference) {
+            val signature = this.signature
+            val sigTypes = AsmUtil.toJimpleDesc(signature.substringAfter("("), Optional.fromNullable(null))
+            (sigTypes.removeAt(sigTypes.size - 1) as Type).toString()
+        } else {
+            ReflectJvmMapping.getJavaType(returnType).typeName
+        }
+        return Scene.v().getTypeUnsafe(typeName, true)
+    }
+
+val KCallable<*>.sootClassName: String
+    get() {
+        val ks = KClass
+        return if (ks is ClassBasedDeclarationContainer) {
+            ks.jClass.name
+        } else {
+            ks.qualifiedName ?: throw IllegalStateException("No qualified name for $ks")
+        }
+    }
+
+val KCallable<*>.sootSignature: String
+    get() = "<${sootClassName}: ${subSignature}>"
+
+val KCallable<*>.grabSootMethod: SootMethod?
+    get() = Scene.v().grabMethod(sootSignature)
+
+val KCallable<*>.sootMethod: SootMethod
+    get() = Scene.v().getMethod(sootSignature)
+
+val KClass<*>.sootClass: SootClass
+    get() = Scene.v().getSootClass(KClassesJvm.getJvmName(this))
+
+val KClass<*>.className: String
+    get() = KClassesJvm.getJvmName(this)
+
+val KClass<*>.sootClassUnsafe: SootClass?
+    get() = Scene.v().getSootClassUnsafe(KClassesJvm.getJvmName(this), false)
+
+val Stmt?.invokeExprOrNull: InvokeExpr?
+    get() = (this as? Stmt)?.takeIf { it.containsInvokeExpr() }?.invokeExpr
+
+val Body.invokeExprOrNull: InvokeExpr?
+    get() = if (containsInvokeExpr()) getInvokeExpr() else null
+
+val DefinitionStmt?.leftOp: Value?
+    get() = (this as? DefinitionStmt)?.leftOp
+
+val SootClass.numCode: Int
+    get() {
+        var loc = 0
+        for (sm in methods) {
+            if (sm.hasActiveBody()) {
+                val range = AnalysisCache.G.INSTANCE[SootRangeKey(sm)]
+                if (range != null) {
+                    loc = maxOf(loc, range.first as Int, range.second as Int)
+                }
             }
+        }
+        return loc
+    }
 
-            var5 = null;
-         }
+val SootClass.sourcePath: String?
+    get() = ClassPathUtilKt.getSourcePathModule(this)
 
-         var10000 = var5 as? KClass;
-      }
+val SootClass.possibleSourceFiles: LinkedHashSet<String>
+    get() {
+        val res = linkedSetOf<String>()
+        sourcePath?.let { res.add(it) }
 
-      if (var10000 == null) {
-         var10000 = tryConstructor(`$this$KClass`);
-         if (var10000 == null) {
-            throw new IllegalStateException(("Can't get parent class for $`$this$KClass`").toString());
-         }
-      }
+        val list = linkedSetOf<String>()
+        list.add(SourceLocator.v().getSourceForClass(name.replace(".", "/")))
+        
+        if (name.contains("$")) {
+            list.add(name.split(".").joinToString("/"))
+        }
 
-      return var10000;
-   }
+        for (element in list) {
+            res.addAll(ResourceKt.javaExtensions.map { "$element.$it" })
+        }
+        return res
+    }
 
-
-public final val paramStringList: List<String>
-   public final get() {
-      val var20: java.util.List;
-      if (`$this$paramStringList` is CallableReference) {
-         val var10000: java.lang.String = (`$this$paramStringList` as CallableReference).getSignature();
-         val `$this$map$iv`: java.util.List = AsmUtil.toJimpleDesc(StringsKt.substringAfter$default(var10000, "(", null, 2, null), Optional.fromNullable(null));
-         `$this$map$iv`.remove(`$this$map$iv`.size() - 1);
-         val `$i$f$map`: java.lang.Iterable = `$this$map$iv`;
-         val `$i$f$mapTo`: java.util.Collection = new ArrayList(CollectionsKt.collectionSizeOrDefault(`$this$map$iv`, 10));
-
-         for (Object item$iv$iv : $this$map$iv) {
-            val var9: Type = it as Type;
-            val var19: java.lang.String = UtilsKt.getTypename(var9);
-            `$i$f$mapTo`.add(var19);
-         }
-
-         var20 = `$i$f$mapTo` as java.util.List;
-      } else {
-         val var12: java.lang.Iterable = CollectionsKt.drop(
-            `$this$paramStringList`.getParameters(), if (KCallables.getInstanceParameter(`$this$paramStringList`) != null) 1 else 0
-         );
-         val `destination$iv$iv`: java.util.Collection = new ArrayList(CollectionsKt.collectionSizeOrDefault(var12, 10));
-
-         for (Object item$iv$iv : var12) {
-            val var21: java.lang.String = ReflectJvmMapping.getJavaType((var16 as KParameter).getType()).getTypeName();
-            `destination$iv$iv`.add(StringsKt.substringBefore$default(var21, '<', null, 2, null));
-         }
-
-         var20 = `destination$iv$iv` as java.util.List;
-      }
-
-      return var20;
-   }
-
-
-public final val paramSignature: String
-   public final get() {
-      return CollectionsKt.joinToString$default(getParamStringList(`$this$paramSignature`), ",", null, null, 0, null, null, 62, null);
-   }
-
-
-public final val subSignature: String
-   public final get() {
-      if (`$this$subSignature` is CallableReference) {
-         val var10000: java.lang.String = (`$this$subSignature` as CallableReference).getSignature();
-         val sigTypes: java.util.List = AsmUtil.toJimpleDesc(StringsKt.substringAfter$default(var10000, "(", null, 2, null), Optional.fromNullable(null));
-         val returnType: Type = sigTypes.remove(sigTypes.size() - 1) as Type;
-         return "$returnType ${(`$this$subSignature` as CallableReference).getName()}(${CollectionsKt.joinToString$default(
-            sigTypes, ",", null, null, 0, null, SootUtilsKt::_get_subSignature_$lambda$2, 30, null
-         )})";
-      } else {
-         return "${ReflectJvmMapping.getJavaType(`$this$subSignature`.getReturnType()).getTypeName()} ${`$this$subSignature`.getName()}(${getParamSignature(
-            `$this$subSignature`
-         )})";
-      }
-   }
-
-
-public final val returnSootType: Type
-   public final get() {
-      var var3: java.lang.String;
-      if (`$this$returnSootType` is CallableReference) {
-         var3 = (`$this$returnSootType` as CallableReference).getSignature();
-         val sigTypes: java.util.List = AsmUtil.toJimpleDesc(StringsKt.substringAfter$default(var3, "(", null, 2, null), Optional.fromNullable(null));
-         var3 = (sigTypes.remove(sigTypes.size() - 1) as Type).toString();
-      } else {
-         var3 = ReflectJvmMapping.getJavaType(`$this$returnSootType`.getReturnType()).getTypeName();
-      }
-
-      val var4: Type = Scene.v().getTypeUnsafe(var3, true);
-      return var4;
-   }
-
-
-public final val sootClassName: String
-   public final get() {
-      val ks: KClass = getKClass(`$this$sootClassName`);
-      val var10000: java.lang.String;
-      if (ks is ClassBasedDeclarationContainer) {
-         var10000 = (ks as ClassBasedDeclarationContainer).getJClass().getName();
-      } else {
-         var10000 = ks.getQualifiedName();
-      }
-
-      return var10000;
-   }
-
-
-public final val sootSignature: String
-   public final get() {
-      return "<${getSootClassName(`$this$sootSignature`)}: ${getSubSignature(`$this$sootSignature`)}>";
-   }
-
-
-public final val grabSootMethod: SootMethod?
-   public final get() {
-      return Scene.v().grabMethod(getSootSignature(`$this$grabSootMethod`));
-   }
-
-
-public final val sootMethod: SootMethod
-   public final get() {
-      val var10000: SootMethod = Scene.v().getMethod(getSootSignature(`$this$sootMethod`));
-      return var10000;
-   }
-
-
-public final val sootClass: SootClass
-   public final get() {
-      val var10000: SootClass = Scene.v().getSootClass(KClassesJvm.getJvmName(`$this$sootClass`));
-      return var10000;
-   }
-
-
-public final val className: String
-   public final get() {
-      return KClassesJvm.getJvmName(`$this$className`);
-   }
-
-
-public final val sootClassUnsafe: SootClass?
-   public final get() {
-      return Scene.v().getSootClassUnsafe(KClassesJvm.getJvmName(`$this$sootClassUnsafe`), false);
-   }
-
-
-public final val invokeExprOrNull: InvokeExpr?
-   public final inline get() {
-      return if ((`$this$invokeExprOrNull` as? Stmt) != null)
-         (if ((`$this$invokeExprOrNull` as Stmt).containsInvokeExpr()) (`$this$invokeExprOrNull` as Stmt).getInvokeExpr() else null)
-         else
-         null;
-   }
-
-
-public final val invokeExprOrNull: InvokeExpr?
-   public final inline get() {
-      return if (`$this$invokeExprOrNull`.containsInvokeExpr()) `$this$invokeExprOrNull`.getInvokeExpr() else null;
-   }
-
-
-public final val leftOp: Value?
-   public final inline get() {
-      return if ((`$this$leftOp` as? DefinitionStmt) != null) (`$this$leftOp` as? DefinitionStmt).getLeftOp() else null;
-   }
-
-
-public final val numCode: Int
-   public final get() {
-      var loc: Int = 0;
-
-      for (SootMethod sm : $this$numCode.getMethods()) {
-         if (sm.hasActiveBody()) {
-            val var10000: AnalysisCache.G = AnalysisCache.G.INSTANCE;
-            val range: Pair = var10000.get(new SootRangeKey(sm));
-            if (range != null) {
-               loc = Math.max(Math.max(loc, (range.component1() as java.lang.Number).intValue()), (range.component2() as java.lang.Number).intValue());
-            }
-         }
-      }
-
-      return loc;
-   }
-
-
-public final val sourcePath: String?
-   public final get() {
-      return ClassPathUtilKt.getSourcePathModule(`$this$sourcePath`);
-   }
-
-
-public final val possibleSourceFiles: LinkedHashSet<String>
-   public final get() {
-      val res: LinkedHashSet = new LinkedHashSet();
-      var var10000: java.lang.String = getSourcePath(`$this$possibleSourceFiles`);
-      if (var10000 != null) {
-         res.add(var10000);
-      }
-
-      val list: LinkedHashSet = new LinkedHashSet();
-      val var10001: SourceLocator = SourceLocator.v();
-      val var10002: java.lang.String = `$this$possibleSourceFiles`.getName();
-      list.add(var10001.getSourceForClass(StringsKt.replace$default(var10002, ".", "/", false, 4, null)));
-      var10000 = `$this$possibleSourceFiles`.getName();
-      if (StringsKt.indexOf$default(var10000, "$", 0, false, 6, null) != -1) {
-         val var24: java.lang.String = `$this$possibleSourceFiles`.getName();
-         list.add(
-            CollectionsKt.joinToString$default(
-               StringsKt.split$default(var24, new java.lang.String[]{"."}, false, 0, 6, null), "/", null, null, 0, null, null, 62, null
-            )
-         );
-      }
-
-      val var19: java.lang.Iterable;
-      for (Object element$iv : var19) {
-         val `list$iv`: java.lang.String = `element$iv` as java.lang.String;
-         val `$this$map$iv`: java.lang.Iterable = ResourceKt.getJavaExtensions();
-         val `destination$iv$iv`: java.util.Collection = new ArrayList(CollectionsKt.collectionSizeOrDefault(`$this$map$iv`, 10));
-
-         for (Object item$iv$iv : $this$map$iv) {
-            `destination$iv$iv`.add("$`list$iv`.${`item$iv$iv` as java.lang.String}");
-         }
-
-         CollectionsKt.addAll(res, `destination$iv$iv` as java.util.List);
-      }
-
-      return res;
-   }
-
-
-public final val activeBodyOrNull: Body?
-   public final get() {
-      return if (`$this$activeBodyOrNull`.hasActiveBody()) `$this$activeBodyOrNull`.getActiveBody() else null;
-   }
-
+val SootMethod.activeBodyOrNull: Body?
+    get() = if (hasActiveBody()) activeBody else null
 
 private fun <R> tryConstructor(function: KCallable<R>): KClass<out Any>? {
-   var var3: Class;
-   label21: {
-      val var10000: KFunction = function as? KFunction;
-      if ((function as? KFunction) != null) {
-         val var2: Constructor = ReflectJvmMapping.getJavaConstructor(var10000);
-         if (var2 != null) {
-            var3 = var2.getDeclaringClass();
-            break label21;
-         }
-      }
-
-      var3 = null;
-   }
-
-   return if (var3 != null) JvmClassMappingKt.getKotlinClass(var3) else null;
+    return (function as? KFunction<*>)?.let { 
+        ReflectJvmMapping.getJavaConstructor(it)?.declaringClass?.kotlin
+    }
 }
 
-public fun convertParameterTypes(paramTypes: List<CharSequence>): List<Type> {
-   val parameterTypes: java.util.List = new ArrayList();
-
-   for (java.lang.CharSequence type : paramTypes) {
-      val var10001: Type = Scene.v().getTypeUnsafe(type.toString(), true);
-      parameterTypes.add(var10001);
-   }
-
-   return parameterTypes;
+fun convertParameterTypes(paramTypes: List<CharSequence>): List<Type> {
+    return paramTypes.map { Scene.v().getTypeUnsafe(it.toString(), true) }
 }
 
-public fun <R> KCallable<R>.sootMethodRef(isStatic: Boolean): SootMethodRef {
-   val var10000: SootClass = Scene.v().getSootClass(getSootClassName(`$this$sootMethodRef`));
-   val var3: SootMethodRef = Scene.v()
-      .makeMethodRef(
-         var10000,
-         `$this$sootMethodRef`.getName(),
-         convertParameterTypes(getParamStringList(`$this$sootMethodRef`)),
-         getReturnSootType(`$this$sootMethodRef`),
-         isStatic
-      );
-   return var3;
+fun <R> KCallable<R>.sootMethodRef(isStatic: Boolean): SootMethodRef {
+    return Scene.v().makeMethodRef(
+        Scene.v().getSootClass(sootClassName),
+        name,
+        convertParameterTypes(paramStringList),
+        returnSootType,
+        isStatic
+    )
 }
 
-public fun classSplit(cp: SootClass): Pair<String, String> {
-   val var10000: java.lang.String = cp.getName();
-   return classSplit(var10000);
+fun classSplit(cp: SootClass): Pair<String, String> = classSplit(cp.name)
+
+fun classSplit(cname: String): Pair<String, String> =
+    cname.substringBeforeLast(".", "") to cname.substringAfterLast(".")
+
+fun SootClass.getSourcePathFromAnnotation(): String? {
+    val fixed = getTag("SourceFileTag") as? SourceFileTag ?: return null
+    val source = fixed.sourceFile
+    val var5 = source.substringBeforeLast("..")
+        .substringBeforeLast("/")
+        .substringBeforeLast("\\")
+    
+    if (!ResourceKt.javaExtensions.contains(var5.substringAfterLast("."))) {
+        return null
+    }
+
+    val var6 = classSplit(this).first.replace(".", "/")
+    return if (var6.isEmpty()) var5 else "$var6/$var5"
 }
 
-public fun classSplit(cname: String): Pair<String, String> {
-   return TuplesKt.to(StringsKt.substringBeforeLast(cname, ".", ""), StringsKt.substringAfterLast$default(cname, ".", null, 2, null));
+fun NumericConstant.castTo(toType: Type): Constant? = when {
+    toType is BooleanType -> when (this) {
+        is IntConstant -> IntConstant.v(if (value != 0) 1 else 0)
+        is LongConstant -> IntConstant.v(if (value.toInt() != 0) 1 else 0)
+        is FloatConstant -> IntConstant.v(if (value.toInt() != 0) 1 else 0)
+        is DoubleConstant -> IntConstant.v(if (value.toInt() != 0) 1 else 0)
+        else -> null
+    }
+    toType is ByteType -> when (this) {
+        is IntConstant -> IntConstant.v(value.toByte())
+        is LongConstant -> IntConstant.v(value.toInt().toByte())
+        is FloatConstant -> IntConstant.v(value.toInt().toByte())
+        is DoubleConstant -> IntConstant.v(value.toInt().toByte())
+        else -> null
+    }
+    toType is CharType -> when (this) {
+        is IntConstant -> IntConstant.v(value.toChar().code)
+        is LongConstant -> IntConstant.v(value.toInt().toChar().code)
+        is FloatConstant -> IntConstant.v(value.toInt().toChar().code)
+        is DoubleConstant -> IntConstant.v(value.toInt().toChar().code)
+        else -> null
+    }
+    toType is ShortType -> when (this) {
+        is IntConstant -> IntConstant.v(value.toShort())
+        is LongConstant -> IntConstant.v(value.toInt().toShort())
+        is FloatConstant -> IntConstant.v(value.toInt().toShort())
+        is DoubleConstant -> IntConstant.v(value.toInt().toShort())
+        else -> null
+    }
+    toType is IntType -> when (this) {
+        is IntConstant -> this
+        is LongConstant -> IntConstant.v(value.toInt())
+        is FloatConstant -> IntConstant.v(value.toInt())
+        is DoubleConstant -> IntConstant.v(value.toInt())
+        else -> null
+    }
+    toType is LongType -> when (this) {
+        is IntConstant -> LongConstant.v(value.toLong())
+        is LongConstant -> this
+        is FloatConstant -> LongConstant.v(value.toLong())
+        is DoubleConstant -> LongConstant.v(value.toLong())
+        else -> null
+    }
+    toType is FloatType -> when (this) {
+        is IntConstant -> FloatConstant.v(value.toFloat())
+        is LongConstant -> FloatConstant.v(value.toFloat())
+        is FloatConstant -> this
+        is DoubleConstant -> FloatConstant.v(value.toFloat())
+        else -> null
+    }
+    toType is DoubleType -> when (this) {
+        is IntConstant -> DoubleConstant.v(value.toDouble())
+        is LongConstant -> DoubleConstant.v(value.toDouble())
+        is FloatConstant -> DoubleConstant.v(value.toDouble())
+        is DoubleConstant -> this
+        else -> null
+    }
+    else -> null
 }
 
-public fun SootClass.getSourcePathFromAnnotation(): String? {
-   val fixed: Tag = `$this$getSourcePathFromAnnotation`.getTag("SourceFileTag");
-   val var10000: SourceFileTag = fixed as? SourceFileTag;
-   if ((fixed as? SourceFileTag) == null) {
-      return null;
-   } else {
-      val source: java.lang.String = var10000.getSourceFile();
-      val var5: java.lang.String = StringsKt.substringBeforeLast$default(
-         StringsKt.substringBeforeLast$default(StringsKt.substringBeforeLast$default(source, "..", null, 2, null), "/", null, 2, null), "\\", null, 2, null
-      );
-      if (!ResourceKt.getJavaExtensions().contains(StringsKt.substringAfterLast$default(var5, ".", null, 2, null))) {
-         return null;
-      } else {
-         val var6: java.lang.String = StringsKt.replace$default(
-            classSplit(`$this$getSourcePathFromAnnotation`).getFirst() as java.lang.String, ".", "/", false, 4, null
-         );
-         return if (var6.length() == 0) var5 else "$var6/$var5";
-      }
-   }
+fun Constant.equalEqual(b: Constant, isEq: Boolean): NumericConstant? = when {
+    this is NumericConstant -> if (b !is NumericConstant) {
+        IntConstant.v(0)
+    } else {
+        if (isEq) equalEqual(b) else notEqual(b)
+    }
+    this is StringConstant || this is NullConstant || this is ClassConstant -> {
+        IntConstant.v(if (isEq == (this == b)) 1 else 0)
+    }
+    else -> null
 }
 
-public fun NumericConstant.castTo(toType: Type): Constant? {
-   if (toType is BooleanType) {
-      if (`$this$castTo` is IntConstant) {
-         return IntConstant.v(if ((`$this$castTo` as IntConstant).value != 0) 1 else 0) as Constant;
-      }
-
-      if (`$this$castTo` is LongConstant) {
-         return IntConstant.v(if ((int)(`$this$castTo` as LongConstant).value != 0) 1 else 0) as Constant;
-      }
-
-      if (`$this$castTo` is FloatConstant) {
-         return IntConstant.v(if ((int)(`$this$castTo` as FloatConstant).value != 0) 1 else 0) as Constant;
-      }
-
-      if (`$this$castTo` is DoubleConstant) {
-         return IntConstant.v(if ((int)(`$this$castTo` as DoubleConstant).value != 0) 1 else 0) as Constant;
-      }
-   } else if (toType is ByteType) {
-      if (`$this$castTo` is IntConstant) {
-         return IntConstant.v((byte)(`$this$castTo` as IntConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is LongConstant) {
-         return IntConstant.v((byte)((int)(`$this$castTo` as LongConstant).value)) as Constant;
-      }
-
-      if (`$this$castTo` is FloatConstant) {
-         return IntConstant.v((byte)((int)(`$this$castTo` as FloatConstant).value)) as Constant;
-      }
-
-      if (`$this$castTo` is DoubleConstant) {
-         return IntConstant.v((byte)((int)(`$this$castTo` as DoubleConstant).value)) as Constant;
-      }
-   } else if (toType is CharType) {
-      if (`$this$castTo` is IntConstant) {
-         return IntConstant.v((char)(`$this$castTo` as IntConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is LongConstant) {
-         return IntConstant.v((char)((int)(`$this$castTo` as LongConstant).value)) as Constant;
-      }
-
-      if (`$this$castTo` is FloatConstant) {
-         return IntConstant.v((char)((int)(`$this$castTo` as FloatConstant).value)) as Constant;
-      }
-
-      if (`$this$castTo` is DoubleConstant) {
-         return IntConstant.v((char)((int)(`$this$castTo` as DoubleConstant).value)) as Constant;
-      }
-   } else if (toType is ShortType) {
-      if (`$this$castTo` is IntConstant) {
-         return IntConstant.v((short)(`$this$castTo` as IntConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is LongConstant) {
-         return IntConstant.v((short)((int)(`$this$castTo` as LongConstant).value)) as Constant;
-      }
-
-      if (`$this$castTo` is FloatConstant) {
-         return IntConstant.v((short)((int)(`$this$castTo` as FloatConstant).value)) as Constant;
-      }
-
-      if (`$this$castTo` is DoubleConstant) {
-         return IntConstant.v((short)((int)(`$this$castTo` as DoubleConstant).value)) as Constant;
-      }
-   } else if (toType is IntType) {
-      if (`$this$castTo` is IntConstant) {
-         return `$this$castTo` as Constant;
-      }
-
-      if (`$this$castTo` is LongConstant) {
-         return IntConstant.v((int)(`$this$castTo` as LongConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is FloatConstant) {
-         return IntConstant.v((int)(`$this$castTo` as FloatConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is DoubleConstant) {
-         return IntConstant.v((int)(`$this$castTo` as DoubleConstant).value) as Constant;
-      }
-   } else if (toType is LongType) {
-      if (`$this$castTo` is IntConstant) {
-         return LongConstant.v((long)(`$this$castTo` as IntConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is LongConstant) {
-         return `$this$castTo` as Constant;
-      }
-
-      if (`$this$castTo` is FloatConstant) {
-         return LongConstant.v((long)(`$this$castTo` as FloatConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is DoubleConstant) {
-         return LongConstant.v((long)(`$this$castTo` as DoubleConstant).value) as Constant;
-      }
-   } else if (toType is FloatType) {
-      if (`$this$castTo` is IntConstant) {
-         return FloatConstant.v((float)(`$this$castTo` as IntConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is LongConstant) {
-         return FloatConstant.v((float)(`$this$castTo` as LongConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is FloatConstant) {
-         return `$this$castTo` as Constant;
-      }
-
-      if (`$this$castTo` is DoubleConstant) {
-         return FloatConstant.v((float)(`$this$castTo` as DoubleConstant).value) as Constant;
-      }
-   } else if (toType is DoubleType) {
-      if (`$this$castTo` is IntConstant) {
-         return DoubleConstant.v((double)(`$this$castTo` as IntConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is LongConstant) {
-         return DoubleConstant.v((double)(`$this$castTo` as LongConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is FloatConstant) {
-         return DoubleConstant.v((double)(`$this$castTo` as FloatConstant).value) as Constant;
-      }
-
-      if (`$this$castTo` is DoubleConstant) {
-         return `$this$castTo` as Constant;
-      }
-   }
-
-   return null;
+@Throws(ArithmeticException::class, IllegalArgumentException::class)
+fun evalConstantBinop(expr: Expr, c1: Constant, c2: Constant): NumericConstant? = when (expr) {
+    is AddExpr -> (c1 as NumericConstant).add(c2 as NumericConstant)
+    is SubExpr -> (c1 as NumericConstant).subtract(c2 as NumericConstant)
+    is MulExpr -> (c1 as NumericConstant).multiply(c2 as NumericConstant)
+    is DivExpr -> (c1 as NumericConstant).divide(c2 as NumericConstant)
+    is RemExpr -> (c1 as NumericConstant).remainder(c2 as NumericConstant)
+    is EqExpr -> equalEqual(c1, c2, true)
+    is NeExpr -> equalEqual(c1, c2, false)
+    is GtExpr -> (c1 as NumericConstant).greaterThan(c2 as NumericConstant)
+    is GeExpr -> (c1 as NumericConstant).greaterThanOrEqual(c2 as NumericConstant)
+    is LtExpr -> (c1 as NumericConstant).lessThan(c2 as NumericConstant)
+    is LeExpr -> (c1 as NumericConstant).lessThanOrEqual(c2 as NumericConstant)
+    is AndExpr -> (c1 as ArithmeticConstant).and(c2 as ArithmeticConstant) as NumericConstant
+    is OrExpr -> (c1 as ArithmeticConstant).or(c2 as ArithmeticConstant) as NumericConstant
+    is XorExpr -> (c1 as ArithmeticConstant).xor(c2 as ArithmeticConstant) as NumericConstant
+    is ShlExpr -> (c1 as ArithmeticConstant).shiftLeft(c2 as ArithmeticConstant) as NumericConstant
+    is ShrExpr -> (c1 as ArithmeticConstant).shiftRight(c2 as ArithmeticConstant) as NumericConstant
+    is UshrExpr -> (c1 as ArithmeticConstant).unsignedShiftRight(c2 as ArithmeticConstant) as NumericConstant
+    is CmpExpr -> if (c1 is LongConstant && c2 is LongConstant) c1.cmp(c2) else null
+    is CmpgExpr, is CmplExpr -> if (c1 is RealConstant && c2 is RealConstant) {
+        if (expr is CmpgExpr) c1.cmpg(c2) else c1.cmpl(c2)
+    } else null
+    else -> null
 }
 
-public fun Constant.equalEqual(b: Constant, isEq: Boolean): NumericConstant? {
-   val var10000: NumericConstant;
-   if (`$this$equalEqual` is NumericConstant) {
-      var10000 = if (b !is NumericConstant)
-         IntConstant.v(0) as NumericConstant
-         else
-         (
-            if (isEq)
-               (`$this$equalEqual` as NumericConstant).equalEqual(b as NumericConstant)
-               else
-               (`$this$equalEqual` as NumericConstant).notEqual(b as NumericConstant)
-         );
-   } else if (`$this$equalEqual` !is StringConstant && `$this$equalEqual` !is NullConstant && `$this$equalEqual` !is ClassConstant) {
-      var10000 = null;
-   } else {
-      val equality: Boolean = `$this$equalEqual` == b;
-      var10000 = IntConstant.v(if ((if (isEq) equality else !equality)) 1 else 0) as NumericConstant;
-   }
+@Throws(NumberFormatException::class)
+fun <ToType : Type> StringConstant.cvtNumericConstant(radix: Int, type: ToType): NumericConstant? =
+    value.cvtNumericConstant(radix, type)
 
-   return var10000;
+@Throws(NumberFormatException::class)
+fun <ToType : Type> String.cvtNumericConstant(radix: Int, type: ToType): NumericConstant? {
+    require(radix in 2..36) { "Invalid radix: $radix" }
+    return when (type) {
+        is IntegerType -> IntConstant.v(toInt(radix))
+        is LongType -> LongConstant.v(toLong(radix))
+        is FloatType -> FloatConstant.v(toFloat())
+        is DoubleType -> DoubleConstant.v(toDouble())
+        else -> null
+    }
 }
 
-@Throws(java/lang/ArithmeticException::class, java/lang/IllegalArgumentException::class)
-public fun evalConstantBinop(expr: Expr, c1: Constant, c2: Constant): NumericConstant? {
-   return if (expr is AddExpr)
-      (c1 as NumericConstant).add(c2 as NumericConstant)
-      else
-      (
-         if (expr is SubExpr)
-            (c1 as NumericConstant).subtract(c2 as NumericConstant)
-            else
-            (
-               if (expr is MulExpr)
-                  (c1 as NumericConstant).multiply(c2 as NumericConstant)
-                  else
-                  (
-                     if (expr is DivExpr)
-                        (c1 as NumericConstant).divide(c2 as NumericConstant)
-                        else
-                        (
-                           if (expr is RemExpr)
-                              (c1 as NumericConstant).remainder(c2 as NumericConstant)
-                              else
-                              (
-                                 if (expr is EqExpr)
-                                    equalEqual(c1, c2, true)
-                                    else
-                                    (
-                                       if (expr is NeExpr)
-                                          equalEqual(c1, c2, false)
-                                          else
-                                          (
-                                             if (expr is GtExpr)
-                                                (c1 as NumericConstant).greaterThan(c2 as NumericConstant)
-                                                else
-                                                (
-                                                   if (expr is GeExpr)
-                                                      (c1 as NumericConstant).greaterThanOrEqual(c2 as NumericConstant)
-                                                      else
-                                                      (
-                                                         if (expr is LtExpr)
-                                                            (c1 as NumericConstant).lessThan(c2 as NumericConstant)
-                                                            else
-                                                            (
-                                                               if (expr is LeExpr)
-                                                                  (c1 as NumericConstant).lessThanOrEqual(c2 as NumericConstant)
-                                                                  else
-                                                                  (
-                                                                     if (expr is AndExpr)
-                                                                        (c1 as ArithmeticConstant).and(c2 as ArithmeticConstant) as NumericConstant
-                                                                        else
-                                                                        (
-                                                                           if (expr is OrExpr)
-                                                                              (c1 as ArithmeticConstant).or(c2 as ArithmeticConstant) as NumericConstant
-                                                                              else
-                                                                              (
-                                                                                 if (expr is XorExpr)
-                                                                                    (c1 as ArithmeticConstant).xor(c2 as ArithmeticConstant) as NumericConstant
-                                                                                    else
-                                                                                    (
-                                                                                       if (expr is ShlExpr)
-                                                                                          (c1 as ArithmeticConstant).shiftLeft(c2 as ArithmeticConstant) as NumericConstant
-                                                                                          else
-                                                                                          (
-                                                                                             if (expr is ShrExpr)
-                                                                                                (c1 as ArithmeticConstant).shiftRight(c2 as ArithmeticConstant) as NumericConstant
-                                                                                                else
-                                                                                                (
-                                                                                                   if (expr is UshrExpr)
-                                                                                                      (c1 as ArithmeticConstant)
-                                                                                                         .unsignedShiftRight(c2 as ArithmeticConstant) as NumericConstant
-                                                                                                      else
-                                                                                                      (
-                                                                                                         if (expr is CmpExpr)
-                                                                                                            (
-                                                                                                               if (c1 is LongConstant && c2 is LongConstant)
-                                                                                                                  (c1 as LongConstant).cmp(c2 as LongConstant)
-                                                                                                                  else
-                                                                                                                  null
-                                                                                                            ) as NumericConstant
-                                                                                                            else
-                                                                                                            (
-                                                                                                               if (expr !is CmpgExpr && expr !is CmplExpr)
-                                                                                                                  null
-                                                                                                                  else
-                                                                                                                  (
-                                                                                                                     if (c1 !is RealConstant
-                                                                                                                           || c2 !is RealConstant)
-                                                                                                                        null
-                                                                                                                        else
-                                                                                                                        (
-                                                                                                                           if (expr is CmpgExpr)
-                                                                                                                              (c1 as RealConstant)
-                                                                                                                                 .cmpg(c2 as RealConstant)
-                                                                                                                              else
-                                                                                                                              (
-                                                                                                                                 if (expr is CmplExpr)
-                                                                                                                                    (c1 as RealConstant)
-                                                                                                                                       .cmpl(c2 as RealConstant)
-                                                                                                                                    else
-                                                                                                                                    null
-                                                                                                                              )
-                                                                                                                        )
-                                                                                                                  ) as NumericConstant
-                                                                                                            )
-                                                                                                      )
-                                                                                                )
-                                                                                          )
-                                                                                    )
-                                                                              )
-                                                                        )
-                                                                  )
-                                                            )
-                                                      )
-                                                )
-                                          )
-                                    )
-                              )
-                        )
-                  )
-            )
-      );
+inline fun Constant.accurateType(declareType: () -> Type): Type =
+    if (type is RefLikeType) type else declareType()
+
+fun printToSootClass(dir: String, sClass: SootClass) {
+    val p = Paths.get("$dir${File.separator}${SourceLocator.v().getFileNameFor(sClass, 1)}").toFile()
+    p.parentFile?.mkdirs()
+
+    PrintWriter(OutputStreamWriter(FileOutputStream(p))).use { writer ->
+        Printer.v().printTo(sClass, writer)
+    }
 }
 
-@Throws(java/lang/NumberFormatException::class)
-public fun <ToType : Type> StringConstant.cvtNumericConstant(radix: Int, type: ToType): NumericConstant? {
-   val var10000: java.lang.String = `$this$cvtNumericConstant`.value;
-   return cvtNumericConstant(var10000, radix, type);
+@Throws(Exception::class)
+fun sootClass2JasminClass(sClass: SootClass, out: IResDirectory): IResFile {
+    val fileName = SourceLocator.v().getFileNameFor(sClass, 14)
+    val outClass = out.resolve(fileName).toFile()
+    outClass.mkdirs()
+
+    Files.newOutputStream(outClass.path).use { os ->
+        JasminOutputStream(os).use { jos ->
+            PrintWriter(OutputStreamWriter(jos)).use { writer ->
+                JasminClass(sClass).print(writer)
+            }
+        }
+    }
+    return outClass
 }
 
-@Throws(java/lang/NumberFormatException::class)
-public fun <ToType : Type> String.cvtNumericConstant(radix: Int, type: ToType): NumericConstant? {
-   if (2 > radix || radix >= 37) {
-      return null;
-   } else {
-      return if (type is IntegerType)
-         IntConstant.v(Integer.parseInt(`$this$cvtNumericConstant`, CharsKt.checkRadix(radix))) as NumericConstant
-         else
-         (
-            if (type is LongType)
-               LongConstant.v(java.lang.Long.parseLong(`$this$cvtNumericConstant`, CharsKt.checkRadix(radix))) as NumericConstant
-               else
-               (
-                  if (type is FloatType)
-                     FloatConstant.v(java.lang.Float.parseFloat(`$this$cvtNumericConstant`)) as NumericConstant
-                     else
-                     (DoubleConstant.v(java.lang.Double.parseDouble(`$this$cvtNumericConstant`)) as? NumericConstant)
-               )
-         );
-   }
+fun constOf(v: Any): Pair<Constant, Type> = when (v) {
+    is Constant -> v to v.type
+    is String -> StringConstant.v(v) to Scene.v().getType("java.lang.String")
+    is Boolean -> IntConstant.v(if (v) 1 else 0) to G.v().soot_BooleanType
+    is Int -> IntConstant.v(v) to G.v().soot_IntType
+    is Long -> LongConstant.v(v) to G.v().soot_LongType
+    is Double -> DoubleConstant.v(v) to G.v().soot_DoubleType
+    is Float -> FloatConstant.v(v) to G.v().soot_FloatType
+    is Byte -> IntConstant.v(v.toInt()) to G.v().soot_ByteType
+    is Short -> IntConstant.v(v.toInt()) to G.v().soot_ShortType
+    else -> throw NotImplementedError()
 }
 
-public inline fun Constant.accurateType(declareType: () -> Type): Type {
-   val it: Type = `$this$accurateType`.getType();
-   return if (it is RefLikeType) it else declareType.invoke() as Type;
-}
+fun getCallTargets(
+    type: Type,
+    container: SootMethod? = null,
+    ie: InvokeExpr,
+    appOnly: Boolean = false
+): Iterator<SootMethod> {
+    val methodRef = ie.methodRef
+    val virtualCalls = VirtualCalls.v()
+    val targetsQueue = ChunkedQueue()
+    val iter = targetsQueue.reader()
 
-public fun printToSootClass(dir: String, sClass: SootClass) {
-   val p: File = Paths.get("$dir${File.separator}${SourceLocator.v().getFileNameFor(sClass, 1)}").toFile();
-   if (!p.getParentFile().exists()) {
-      p.getParentFile().mkdirs();
-   }
-
-   val writerOut: PrintWriter = new PrintWriter(new OutputStreamWriter(new FileOutputStream(p)));
-   Printer.v().printTo(sClass, writerOut);
-   writerOut.flush();
-   writerOut.close();
-}
-
-@Throws(java/lang/Exception::class)
-public fun sootClass2JasminClass(sClass: SootClass, out: IResDirectory): IResFile {
-   label19: {
-      val fileName: java.lang.String = SourceLocator.v().getFileNameFor(sClass, 14);
-      val outCLass: IResFile = out.resolve(fileName).toFile();
-      outCLass.mkdirs();
-      val var10002: Path = outCLass.getPath();
-      val var10003: Array<OpenOption> = new OpenOption[0];
-      val var15: OutputStream = Files.newOutputStream(var10002, Arrays.copyOf(var10003, var10003.length));
-      val var4: Closeable = (new JasminOutputStream(var15)) as Closeable;
-      var var5: java.lang.Throwable = null;
-
-      try {
-         try {
-            val writerOut: PrintWriter = new PrintWriter(new OutputStreamWriter((var4 as JasminOutputStream) as OutputStream));
-            new JasminClass(sClass).print(writerOut);
-            writerOut.flush();
-         } catch (var10: java.lang.Throwable) {
-            var5 = var10;
-            throw var10;
-         }
-      } catch (var11: java.lang.Throwable) {
-         CloseableKt.closeFinally(var4, var5);
-      }
-
-      CloseableKt.closeFinally(var4, null);
-   }
-}
-
-public fun constOf(v: Any): Pair<Constant, Type> {
-   val var10000: Pair;
-   if (v is Constant) {
-      var10000 = TuplesKt.to(v, (v as Constant).getType());
-   } else if (v is java.lang.String) {
-      var10000 = TuplesKt.to(StringConstant.v(v as java.lang.String), Scene.v().getType("java.lang.String"));
-   } else if (v is java.lang.Boolean) {
-      var10000 = TuplesKt.to(IntConstant.v(if (v as java.lang.Boolean) 1 else 0), G.v().soot_BooleanType());
-   } else {
-      if (v !is java.lang.Number) {
-         throw new NotImplementedError(null, 1, null);
-      }
-
-      if (v is Int) {
-         var10000 = TuplesKt.to(IntConstant.v((v as java.lang.Number).intValue()), G.v().soot_IntType());
-      } else if (v is java.lang.Long) {
-         var10000 = TuplesKt.to(LongConstant.v((v as java.lang.Number).longValue()), G.v().soot_LongType());
-      } else if (v is java.lang.Double) {
-         var10000 = TuplesKt.to(DoubleConstant.v((v as java.lang.Number).doubleValue()), G.v().soot_DoubleType());
-      } else if (v is java.lang.Float) {
-         var10000 = TuplesKt.to(FloatConstant.v((v as java.lang.Number).floatValue()), G.v().soot_FloatType());
-      } else if (v is java.lang.Byte) {
-         var10000 = TuplesKt.to(IntConstant.v((v as java.lang.Number).byteValue()), G.v().soot_ByteType());
-      } else {
-         if (v !is java.lang.Short) {
-            throw new NotImplementedError(null, 1, null);
-         }
-
-         var10000 = TuplesKt.to(IntConstant.v((v as java.lang.Number).shortValue()), G.v().soot_ShortType());
-      }
-   }
-
-   return var10000;
-}
-
-public fun getCallTargets(type: Type, container: SootMethod? = null, ie: InvokeExpr, appOnly: Boolean = false): Iterator<SootMethod> {
-   val methodRef: SootMethodRef = ie.getMethodRef();
-   val virtualCalls: VirtualCalls = VirtualCalls.v();
-   val targetsQueue: ChunkedQueue = new ChunkedQueue();
-   val var10000: QueueReader = targetsQueue.reader();
-   val iter: java.util.Iterator = var10000 as java.util.Iterator;
-   if (ie is SpecialInvokeExpr) {
-      val var9: SootMethod = virtualCalls.resolveSpecial(methodRef, container, appOnly);
-      if (var9 != null) {
-         targetsQueue.add(var9);
-      }
-
-      return iter;
-   } else {
-      val var11: Type;
-      if (ie is InstanceInvokeExpr) {
-         val var10: Value = (ie as InstanceInvokeExpr).getBase();
-         var11 = (var10 as Local).getType();
-      } else {
-         var11 = methodRef.getDeclaringClass().getType() as Type;
-      }
-
-      virtualCalls.resolve(type, var11, methodRef, container, targetsQueue, appOnly);
-      return iter;
-   }
+    if (ie is SpecialInvokeExpr) {
+        virtualCalls.resolveSpecial(methodRef, container, appOnly)?.let { targetsQueue.add(it) }
+    } else {
+        val baseType = if (ie is InstanceInvokeExpr) {
+            (ie.base as Local).type
+        } else {
+            methodRef.declaringClass.type
+        }
+        virtualCalls.resolve(type, baseType, methodRef, container, targetsQueue, appOnly)
+    }
+    return iter
 }
 
 @JvmSynthetic
-fun `getCallTargets$default`(var0: Type, var1: SootMethod, var2: InvokeExpr, var3: Boolean, var4: Int, var5: Any): java.util.Iterator {
-   if ((var4 and 2) != 0) {
-      var1 = null;
-   }
-
-   if ((var4 and 8) != 0) {
-      var3 = false;
-   }
-
-   return getCallTargets(var0, var1, var2, var3);
+fun getCallTargets$default(
+    type: Type,
+    container: SootMethod?,
+    ie: InvokeExpr,
+    appOnly: Boolean,
+    mask: Int,
+    any: Any?
+): Iterator<SootMethod> {
+    var actualContainer = container
+    var actualAppOnly = appOnly
+    
+    if (mask and 2 != 0) actualContainer = null
+    if (mask and 8 != 0) actualAppOnly = false
+    
+    return getCallTargets(type, actualContainer, ie, actualAppOnly)
 }
 
-public fun SootClass.adjustLevel(level: Int) {
-   if (`$this$adjustLevel`.resolvingLevel() < level) {
-      `$this$adjustLevel`.setResolvingLevel(level);
-   }
+fun SootClass.adjustLevel(level: Int) {
+    if (resolvingLevel() < level) {
+        setResolvingLevel(level)
+    }
 }
 
-public fun SootClass.superClassOrNull(): SootClass? {
-   return if (`$this$superClassOrNull`.hasSuperclass()) `$this$superClassOrNull`.getSuperclass() else null;
-}
+fun SootClass.superClassOrNull(): SootClass? = if (hasSuperclass()) superclass else null
 
 private fun findAncestors(sc: SootClass): List<SootClass> {
-   val superClasses: java.util.List = new ArrayList();
-   val superInterfaces: java.util.List = new ArrayList();
-   if (sc.isInterface()) {
-      superClasses.add(Scene.v().getObjectType().getSootClass());
-      val var5: java.util.Collection = superInterfaces;
-      val var10000: java.util.List = Scene.v().getActiveHierarchy().getSuperinterfacesOfIncluding(sc);
-      CollectionsKt.addAll(var5, var10000);
-   } else {
-      var var15: java.util.Collection = superClasses;
-      var var28: java.util.List = Scene.v().getActiveHierarchy().getSuperclassesOfIncluding(sc);
-      CollectionsKt.addAll(var15, var28);
-      var15 = superInterfaces;
-      var `$this$flatMap$iv`: java.lang.Iterable = superClasses;
-      var `destination$iv$iv`: java.util.Collection = new ArrayList();
+    val superClasses = mutableListOf<SootClass>()
+    val superInterfaces = mutableListOf<SootClass>()
 
-      for (Object element$iv$iv : $this$flatMap$iv) {
-         val var29: Chain = (`element$iv$iv` as SootClass).getInterfaces();
-         CollectionsKt.addAll(`destination$iv$iv`, var29 as java.lang.Iterable);
-      }
+    if (sc.isInterface) {
+        superClasses.add(Scene.v().objectType.sootClass)
+        superInterfaces.addAll(Scene.v().activeHierarchy.getSuperinterfacesOfIncluding(sc))
+    } else {
+        superClasses.addAll(Scene.v().activeHierarchy.getSuperclassesOfIncluding(sc))
+        superInterfaces.addAll(superClasses.flatMap { it.interfaces.toList() })
+        superInterfaces.addAll(superClasses.flatMap { 
+            Scene.v().activeHierarchy.getSuperinterfacesOfIncluding(it) 
+        })
+    }
 
-      `$this$flatMap$iv` = `destination$iv$iv` as java.util.List;
-      `destination$iv$iv` = new ArrayList();
-
-      for (Object element$iv$iv : $this$flatMap$iv) {
-         var28 = Scene.v().getActiveHierarchy().getSuperinterfacesOfIncluding(var23 as SootClass);
-         CollectionsKt.addAll(`destination$iv$iv`, var28);
-      }
-
-      CollectionsKt.addAll(var15, `destination$iv$iv` as java.util.List);
-   }
-
-   return CollectionsKt.plus(superClasses, superInterfaces);
+    return superClasses + superInterfaces
 }
 
-public fun SootClass.findMethodOrNull(subSignature: String): Sequence<SootMethod> {
-   adjustLevel(`$this$findMethodOrNull`, 2);
-   return SequencesKt.filter(
-      SequencesKt.flatMapIterable(
-         SequencesKt.plus(
-            SequencesKt.generateSequence(`$this$findMethodOrNull`, SootUtilsKt::findMethodOrNull$lambda$10),
-            SequencesKt.distinct(
-               SequencesKt.flatMapIterable(
-                  SequencesKt.generateSequence(`$this$findMethodOrNull`, SootUtilsKt::findMethodOrNull$lambda$11), SootUtilsKt::findMethodOrNull$lambda$13
-               )
-            )
-         ),
-         SootUtilsKt::findMethodOrNull$lambda$14
-      ),
-      SootUtilsKt::findMethodOrNull$lambda$15
-   );
+fun SootClass.findMethodOrNull(subSignature: String): Sequence<SootMethod> {
+    adjustLevel(2)
+    return sequence {
+        yieldAll(generateSequence(this@findMethodOrNull, ::superClassOrNull)
+            .flatMap { it.methods })
+        
+        yieldAll(generateSequence(this@findMethodOrNull, ::superClassOrNull)
+            .flatMap { it.interfaces }
+            .distinct()
+            .flatMap { findAncestors(it) }
+            .flatMap { it.methods })
+    }.filter { method ->
+        if (method.declaringClass != this@findMethodOrNull) {
+            if (method.isStatic || method.isStaticInitializer) return@filter false
+            if (method.isPrivate) return@filter false
+        }
+        method.subSignature.substringAfter(" ") == subSignature
+    }
 }
 
-public fun SootClass.findMethodOrNull(subSignature: String, predicate: (SootMethod) -> Boolean): SootMethod? {
-   val var5: java.util.Iterator = findMethodOrNull(`$this$findMethodOrNull`, subSignature).iterator();
-
-   var var10000: Any;
-   while (true) {
-      if (var5.hasNext()) {
-         val `element$iv`: Any = var5.next();
-         if (!predicate.invoke(`element$iv`) as java.lang.Boolean) {
-            continue;
-         }
-
-         var10000 = `element$iv`;
-         break;
-      }
-
-      var10000 = null;
-      break;
-   }
-
-   return var10000 as SootMethod;
-}
-
-fun `_get_subSignature_$lambda$2`(it: Type): java.lang.CharSequence {
-   val var10000: java.lang.String = UtilsKt.getTypename(it);
-   return var10000;
-}
-
-fun `findMethodOrNull$lambda$10`(it: SootClass): SootClass {
-   return superClassOrNull(it);
-}
-
-fun `findMethodOrNull$lambda$11`(it: SootClass): SootClass {
-   return superClassOrNull(it);
-}
-
-fun `findMethodOrNull$lambda$13`(sootClass: SootClass): java.lang.Iterable {
-   val var10000: Chain = sootClass.getInterfaces();
-   val `$this$flatMap$iv`: java.lang.Iterable = var10000 as java.lang.Iterable;
-   val `destination$iv$iv`: java.util.Collection = new ArrayList();
-
-   for (Object element$iv$iv : $this$flatMap$iv) {
-      val `list$iv$iv`: SootClass = `element$iv$iv` as SootClass;
-      CollectionsKt.addAll(`destination$iv$iv`, findAncestors(`list$iv$iv`));
-   }
-
-   return `destination$iv$iv` as java.util.List;
-}
-
-fun `findMethodOrNull$lambda$14`(it: SootClass): java.lang.Iterable {
-   val var10000: java.util.List = it.getMethods();
-   return var10000;
-}
-
-fun `findMethodOrNull$lambda$15`(`$this_findMethodOrNull`: SootClass, `$params`: java.lang.String, it: SootMethod): Boolean {
-   if (!(`$this_findMethodOrNull` == it.getDeclaringClass())) {
-      if (it.isStatic() || it.isStaticInitializer()) {
-         return false;
-      }
-
-      if (it.isPrivate()) {
-         return false;
-      }
-   }
-
-   val var10000: java.lang.String = it.getSubSignature();
-   return StringsKt.substringAfter$default(var10000, " ", null, 2, null) == `$params`;
-}
+fun SootClass.findMethodOrNull(
+    subSignature: String,
+    predicate: (SootMethod) -> Boolean
+): SootMethod? = findMethodOrNull(subSignature).firstOrNull(predicate)

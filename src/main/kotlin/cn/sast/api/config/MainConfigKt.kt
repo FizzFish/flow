@@ -16,123 +16,102 @@ import com.feysh.corax.config.api.PhantomAnalysisDepends
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.util.Arrays
 import kotlin.jvm.internal.SourceDebugExtension
 import kotlinx.serialization.modules.SerializersModule
 
-public final val serializersModule: SerializersModule
-public final val yamlConfiguration: YamlConfiguration =
-   new YamlConfiguration(true, false, null, PolymorphismStyle.Tag, null, 0, 200, SequenceStyle.Block, null, null, null, 0, false, null, 16182, null)
-   public final val yamlFormat: Yaml
+public val serializersModule: SerializersModule = TODO("FIXME — uninitialized serializersModule")
+public val yamlConfiguration: YamlConfiguration = YamlConfiguration(
+    encodeDefaults = true,
+    polymorphismStyle = PolymorphismStyle.Tag,
+    sequenceStyle = SequenceStyle.Block
+)
+public val yamlFormat: Yaml = TODO("FIXME — uninitialized yamlFormat")
 
 public fun MainConfig.simpleIAnalysisDepends(): IAnalysisDepends {
-   val var2: IncrementalAnalyze = `$this$simpleIAnalysisDepends`.getIncrementAnalyze();
-   var analysisDepends: IAnalysisDepends = if ((var2 as? IncrementalAnalyzeByChangeFiles) != null)
-      (var2 as? IncrementalAnalyzeByChangeFiles).getSimpleDeclAnalysisDependsGraph()
-      else
-      null;
-   if (analysisDepends == null) {
-      analysisDepends = PhantomAnalysisDepends.INSTANCE;
-   }
+    val var2: IncrementalAnalyze = this.getIncrementAnalyze()
+    var analysisDepends: IAnalysisDepends? = (var2 as? IncrementalAnalyzeByChangeFiles)?.getSimpleDeclAnalysisDependsGraph()
+    
+    if (analysisDepends == null) {
+        analysisDepends = PhantomAnalysisDepends.INSTANCE
+    }
 
-   return analysisDepends;
+    return analysisDepends
 }
 
 public fun MainConfig.interProceduralAnalysisDepends(): IAnalysisDepends {
-   val var2: IncrementalAnalyze = `$this$interProceduralAnalysisDepends`.getIncrementAnalyze();
-   var analysisDepends: IAnalysisDepends = if ((var2 as? IncrementalAnalyzeByChangeFiles) != null)
-      (var2 as? IncrementalAnalyzeByChangeFiles).getInterProceduralAnalysisDependsGraph()
-      else
-      null;
-   if (analysisDepends == null) {
-      analysisDepends = PhantomAnalysisDepends.INSTANCE;
-   }
+    val var2: IncrementalAnalyze = this.getIncrementAnalyze()
+    var analysisDepends: IAnalysisDepends? = (var2 as? IncrementalAnalyzeByChangeFiles)?.getInterProceduralAnalysisDependsGraph()
+    
+    if (analysisDepends == null) {
+        analysisDepends = PhantomAnalysisDepends.INSTANCE
+    }
 
-   return analysisDepends;
+    return analysisDepends
 }
 
 public fun MainConfig.skipResourceInArchive(res: IResource): Boolean {
-   if (!res.isJarScheme()) {
-      return false;
-   } else {
-      try {
-         return !`$this$skipResourceInArchive`.getSourcePathZFS().contains(Resource.INSTANCE.getZipFileSystem(res.getSchemePath()));
-      } catch (var3: Exception) {
-         return true;
-      }
-   }
+    if (!res.isJarScheme()) {
+        return false
+    } else {
+        try {
+            return !this.getSourcePathZFS().contains(Resource.INSTANCE.getZipFileSystem(res.getSchemePath()))
+        } catch (var3: Exception) {
+            return true
+        }
+    }
 }
 
 public fun checkerInfoDir(configDirs: List<IResource>, stopOnError: Boolean = true): IResDirectory? {
-   if (configDirs.size() != 1) {
-      if (stopOnError) {
-         throw new IllegalStateException(("Only one plugin folder could be exists: $configDirs").toString());
-      } else {
-         return null;
-      }
-   } else {
-      val analysisConfigDir: Path = (CollectionsKt.single(configDirs) as IResource).getPath();
-      val checkerInfoDir: Path = analysisConfigDir.normalize();
-      var var10001: Array<LinkOption> = new LinkOption[0];
-      if (!Files.exists(checkerInfoDir, Arrays.copyOf(var10001, var10001.length))) {
-         if (stopOnError) {
-            throw new IllegalStateException(("$checkerInfoDir is not exists").toString());
-         } else {
-            return null;
-         }
-      } else {
-         var var21: Boolean;
-         label71: {
-            var10001 = new LinkOption[0];
-            if (Files.exists(checkerInfoDir, Arrays.copyOf(var10001, var10001.length))) {
-               val var10000: Path = checkerInfoDir.resolve("checker_info.csv");
-               val var9: Array<LinkOption> = new LinkOption[0];
-               if (Files.exists(var10000, Arrays.copyOf(var9, var9.length))) {
-                  var21 = true;
-                  break label71;
-               }
-            }
-
-            var21 = false;
-         }
-
-         var checkerInfoDirInConfigProjectDevPath: Path = if (var21) checkerInfoDir else null;
-         if ((if (var21) checkerInfoDir else null) != null) {
-            return Resource.INSTANCE.dirOf(checkerInfoDirInConfigProjectDevPath);
-         } else {
-            label65: {
-               checkerInfoDirInConfigProjectDevPath = analysisConfigDir.resolve("../../Canary/analysis-config").normalize();
-               var10001 = new LinkOption[0];
-               if (Files.exists(checkerInfoDirInConfigProjectDevPath, Arrays.copyOf(var10001, var10001.length))) {
-                  val var22: Path = checkerInfoDirInConfigProjectDevPath.resolve("checker_info.csv");
-                  val var10: Array<LinkOption> = new LinkOption[0];
-                  if (Files.exists(var22, Arrays.copyOf(var10, var10.length))) {
-                     var21 = true;
-                     break label65;
-                  }
-               }
-
-               var21 = false;
-            }
-
-            val var5: Path = if (var21) checkerInfoDirInConfigProjectDevPath else null;
-            if ((if (var21) checkerInfoDirInConfigProjectDevPath else null) != null) {
-               return Resource.INSTANCE.dirOf(var5);
-            } else if (stopOnError) {
-               throw new IllegalStateException(("checker_info.csv not exists in $checkerInfoDir").toString());
+    if (configDirs.size != 1) {
+        if (stopOnError) {
+            throw IllegalStateException("Only one plugin folder could be exists: $configDirs")
+        } else {
+            return null
+        }
+    } else {
+        val analysisConfigDir: Path = configDirs.single().getPath()
+        val checkerInfoDir: Path = analysisConfigDir.normalize()
+        val linkOptions = emptyArray<LinkOption>()
+        
+        if (!Files.exists(checkerInfoDir, *linkOptions)) {
+            if (stopOnError) {
+                throw IllegalStateException("$checkerInfoDir is not exists")
             } else {
-               return null;
+                return null
             }
-         }
-      }
-   }
+        } else {
+            val hasCheckerInfo = if (Files.exists(checkerInfoDir, *linkOptions)) {
+                Files.exists(checkerInfoDir.resolve("checker_info.csv"), *linkOptions)
+            } else {
+                false
+            }
+
+            val checkerInfoDirInConfigProjectDevPath: Path? = if (hasCheckerInfo) checkerInfoDir else null
+            if (checkerInfoDirInConfigProjectDevPath != null) {
+                return Resource.INSTANCE.dirOf(checkerInfoDirInConfigProjectDevPath)
+            } else {
+                val fallbackPath = analysisConfigDir.resolve("../../Canary/analysis-config").normalize()
+                val hasFallbackCheckerInfo = if (Files.exists(fallbackPath, *linkOptions)) {
+                    Files.exists(fallbackPath.resolve("checker_info.csv"), *linkOptions)
+                } else {
+                    false
+                }
+
+                val fallbackDir = if (hasFallbackCheckerInfo) fallbackPath else null
+                if (fallbackDir != null) {
+                    return Resource.INSTANCE.dirOf(fallbackDir)
+                } else if (stopOnError) {
+                    throw IllegalStateException("checker_info.csv not exists in $checkerInfoDir")
+                } else {
+                    return null
+                }
+            }
+        }
+    }
 }
 
 @JvmSynthetic
-fun `checkerInfoDir$default`(var0: java.util.List, var1: Boolean, var2: Int, var3: Any): IResDirectory {
-   if ((var2 and 2) != 0) {
-      var1 = true;
-   }
-
-   return checkerInfoDir(var0, var1);
+internal fun checkerInfoDir$default(configDirs: List<IResource>, stopOnError: Boolean, mask: Int, any: Any): IResDirectory? {
+    val actualStopOnError = if ((mask and 2) != 0) true else stopOnError
+    return checkerInfoDir(configDirs, actualStopOnError)
 }
