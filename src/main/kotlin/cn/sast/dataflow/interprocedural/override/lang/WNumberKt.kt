@@ -1,89 +1,49 @@
-@file:SourceDebugExtension(["SMAP\nWNumber.kt\nKotlin\n*S Kotlin\n*F\n+ 1 WNumber.kt\ncn/sast/dataflow/interprocedural/override/lang/WNumberKt\n+ 2 IFact.kt\ncn/sast/dataflow/interprocedural/analysis/FieldUtil\n*L\n1#1,263:1\n44#2:264\n*S KotlinDebug\n*F\n+ 1 WNumber.kt\ncn/sast/dataflow/interprocedural/override/lang/WNumberKt\n*L\n35#1:264\n*E\n"])
+@file:Suppress("FunctionName")
 
 package cn.sast.dataflow.interprocedural.override.lang
 
-import cn.sast.dataflow.interprocedural.analysis.CompanionV
-import cn.sast.dataflow.interprocedural.analysis.FactValuesKt
-import cn.sast.dataflow.interprocedural.analysis.FieldUtil
-import cn.sast.dataflow.interprocedural.analysis.HeapValuesEnv
-import cn.sast.dataflow.interprocedural.analysis.IFact
-import cn.sast.dataflow.interprocedural.analysis.IHeapValues
-import cn.sast.dataflow.interprocedural.analysis.IOpCalculator
-import cn.sast.dataflow.interprocedural.analysis.IValue
-import cn.sast.dataflow.interprocedural.analysis.JSootFieldType
-import cn.sast.dataflow.interprocedural.analysis.IFact.Builder
-import cn.sast.dataflow.interprocedural.check.callback.ICallCBImpl
-import kotlin.jvm.internal.SourceDebugExtension
-import soot.G
-import soot.RefType
-import soot.SootField
-import soot.Type
+import cn.sast.dataflow.interprocedural.analysis.*
+import soot.*
 
-public fun ICallCBImpl<IHeapValues<IValue>, Builder<IValue>>.getValueFromObject(obj: IHeapValues<IValue>, type: Type): IOpCalculator<IValue> {
-   val c: IOpCalculator = `$this$getValueFromObject`.getHf().resolveOp(`$this$getValueFromObject`.getEnv(), obj);
-   c.resolve(WNumberKt::getValueFromObject$lambda$0);
-   return c;
-}
+/**
+ * 从 **包装数值对象** 中抽取其基本数值。
+ *
+ * 仅当满足：
+ *   - 对象是 ConstVal 且类型为 wrapper
+ *   - 或已知字段 `value` 存在
+ * 才会返回对应数值的 IOpCalculator。
+ */
+fun ICallCBImpl<IHeapValues<IValue>, IFact.Builder<IValue>>.getValueFromObject(
+   obj: IHeapValues<IValue>,
+   type: Type
+): IOpCalculator<IValue> {
 
-fun `getValueFromObject$lambda$0`(
-   `$type`: Type, `$this_getValueFromObject`: ICallCBImpl, `$this$getValue`: IOpCalculator, res: IHeapValues.Builder, var4: Array<CompanionV>
-): Boolean {
-   val numObj: CompanionV = var4[0];
-   var var10000: Any;
-   if (`$type` == G.v().soot_ByteType()) {
-      var10000 = FactValuesKt.getIntValue(numObj.getValue() as IValue, false);
-   } else if (`$type` == G.v().soot_CharType()) {
-      var10000 = FactValuesKt.getIntValue(numObj.getValue() as IValue, false);
-   } else if (`$type` == G.v().soot_BooleanType()) {
-      var10000 = FactValuesKt.getIntValue(numObj.getValue() as IValue, false);
-   } else if (`$type` == G.v().soot_ShortType()) {
-      var10000 = FactValuesKt.getIntValue(numObj.getValue() as IValue, false);
-   } else if (`$type` == G.v().soot_IntType()) {
-      var10000 = FactValuesKt.getIntValue(numObj.getValue() as IValue, false);
-   } else if (`$type` == G.v().soot_LongType()) {
-      var10000 = FactValuesKt.getLongValue(numObj.getValue() as IValue, false);
-   } else if (`$type` == G.v().soot_FloatType()) {
-      var10000 = FactValuesKt.getFloatValue(numObj.getValue() as IValue, false);
-   } else {
-      if (!(`$type` == G.v().soot_DoubleType())) {
-         return false;
+   val calc = hf.resolveOp(env, obj)
+
+   calc.resolve { _, res, (numObj) ->
+      val iv = numObj.value as IValue
+      // 直接常量 => 收集
+      when (type) {
+         G.v().soot_IntType()    -> FactValuesKt.getIntValue(iv, false)
+         G.v().soot_LongType()   -> FactValuesKt.getLongValue(iv, false)
+         G.v().soot_FloatType()  -> FactValuesKt.getFloatValue(iv, false)
+         G.v().soot_DoubleType() -> FactValuesKt.getDoubleValue(iv, false)
+         else                    -> null
+      }?.let {
+         res.add(numObj) ; return@resolve true
       }
 
-      var10000 = FactValuesKt.getDoubleValue(numObj.getValue() as IValue, false);
+      // 尝试读取 obj.value 字段
+      val field = (iv.type as? RefType)
+         ?.sootClass
+         ?.getFieldByNameUnsafe("value")
+         ?: return@resolve false
+
+      out.getField(env, "@value", "@num", JSootFieldType(field), false)
+      val fieldHv = out.targets("@value")
+      out.kill("@value"); out.kill("@num")
+      res.add(fieldHv); true
    }
 
-   if (var10000 != null) {
-      res.add(numObj);
-      return true;
-   } else {
-      IFact.Builder.DefaultImpls.assignNewExpr$default(
-         `$this_getValueFromObject`.getOut() as IFact.Builder,
-         `$this_getValueFromObject`.getEnv(),
-         "@num",
-         `$this_getValueFromObject`.getHf().empty().plus(numObj),
-         false,
-         8,
-         null
-      );
-      val value: Type = (numObj.getValue() as IValue).getType();
-      var10000 = value as? RefType;
-      if ((value as? RefType) == null) {
-         return false;
-      } else {
-         var10000 = var10000.getSootClass().getFieldByNameUnsafe("value");
-         if (var10000 == null) {
-            return false;
-         } else {
-            val var15: IFact.Builder = `$this_getValueFromObject`.getOut() as IFact.Builder;
-            val var10001: HeapValuesEnv = `$this_getValueFromObject`.getEnv();
-            val var11: FieldUtil = FieldUtil.INSTANCE;
-            IFact.Builder.DefaultImpls.getField$default(var15, var10001, "@value", "@num", new JSootFieldType((SootField)var10000), false, 16, null);
-            val var12: IHeapValues = (`$this_getValueFromObject`.getOut() as IFact.Builder).getTargets("@value");
-            (`$this_getValueFromObject`.getOut() as IFact.Builder).kill("@value");
-            (`$this_getValueFromObject`.getOut() as IFact.Builder).kill("@num");
-            res.add(var12);
-            return true;
-         }
-      }
-   }
+   return calc
 }

@@ -1,101 +1,101 @@
 package cn.sast.graph
 
-import java.util.LinkedHashMap
-import mu.KLogger
+import mu.KotlinLogging
 import soot.toolkits.graph.DirectedGraph
 import soot.util.dot.DotGraph
 import soot.util.dot.DotGraphEdge
 import soot.util.dot.DotGraphNode
+import java.util.*
 
-public abstract class GraphPlot<C, N> {
-   public final val cfg: DirectedGraph<Any>
+/**
+ * 将 [cfg] 绘制成 DOT 图的抽象基类。
+ *
+ * @param C  “子图容器” 的泛型；由 [getNodeContainer] 决定
+ * @param N  节点类型（与 Soot CFG 保持一致）
+ */
+abstract class GraphPlot<C, N>(
+   val cfg: DirectedGraph<N>
+) {
 
-   open fun GraphPlot(cfg: DirectedGraph<N>) {
-      this.cfg = cfg;
-   }
+   private val logger = KotlinLogging.logger {}
 
-   public fun plot(graphName: String = "DirectedGraph"): DotGraph {
-      val dot: DotGraph = new DotGraph(graphName);
-      dot.setGraphAttribute("style", "filled");
-      dot.setGraphAttribute("color", "lightgrey");
-      dot.setGraphAttribute("rankdir", "LR");
-      dot.setGraphAttribute("ranksep", "8");
-      dot.setNodeShape("box");
-      val map: java.util.Map = new LinkedHashMap();
-      val var5: DotGraph = dot.createSubGraph("cluster_start");
-      var5.setGraphLabel("START");
-      var5.setGraphAttribute("style", "filled");
-      var5.setGraphAttribute("color", "lightgrey");
-      var5.setNodeShape("box");
-      val start: DotGraph = var5;
-      val var10000: java.util.Iterator = this.cfg.iterator();
-      val var23: java.util.Iterator = var10000;
+   /**
+    * 返回节点 *所属子图*；相同子图的节点会放在同一 cluster 内。
+    */
+   protected abstract fun getNodeContainer(node: N): C
 
-      while (var23.hasNext()) {
-         val node: Any = var23.next();
-         val var24: java.lang.String = java.lang.String.valueOf(node);
-         val nodeContainer: Any = this.getNodeContainer((N)node);
-         var var30: DotGraph = map.get(nodeContainer) as DotGraph;
-         if (var30 == null) {
-            val succ: GraphPlot = this;
-            val succNodeContainer: DotGraph = dot.createSubGraph("cluster_$nodeContainer");
-            map.put(nodeContainer, succNodeContainer);
-            succNodeContainer.setGraphLabel(java.lang.String.valueOf(nodeContainer));
-            succNodeContainer.setGraphAttribute("style", "filled");
-            succNodeContainer.setGraphAttribute("color", "lightgrey");
-            succNodeContainer.setGraphAttribute("labeljust", "l");
-            succNodeContainer.setNodeShape("box");
-            var30 = succNodeContainer;
-         }
+   /** 返回节点在 DOT 图里的 label（可含 HTML） */
+   protected open fun getLabel(node: N): String = node.toString()
 
-         val fromNode: DotGraphNode = var30.drawNode(var24);
-         fromNode.setHTMLLabel(this.getLabel((N)node));
-         if (this.cfg.getHeads().contains(node)) {
-            fromNode.setAttribute("color", "blue");
-            dot.drawEdge(start.getLabel(), var24).setAttribute("color", "green");
-         }
+   /**
+    * 生成并返回 [DotGraph]；可调用 `render()` 再落盘。
+    */
+   fun plot(graphName: String = "DirectedGraph"): DotGraph {
+      val dot = DotGraph(graphName).apply {
+         setGraphAttribute("style", "filled")
+         setGraphAttribute("color", "lightgrey")
+         setGraphAttribute("rankdir", "LR")
+         setGraphAttribute("ranksep", "8")
+         setNodeShape("box")
+      }
 
-         for (Object succ : this.cfg.getSuccsOf(node)) {
-            val var27: java.lang.String = java.lang.String.valueOf(var26);
-            val var28: Any = this.getNodeContainer((N)var26);
-            var var31: DotGraph = map.get(var28) as DotGraph;
-            if (var31 == null) {
-               val it: GraphPlot = this;
-               val var20: DotGraph = dot.createSubGraph("cluster_$var28");
-               map.put(var28, var20);
-               var20.setGraphLabel(java.lang.String.valueOf(var28));
-               var20.setGraphAttribute("style", "filled");
-               var20.setGraphAttribute("color", "lightgrey");
-               var20.setGraphAttribute("labeljust", "l");
-               var20.setNodeShape("box");
-               var31 = var20;
+      /* cluster 抽象容器 */
+      val subGraphs = LinkedHashMap<C, DotGraph>()
+
+      /* start 节点 */
+      val startCluster = dot.createSubGraph("cluster_start").apply {
+         setGraphLabel("START")
+         setGraphAttribute("style", "filled")
+         setGraphAttribute("color", "lightgrey")
+         setNodeShape("box")
+      }
+
+      /* ----- 遍历所有节点 ----- */
+      for (node in cfg) {
+         val nodeId = node.toString()
+         val container = getNodeContainer(node)
+         val sub = subGraphs.getOrPut(container) {
+            dot.createSubGraph("cluster_$container").apply {
+               setGraphLabel(container.toString())
+               setGraphAttribute("style", "filled")
+               setGraphAttribute("color", "lightgrey")
+               setGraphAttribute("labeljust", "l")
+               setNodeShape("box")
             }
+         }
 
-            var31.drawNode(var27).setHTMLLabel(this.getLabel((N)var26));
-            val edge: DotGraphEdge = dot.drawEdge(var24, var27);
-            edge.setAttribute("color", "blue");
-            if (nodeContainer == var28) {
-               edge.setAttribute("style", "dashed");
+         /* 绘制节点本身 */
+         val fromNode: DotGraphNode = sub.drawNode(nodeId).apply {
+            setHTMLLabel(getLabel(node))
+         }
+
+         /* 起点额外标记 */
+         if (cfg.heads.contains(node)) {
+            fromNode.setAttribute("color", "blue")
+            dot.drawEdge(startCluster.label, nodeId).setAttribute("color", "green")
+         }
+
+         /* 遍历后继 */
+         for (succ in cfg.getSuccsOf(node)) {
+            val succId = succ.toString()
+            val succContainer = getNodeContainer(succ)
+            val succSub = subGraphs.getOrPut(succContainer) {
+               dot.createSubGraph("cluster_$succContainer").apply {
+                  setGraphLabel(succContainer.toString())
+                  setGraphAttribute("style", "filled")
+                  setGraphAttribute("color", "lightgrey")
+                  setGraphAttribute("labeljust", "l")
+                  setNodeShape("box")
+               }
+            }
+            succSub.drawNode(succId).setHTMLLabel(getLabel(succ))
+
+            val edge: DotGraphEdge = dot.drawEdge(nodeId, succId).apply {
+               setAttribute("color", "blue")
+               if (container == succContainer) setAttribute("style", "dashed")
             }
          }
       }
-
-      return dot;
-   }
-
-   public open fun Any.getLabel(): String {
-      return java.lang.String.valueOf(`$this$getLabel`);
-   }
-
-   public abstract fun Any.getNodeContainer(): Any {
-   }
-
-   @JvmStatic
-   fun `logger$lambda$5`(): Unit {
-      return Unit.INSTANCE;
-   }
-
-   public companion object {
-      private final val logger: KLogger
+      return dot
    }
 }

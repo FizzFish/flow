@@ -1,5 +1,4 @@
 package cn.sast.dataflow.interprocedural.override.lang
 
-public fun canEncode(cp: Int): Boolean {
-   return cp ushr 8 == 0;
-}
+/** 判断码点是否可 LATIN1 编码 */
+fun canEncode(cp: Int): Boolean = (cp ushr 8) == 0
