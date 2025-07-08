@@ -13,92 +13,66 @@ import com.feysh.corax.config.api.IMethodCheckPoint
 import com.feysh.corax.config.api.report.Region
 import com.github.javaparser.ast.body.BodyDeclaration
 import kotlin.LazyThreadSafetyMode
-import kotlin.lazy.LazyKt
 import soot.SootClass
 import soot.SootField
 import soot.SootMethod
 import soot.tagkit.AbstractHost
 
-public class ClassCheckPoint(sootClass: SootClass, info: SootInfoCache) : CheckPoint(), IClassCheckPoint, SootInfoCache {
-    public open val sootClass: SootClass
-    public final val info: SootInfoCache
+class ClassCheckPoint(
+    val sootClass: SootClass,
+    private val infoCache: SootInfoCache
+) : CheckPoint(), IClassCheckPoint, SootInfoCache by infoCache {
 
-    public open val className: String
-        get() = this.sootClass.name
+    override val className: String get() = sootClass.name
 
-    public open val region: Region
-        get() = Region.Companion.invoke(this, this.sootClass as AbstractHost) ?: Region.Companion.getERROR()
+    override val region: Region =
+        Region.invoke(this, sootClass as AbstractHost) ?: Region.getERROR()
 
-    public open val file: IBugResInfo
+    override val file: IBugResInfo = ClassResInfo(sootClass)
 
-    private val env$delegate: kotlin.Lazy<DefaultEnv>
-
-    internal open val env: DefaultEnv
-        internal get() = env$delegate.value
-
-    public open val cache: AnalysisCache
-        get() = TODO("FIXME - original cache implementation missing")
-
-    public open val ext: SootHostExtend?
-        get() = this.info.getExt(this)
-
-    public open val hostKey: Key<SootHostExtend?>
-        get() = TODO("FIXME - original hostKey implementation missing")
-
-    public open val javaNameSourceEndColumnNumber: Int
-        get() = this.info.getJavaNameSourceEndColumnNumber(this)
-
-    public open val javaNameSourceEndLineNumber: Int
-        get() = this.info.getJavaNameSourceEndLineNumber(this)
-
-    public open val javaNameSourceStartColumnNumber: Int
-        get() = this.info.getJavaNameSourceStartColumnNumber(this)
-
-    public open val javaNameSourceStartLineNumber: Int
-        get() = this.info.getJavaNameSourceStartLineNumber(this)
-
-    init {
-        this.sootClass = sootClass
-        this.info = info
-        this.file = ClassResInfo(this.sootClass)
-        this.env$delegate = LazyKt.lazy(LazyThreadSafetyMode.PUBLICATION) { env_delegate$lambda$0(this) }
+    private val envDelegate by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        DefaultEnv(
+            region.mutable,
+            clazz = sootClass
+        )
     }
 
-    public override fun eachMethod(block: (IMethodCheckPoint) -> Unit) {
-        for (method in this.sootClass.methods) {
-            block(MethodCheckPoint(method, this.info))
-        }
-    }
+    override val env: DefaultEnv get() = envDelegate
+    // ---------------------------------------------------------------------
+    //  Delegated helpers to information cache
+    // ---------------------------------------------------------------------
 
-    public override fun eachField(block: (IFieldCheckPoint) -> Unit) {
-        for (field in this.sootClass.fields) {
-            block(FieldCheckPoint(field, this.info))
-        }
-    }
+    override val cache: AnalysisCache get() = infoCache.cache
+    override val ext: SootHostExtend? get() = infoCache.getExt(this)
+    override val hostKey: Key<SootHostExtend?> get() = infoCache.hostKey
 
-    override fun getSuperClasses(): Sequence<SootClass> {
-        return IClassCheckPoint.DefaultImpls.getSuperClasses(this)
-    }
+    override val javaNameSourceEndColumnNumber: Int get() =
+        infoCache.getJavaNameSourceEndColumnNumber(this)
+    override val javaNameSourceEndLineNumber: Int get() =
+        infoCache.getJavaNameSourceEndLineNumber(this)
+    override val javaNameSourceStartColumnNumber: Int get() =
+        infoCache.getJavaNameSourceStartColumnNumber(this)
+    override val javaNameSourceStartLineNumber: Int get() =
+        infoCache.getJavaNameSourceStartLineNumber(this)
 
-    override fun getSuperInterfaces(): Sequence<SootClass> {
-        return IClassCheckPoint.DefaultImpls.getSuperInterfaces(this)
-    }
+    // ---------------------------------------------------------------------
+    //  Child checkpoints
+    // ---------------------------------------------------------------------
 
-    public override fun SootClass.getMemberAtLine(ln: Int): BodyDeclaration<*>? {
-        return this.info.getMemberAtLine(this, ln)
-    }
+    override fun eachMethod(block: (IMethodCheckPoint) -> Unit) =
+        sootClass.methods.forEach { block(MethodCheckPoint(it, infoCache)) }
 
-    companion object {
-        @JvmStatic
-        fun env_delegate$lambda$0(this$0: ClassCheckPoint): DefaultEnv {
-            return DefaultEnv(
-                this$0.region.mutable,
-                null, null, null, null, null,
-                this$0.sootClass,
-                null, null,
-                446,
-                null
-            )
-        }
-    }
+    override fun eachField(block: (IFieldCheckPoint) -> Unit) =
+        sootClass.fields.forEach { block(FieldCheckPoint(it, infoCache)) }
+
+    // ---------------------------------------------------------------------
+
+    override fun getSuperClasses(): Sequence<SootClass> =
+        IClassCheckPoint.DefaultImpls.getSuperClasses(this)
+
+    override fun getSuperInterfaces(): Sequence<SootClass> =
+        IClassCheckPoint.DefaultImpls.getSuperInterfaces(this)
+
+    override fun SootClass.getMemberAtLine(ln: Int): BodyDeclaration<*>? =
+        infoCache.getMemberAtLine(this, ln)
 }

@@ -1,11 +1,14 @@
 package cn.sast.graph
 
+import cn.sast.common.IResFile
 import mu.KotlinLogging
 import soot.toolkits.graph.DirectedGraph
 import soot.util.dot.DotGraph
 import soot.util.dot.DotGraphEdge
 import soot.util.dot.DotGraphNode
+import java.nio.file.Files
 import java.util.*
+import kotlin.io.path.outputStream
 
 /**
  * 将 [cfg] 绘制成 DOT 图的抽象基类。
@@ -98,4 +101,10 @@ abstract class GraphPlot<C, N>(
       }
       return dot
    }
+}
+
+/** 将 DOT 图渲染到 [output] 文件（覆盖写） */
+fun DotGraph.dump(output: IResFile) {
+   Files.createDirectories(output.path.parent)
+   output.path.outputStream().use { render(it, 0) }
 }

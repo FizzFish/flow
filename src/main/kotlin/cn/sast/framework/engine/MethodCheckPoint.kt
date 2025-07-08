@@ -11,81 +11,83 @@ import com.feysh.corax.config.api.IMethodCheckPoint
 import com.feysh.corax.config.api.IUnitCheckPoint
 import com.feysh.corax.config.api.report.Region
 import com.github.javaparser.ast.body.BodyDeclaration
-import kotlin.LazyThreadSafetyMode
-import kotlin.lazy.LazyKt
+import kotlinx.coroutines.sync.Mutex
 import soot.SootClass
 import soot.SootMethod
 import soot.tagkit.AbstractHost
 import soot.tagkit.VisibilityAnnotationTag
 
-public class MethodCheckPoint(
-    public open val sootMethod: SootMethod,
-    public val info: SootInfoCache
-) : CheckPoint(), IMethodCheckPoint, SootInfoCache {
-    private val env$delegate by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        env_delegate$lambda$0(this)
-    }
+/**
+ * [IMethodCheckPoint] 具体实现，包装单个 [SootMethod] 及其元信息。
+ */
+class MethodCheckPoint(
+    val sootMethod: SootMethod,
+    private val info: SootInfoCache,
+) : CheckPoint(), IMethodCheckPoint, SootInfoCache by info {
 
-    public open val visibilityAnnotationTag: VisibilityAnnotationTag?
+    /* 懒加载 env，线程安全 */
+    private val envDelegate by lazy(LazyThreadSafetyMode.PUBLICATION) { createEnv() }
+
+    // region 公开属性 ------------------------------------------------------
+
+    val visibilityAnnotationTag: VisibilityAnnotationTag?
         get() = sootMethod.getTag("VisibilityAnnotationTag") as? VisibilityAnnotationTag
 
-    public open val region: Region
-        get() = Region.Companion.invoke(this, sootMethod as AbstractHost) ?: Region.Companion.getERROR()
+    override val region: Region =
+        Region(sootMethod as AbstractHost) ?: Region.ERROR
 
-    public open val file: IBugResInfo = ClassResInfo(sootMethod.declaringClass)
+    override val file: IBugResInfo = ClassResInfo(sootMethod.declaringClass)
 
-    internal open val env: DefaultEnv
-        get() = env$delegate
+    /** 默认返回全局 [AnalysisCache]，可按需求覆盖 */
+    val cache: AnalysisCache
+        get() = TODO("Provide project-wide AnalysisCache implementation")
 
-    public open val cache: AnalysisCache
-        get() = TODO("FIXME — original code didn't show implementation")
-
-    public open val ext: SootHostExtend?
+    val ext: SootHostExtend?
         get() = info.getExt(this)
 
-    public open val hostKey: Key<SootHostExtend?>
-        get() = TODO("FIXME — original code didn't show implementation")
+    val hostKey: Key<SootHostExtend?>
+        get() = TODO("Define AnalysisDataFactory.Key for SootHostExtend")
 
-    public open val javaNameSourceEndColumnNumber: Int
+    override val javaNameSourceEndColumnNumber: Int
         get() = info.getJavaNameSourceEndColumnNumber(this)
 
-    public open val javaNameSourceEndLineNumber: Int
+    override val javaNameSourceEndLineNumber: Int
         get() = info.getJavaNameSourceEndLineNumber(this)
 
-    public open val javaNameSourceStartColumnNumber: Int
+    override val javaNameSourceStartColumnNumber: Int
         get() = info.getJavaNameSourceStartColumnNumber(this)
 
-    public open val javaNameSourceStartLineNumber: Int
+    override val javaNameSourceStartLineNumber: Int
         get() = info.getJavaNameSourceStartLineNumber(this)
 
-    public override fun eachUnit(block: (IUnitCheckPoint) -> Unit) {
-        if (sootMethod.hasActiveBody()) {
-            sootMethod.activeBody.units.forEach { unit ->
-                block(UnitCheckPoint(info, unit, sootMethod))
-            }
+    /* ------------------------------------------------------------------ */
+
+    override fun eachUnit(block: (IUnitCheckPoint) -> Unit) {
+        if (!sootMethod.hasActiveBody()) return
+        sootMethod.activeBody.units.forEach { u ->
+            block(UnitCheckPoint(info, u, sootMethod))
         }
     }
 
-    public override fun SootClass.getMemberAtLine(ln: Int): BodyDeclaration<*>? {
-        return info.getMemberAtLine(this, ln)
-    }
+    override fun SootClass.getMemberAtLine(ln: Int): BodyDeclaration<*>? =
+        info.getMemberAtLine(this, ln)
 
-    companion object {
-        @JvmStatic
-        fun env_delegate$lambda$0(this$0: MethodCheckPoint): DefaultEnv {
-            return DefaultEnv(
-                this$0.region.mutable,
-                null,
-                null,
-                null,
-                this$0.sootMethod,
-                null,
-                this$0.sootMethod.declaringClass,
-                null,
-                this$0.sootMethod,
-                174,
-                null
-            )
-        }
-    }
+    /* --------------------------- helpers ------------------------------ */
+
+    private fun createEnv(): DefaultEnv = DefaultEnv(
+        region = region.mutable,
+        fileName = null,
+        source = null,
+        sink = null,
+        method = sootMethod,
+        value = null,
+        clazz = sootMethod.declaringClass,
+        field = null,
+        element = sootMethod,
+    )
+
+    /* Mutex 可用于并发控制需写操作的扩展逻辑 */
+    private val mutex = Mutex()
+
+    /* ... 其它实用扩展 ... */
 }

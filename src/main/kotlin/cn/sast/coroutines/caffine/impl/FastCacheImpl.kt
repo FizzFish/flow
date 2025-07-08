@@ -1,42 +1,48 @@
-package cn.sast.coroutines.caffine.impl
+package cn.sast.coroutines.caffeine.impl
 
-import com.feysh.corax.cache.coroutines.Configuration
-import com.feysh.corax.cache.coroutines.FastCache
-import com.feysh.corax.cache.coroutines.RecCoroutineCache
-import com.feysh.corax.cache.coroutines.RecCoroutineLoadingCache
-import com.feysh.corax.cache.coroutines.XCache
+import com.feysh.corax.cache.coroutines.*
 import com.github.benmanes.caffeine.cache.stats.ConcurrentStatsCounter
-import com.github.benmanes.caffeine.cache.stats.StatsCounter
-import kotlin.coroutines.Continuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 
-public object FastCacheImpl : FastCache {
-   private fun <K, V> newRecXCache(scope: CoroutineScope): XCache<K, Deferred<V>> {
-      return XCache.Companion.cacheBuilder(FastCacheImpl::newRecXCache$lambda$0);
+/** 整个框架唯一入口 —— 快速创建各种 Rec-Cache */
+object FastCacheImpl : FastCache {
+
+   /* ---------- 内部辅助 ---------- */
+
+   private fun <K, V> newRecXCache(scope: CoroutineScope): XCache<K, Deferred<V>> =
+      XCache.cacheBuilder<K, Deferred<V>> {
+
+         /* -------- 基础参数 -------- */
+         this.scope           = scope       // ← 关键：用 defaultScope
+         weakKeys            = true
+         weakValues          = true
+         useCallingContext   = true
+
+         /* -------- 统计 -------- */
+         statsCounter        = ConcurrentStatsCounter()
+      }
+
+
+   /* ---------- FastCache 接口实现 ---------- */
+
+   override fun <K, V> buildRecCoroutineCache(
+      scope: CoroutineScope,
+      weakKeyAssociateByValue: (V) -> Array<Any?>
+   ): RecCoroutineCache<K, V> {
+      val x = newRecXCache<K, V>(scope)
+      val caffeineCache = x.build()
+      return RecCoroutineCacheImpl(x, caffeineCache, weakKeyAssociateByValue)
    }
 
-   public override fun <K, V> buildRecCoroutineCache(scope: CoroutineScope, weakKeyAssociateByValue: (V) -> Array<Any?>): RecCoroutineCache<K, V> {
-      val xCache: XCache = this.newRecXCache(scope);
-      return new RecCoroutineCacheImpl(xCache, xCache.build(), weakKeyAssociateByValue);
-   }
-
-   public override fun <K, V> buildRecCoroutineLoadingCache(
+   override fun <K, V> buildRecCoroutineLoadingCache(
       scope: CoroutineScope,
       weakKeyAssociateByValue: (V) -> Array<Any?>,
-      mappingFunction: (RecCoroutineLoadingCache<K, V>, K, Continuation<V>) -> Any?
+      mappingFunction: suspend RecCoroutineLoadingCache<K, V>.(K) -> V
    ): RecCoroutineLoadingCache<K, V> {
-      val xCache: XCache = this.newRecXCache(scope);
-      return new RecCoroutineLoadingCacheImpl(xCache, xCache.build(), weakKeyAssociateByValue, mappingFunction);
-   }
+      val x = newRecXCache<K, V>(scope)
+      val caffeineCache = x.build()
 
-   @JvmStatic
-   fun `newRecXCache$lambda$0`(`$scope`: CoroutineScope, `$this$cacheBuilder`: Configuration): Unit {
-      `$this$cacheBuilder`.setScope(`$scope`);
-      `$this$cacheBuilder`.setWeakKeys(true);
-      `$this$cacheBuilder`.setWeakValues(true);
-      `$this$cacheBuilder`.setUseCallingContext(true);
-      `$this$cacheBuilder`.setStatsCounter((new ConcurrentStatsCounter()) as StatsCounter);
-      return Unit.INSTANCE;
+      return RecCoroutineLoadingCacheImpl(x, x.build(), weakKeyAssociateByValue, mappingFunction)
    }
 }

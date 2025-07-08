@@ -114,6 +114,10 @@ class MainConfig(
         }
     }
 
+    fun isEnable(type: CheckType): Boolean {
+        val saConfig = this.saConfig
+        return saConfig != null && !saConfig.isEnable(type)
+    }
     /** 判断 classPath 是否在过滤规则中 */
     fun isSkipClassSource(path: String): Boolean =
         runCatching { isSkipClassSource(Path.of(path)) }.getOrDefault(false)

@@ -1,31 +1,31 @@
 package cn.sast.framework.engine
 
-import kotlin.jvm.internal.SourceDebugExtension
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.Serializer
-import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.descriptors.SerialDescriptorsKt
-import kotlinx.serialization.descriptors.PrimitiveKind.STRING
-import kotlinx.serialization.encoding.CompositeEncoder
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.buildSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import soot.SootMethod
 
-@Serializer(forClass = SootMethod::class)
-@SourceDebugExtension(["SMAP\nIPAnalysisEngine.kt\nKotlin\n*S Kotlin\n*F\n+ 1 IPAnalysisEngine.kt\ncn/sast/framework/engine/SootMethodSerializer\n+ 2 Encoding.kt\nkotlinx/serialization/encoding/EncodingKt\n*L\n1#1,344:1\n475#2,4:345\n*S KotlinDebug\n*F\n+ 1 IPAnalysisEngine.kt\ncn/sast/framework/engine/SootMethodSerializer\n*L\n69#1:345,4\n*E\n"])
+/**
+ * Serialises a [SootMethod] to its fully‑qualified signature string.  We do **not**
+ * implement deserialisation because reconstructing a `SootMethod` instance
+ * without a populated Soot [soot.Scene] is error‑prone.  If you need a
+ * deserialiser, look up the method in an initialised scene instead.
+ */
 object SootMethodSerializer : KSerializer<SootMethod> {
-    override val descriptor: SerialDescriptor = SerialDescriptorsKt.PrimitiveSerialDescriptor("SootMethod", STRING)
 
-    override fun deserialize(decoder: Decoder): SootMethod {
-        throw IllegalStateException("Not yet implemented")
-    }
+    override val descriptor: SerialDescriptor =
+        buildSerialDescriptor("SootMethod", PrimitiveKind.STRING)
 
     override fun serialize(encoder: Encoder, value: SootMethod) {
-        val descriptor = this.descriptor
-        val composite = encoder.beginStructure(descriptor)
-        val stringValue = value.toString()
-        encoder.encodeString(stringValue)
-        composite.endStructure(descriptor)
+        // Example: <com.example.Foo: void bar(int)>
+        encoder.encodeString(value.signature)
+    }
+
+    override fun deserialize(decoder: Decoder): SootMethod {
+        throw UnsupportedOperationException(
+            "Deserialising SootMethod is not supported – obtain it from an active Soot Scene instead.")
     }
 }

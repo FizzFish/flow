@@ -30,13 +30,13 @@ class BugTypeProvider(
       private val error = ConfigInfoLogger()
       private val preAnalysis = this@BugTypeProvider.preAnalysisImpl
 
-      override fun getFastCache(): FastCache = FastCacheImpl.INSTANCE
+      fun getFastCache(): FastCache = FastCacheImpl.INSTANCE
 
       fun getError(): ConfigInfoLogger = error
 
-      override fun getPreAnalysis(): PreAnalysisApi = preAnalysis
+      fun getPreAnalysis(): PreAnalysisApi = preAnalysis
 
-      override fun getScope(): CoroutineScope = GlobalScope
+      fun getScope(): CoroutineScope = GlobalScope
 
       override fun addStmt(
          decl: IJDecl,

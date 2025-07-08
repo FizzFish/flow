@@ -5,6 +5,9 @@ import cn.sast.api.config.PreAnalysisCoroutineScope
 import cn.sast.api.config.PreAnalysisCoroutineScopeKt
 import kotlinx.coroutines.runBlocking
 import mu.KLogger
+import soot.Scene
+import soot.SootClass
+import soot.SootMethod
 import soot.jimple.infoflow.methodSummary.data.provider.AbstractMethodSummaryProvider
 import soot.jimple.infoflow.methodSummary.data.summary.ClassMethodSummaries
 import soot.jimple.infoflow.methodSummary.data.summary.ClassSummaries
@@ -78,4 +81,9 @@ open class MethodSummaryProvider(
    companion object {
       private val logger: KLogger? = null
    }
+}
+
+fun findAllOverrideMethodsOfMethod(method: SootMethod): Set<SootMethod> {
+   val clazz: SootClass = method.declaringClass
+   return Scene.v().fastHierarchy.resolveAbstractDispatch(clazz, method)
 }
