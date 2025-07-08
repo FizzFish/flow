@@ -1,6 +1,6 @@
 package cn.sast.api.report
 
-public sealed class IBugResInfo protected constructor() : Comparable<IBugResInfo>, IReportHashAble {
-    public abstract val reportFileName: String?
-    public abstract val path: String
+sealed class IBugResInfo protected constructor() : Comparable<IBugResInfo>, IReportHashAble {
+    abstract val reportFileName: String?
+    abstract val path: String
 }

@@ -1,266 +1,172 @@
 package cn.sast.api.report
 
-import cn.sast.api.util.ComparatorUtilsKt
+import cn.sast.api.util.*
 import cn.sast.common.GLB
 import com.feysh.corax.cache.analysis.SootInfoCache
-import com.feysh.corax.config.api.CheckType
-import com.feysh.corax.config.api.IChecker
-import com.feysh.corax.config.api.IRule
-import com.feysh.corax.config.api.Language
-import com.feysh.corax.config.api.BugMessage.Env
+import com.feysh.corax.config.api.*
 import com.feysh.corax.config.api.report.Region
-import java.util.ArrayList
-import kotlin.enums.EnumEntries
-import kotlin.jvm.functions.Function1
-import kotlin.jvm.internal.Intrinsics
-import kotlin.jvm.internal.SourceDebugExtension
-import kotlinx.serialization.json.JsonBuilder
-
-@SourceDebugExtension(["SMAP\nReport.kt\nKotlin\n*S Kotlin\n*F\n+ 1 Report.kt\ncn/sast/api/report/Report\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n+ 3 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,451:1\n1628#2,3:452\n1628#2,3:455\n1628#2,3:458\n1628#2,3:461\n1#3:464\n*S KotlinDebug\n*F\n+ 1 Report.kt\ncn/sast/api/report/Report\n*L\n330#1:452,3\n331#1:455,3\n332#1:458,3\n333#1:461,3\n*E\n"])
-data class Report internal constructor(
+import cn.sast.api.config.MainConfig
+import com.feysh.corax.config.api.*
+import java.security.MessageDigest
+import kotlin.text.Charsets.UTF_8
+/**
+ * 报告核心实体。
+ *
+ * * `bugResFile`：主定位文件/类
+ * * `pathEvents` 首位自动包含主定位
+ */
+data class Report(
     val bugResFile: IBugResInfo,
     val region: Region,
     val message: Map<Language, String>,
-    val check_name: String,
-    val detector_name: String,
+    val checkName: String,
+    val detectorName: String,
     val type: String,
     val standard: Set<IRule>,
     val severity: String? = null,
-    val analyzer_name: String? = null,
+    val analyzerName: String? = null,
     val category: String? = null,
-    val analyzer_result_file_path: String? = null,
+    val analyzerResultFile: String? = null,
     val checkType: CheckType,
-    var pathEvents: MutableList<BugPathEvent> = ArrayList(),
-    var bug_path_positions: MutableList<BugPathPosition> = ArrayList(),
-    var notes: MutableList<BugPathEvent> = ArrayList(),
-    var macro_expansions: MutableList<MacroExpansion> = ArrayList()
+    val pathEvents: MutableList<BugPathEvent> = mutableListOf(),
+    val bugPathPositions: MutableList<BugPathPosition> = mutableListOf(),
+    val notes: MutableList<BugPathEvent> = mutableListOf(),
+    val macroExpansions: MutableList<MacroExpansion> = mutableListOf()
 ) : Comparable<Report>, IReportHashAble {
 
-    val classes: MutableSet<IBugResInfo>
-        get() {
-            val ret = mutableSetOf(bugResFile)
-            pathEvents.forEach { ret.add(it.getClassname()) }
-            bug_path_positions.forEach { ret.add(it.getClassname()) }
-            notes.forEach { ret.add(it.getClassname()) }
-            macro_expansions.forEach { ret.add(it.getClassname()) }
-            return ret
+    /** 涉及到的所有类 / 文件 */
+    val classes: Set<IBugResInfo> by lazy {
+        buildSet {
+            add(bugResFile)
+            pathEvents.forEach { add(it.classname) }
+            bugPathPositions.forEach { add(it.classname) }
+            notes.forEach { add(it.classname) }
+            macroExpansions.forEach { add(it.classname) }
         }
+    }
 
     init {
-        GLB.INSTANCE.plusAssign(checkType)
-        pathEvents.add(BugPathEvent(message, bugResFile, region, null, 8, null))
+        GLB += checkType
+        pathEvents += BugPathEvent(message, bugResFile, region)
     }
 
-    override fun reportHash(c: IReportHashCalculator): String {
-        return "${bugResFile.reportHash(c)}:${region} ${check_name},${detector_name},${type},${category},${severity},${analyzer_name}} "
-    }
+    /* ---------- Hash ---------- */
 
-    private fun getReportHashContextFree(c: IReportHashCalculator, ret: MutableList<String>) {
-        ret.add(reportHash(c))
-    }
+    override fun reportHash(c: IReportHashCalculator): String =
+        "${bugResFile.reportHash(c)}:$region,$checkName,$detectorName,$type,$category,$severity,$analyzerName"
 
-    private fun getReportHashPathSensitive(c: IReportHashCalculator, ret: MutableList<String>) {
-        val lastEvent = pathEvents.lastOrNull()
-        if (lastEvent != null) {
-            ret.add(lastEvent.reportHash(c))
+    fun reportHash(
+        calc: IReportHashCalculator,
+        kind: HashType
+    ): String = when (kind) {
+        HashType.CONTEXT_FREE ->
+            md5Hex(reportHash(calc))
+        HashType.PATH_SENSITIVE ->
+            md5Hex("${reportHash(calc)}|${pathEvents.last().reportHash(calc)}")
+        HashType.DIAGNOSTIC_MESSAGE -> {
+            val msgs = buildList {
+                add(reportHash(calc))
+                pathEvents.firstOrNull()?.let { add(it.reportHashWithMessage(calc)) }
+                if (pathEvents.size >= 2)
+                    pathEvents.last().let { add(it.reportHashWithMessage(calc)) }
+            }
+            md5Hex(msgs.joinToString("|"))
         }
     }
 
-    private fun getReportHashDiagnosticMessage(c: IReportHashCalculator, ret: MutableList<String>, onlyHeadTail: Boolean = false) {
-        if (onlyHeadTail) {
-            pathEvents.forEach { ret.add(it.reportHashWithMessage(c)) }
-        } else {
-            pathEvents.firstOrNull()?.let { ret.add(it.reportHashWithMessage(c)) }
-            if (pathEvents.size >= 2) {
-                pathEvents.lastOrNull()?.let { ret.add(it.reportHashWithMessage(c)) }
-            }
-        }
-    }
+    /* ---------- Comparable ---------- */
 
-    fun reportHash(hashCalculator: IReportHashCalculator, hashType: HashType): String {
-        val ret = ArrayList<String>()
-        when (hashType) {
-            HashType.CONTEXT_FREE -> getReportHashContextFree(hashCalculator, ret)
-            HashType.PATH_SENSITIVE -> {
-                getReportHashContextFree(hashCalculator, ret)
-                getReportHashPathSensitive(hashCalculator, ret)
-            }
-            HashType.DIAGNOSTIC_MESSAGE -> {
-                getReportHashContextFree(hashCalculator, ret)
-                getReportHashDiagnosticMessage(hashCalculator, ret, false)
-            }
-        }
-        return ReportKt.toHex(ReportKt.md5(ret.joinToString("|")))
-    }
+    override fun compareTo(other: Report): Int =
+        compareToNullable(analyzerName, other.analyzerName) ?: 0
+            .takeIf { it != 0 } ?: bugResFile.compareTo(other.bugResFile)
+            .takeIf { it != 0 } ?: region.startLine.compareTo(other.region.startLine)
+            .takeIf { it != 0 } ?: compareToMap(message, other.message)
+            .takeIf { it != 0 } ?: checkName.compareTo(other.checkName)
+            .takeIf { it != 0 } ?: detectorName.compareTo(other.detectorName)
+            .takeIf { it != 0 } ?: type.compareTo(other.type)
+            .takeIf { it != 0 } ?: checkType.compareTo(other.checkType)
+            .takeIf { it != 0 } ?: compareToSet(standard, other.standard)
+            .takeIf { it != 0 } ?: region.startColumn.compareTo(other.region.startColumn)
+            .takeIf { it != 0 } ?: compareToNullable(severity, other.severity) ?: 0
+            .takeIf { it != 0 } ?: compareToNullable(category, other.category) ?: 0
+            .takeIf { it != 0 } ?: compareToNullable(analyzerResultFile, other.analyzerResultFile) ?: 0
+            .takeIf { it != 0 } ?: compareToCollection(pathEvents, other.pathEvents)
+            .takeIf { it != 0 } ?: compareToCollection(bugPathPositions, other.bugPathPositions)
+            .takeIf { it != 0 } ?: compareToCollection(notes, other.notes)
+            .takeIf { it != 0 } ?: compareToCollection(macroExpansions, other.macroExpansions)
 
-    override fun compareTo(other: Report): Int {
-        ComparatorUtilsKt.compareToNullable(analyzer_name, other.analyzer_name)?.let { return it }
-        bugResFile.compareTo(other.bugResFile).let { if (it != 0) return it }
-        Intrinsics.compare(region.startLine, other.region.startLine).let { if (it != 0) return it }
-        ComparatorUtilsKt.compareToMap(message.toSortedMap(), other.message.toSortedMap()).let { if (it != 0) return it }
-        check_name.compareTo(other.check_name).let { if (it != 0) return it }
-        detector_name.compareTo(other.detector_name).let { if (it != 0) return it }
-        type.compareTo(other.type).let { if (it != 0) return it }
-        compareValuesBy(this.checkType, other.checkType) { it }.let { if (it != 0) return it }
-        ComparatorUtilsKt.compareTo({ a, b -> a.compareTo(b) }, standard, other.standard).let { if (it != 0) return it }
-        Intrinsics.compare(region.startColumn, other.region.startColumn).let { if (it != 0) return it }
-        ComparatorUtilsKt.compareToNullable(severity, other.severity)?.let { return it }
-        ComparatorUtilsKt.compareToNullable(category, other.category)?.let { return it }
-        ComparatorUtilsKt.compareToNullable(analyzer_result_file_path, other.analyzer_result_file_path)?.let { return it }
-        ComparatorUtilsKt.compareToCollection(pathEvents, other.pathEvents).let { if (it != 0) return it }
-        ComparatorUtilsKt.compareToCollection(bug_path_positions, other.bug_path_positions).let { if (it != 0) return it }
-        ComparatorUtilsKt.compareToCollection(notes, other.notes).let { if (it != 0) return it }
-        ComparatorUtilsKt.compareToCollection(macro_expansions, other.macro_expansions).let { if (it != 0) return it }
-        return 0
-    }
-
-    fun copy(
-        bugResFile: IBugResInfo = this.bugResFile,
-        region: Region = this.region,
-        message: Map<Language, String> = this.message,
-        check_name: String = this.check_name,
-        detector_name: String = this.detector_name,
-        type: String = this.type,
-        standard: Set<IRule> = this.standard,
-        severity: String? = this.severity,
-        analyzer_name: String? = this.analyzer_name,
-        category: String? = this.category,
-        analyzer_result_file_path: String? = this.analyzer_result_file_path,
-        checkType: CheckType = this.checkType,
-        pathEvents: MutableList<BugPathEvent> = this.pathEvents,
-        bug_path_positions: MutableList<BugPathPosition> = this.bug_path_positions,
-        notes: MutableList<BugPathEvent> = this.notes,
-        macro_expansions: MutableList<MacroExpansion> = this.macro_expansions
-    ) = Report(
-        bugResFile,
-        region,
-        message,
-        check_name,
-        detector_name,
-        type,
-        standard,
-        severity,
-        analyzer_name,
-        category,
-        analyzer_result_file_path,
-        checkType,
-        pathEvents.toMutableList(),
-        bug_path_positions.toMutableList(),
-        notes.toMutableList(),
-        macro_expansions.toMutableList()
-    )
-
-    override fun toString() = "Report(bugResFile=$bugResFile, region=$region, message=$message, check_name=$check_name, detector_name=$detector_name, type=$type, standard=$standard, severity=$severity, analyzer_name=$analyzer_name, category=$category, analyzer_result_file_path=$analyzer_result_file_path, checkType=$checkType, pathEvents=$pathEvents, bug_path_positions=$bug_path_positions, notes=$notes, macro_expansions=$macro_expansions)"
-
-    override fun hashCode(): Int {
-        var result = bugResFile.hashCode()
-        result = 31 * result + region.hashCode()
-        result = 31 * result + message.hashCode()
-        result = 31 * result + check_name.hashCode()
-        result = 31 * result + detector_name.hashCode()
-        result = 31 * result + type.hashCode()
-        result = 31 * result + standard.hashCode()
-        result = 31 * result + (severity?.hashCode() ?: 0)
-        result = 31 * result + (analyzer_name?.hashCode() ?: 0)
-        result = 31 * result + (category?.hashCode() ?: 0)
-        result = 31 * result + (analyzer_result_file_path?.hashCode() ?: 0)
-        result = 31 * result + checkType.hashCode()
-        result = 31 * result + pathEvents.hashCode()
-        result = 31 * result + bug_path_positions.hashCode()
-        result = 31 * result + notes.hashCode()
-        result = 31 * result + macro_expansions.hashCode()
-        return result
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is Report) return false
-
-        return bugResFile == other.bugResFile &&
-            region == other.region &&
-            message == other.message &&
-            check_name == other.check_name &&
-            detector_name == other.detector_name &&
-            type == other.type &&
-            standard == other.standard &&
-            severity == other.severity &&
-            analyzer_name == other.analyzer_name &&
-            category == other.category &&
-            analyzer_result_file_path == other.analyzer_result_file_path &&
-            checkType == other.checkType &&
-            pathEvents == other.pathEvents &&
-            bug_path_positions == other.bug_path_positions &&
-            notes == other.notes &&
-            macro_expansions == other.macro_expansions
-    }
-
-    @JvmStatic
-    fun JsonBuilder.`deprecatedRuleCategoryMap$lambda$46$lambda$44`() {
-        this.setUseArrayPolymorphism(true)
-        this.setPrettyPrint(true)
-    }
+    /* ---------- Companion / Factory ---------- */
 
     companion object {
-        private val deprecatedRuleCategoryMap: Map<String, String> = TODO("Initialize properly")
-        var hashVersion: Int = 0
-            internal set
 
-        private fun getFinalReportCheckerName(checker: IChecker): String = checker.javaClass.name
+        var hashVersion: Int = 0
+
+        /** 过渡期映射表（如需） */
+        private val deprecatedRuleCategoryMap: Map<String, String> = emptyMap()
 
         fun of(
-            info: SootInfoCache?,
+            cache: SootInfoCache?,
             file: IBugResInfo,
             region: Region,
             checkType: CheckType,
-            env: Env,
-            pathEvents: List<BugPathEvent> = emptyList()
+            env: BugMessage.Env,
+            extraEvents: List<BugPathEvent> = emptyList()
         ): Report {
-            val pathEventsMutable = if (env is AbstractBugEnv && env.appendEvents.isNotEmpty()) {
-                env.appendEvents.mapNotNull { it(BugPathEventEnvironment(info)) }
-            } else null
+            val msgMap = checkType.bugMessage(env)
+            val checkerName = checkType.checker::class.java.simpleName
+            val kind = CheckType2StringKind.active.convert(checkType)
 
-            val message = ReportKt.bugMessage(checkType, env)
-            val checkName = CheckType2StringKind.Companion.checkType2StringKind.convert(checkType)
-            val checkerName = getFinalReportCheckerName(checkType.checker)
-            val typeStr = checkType.toString()
-            val categoryStr = categoryStr(checkType)
-            val standards = checkType.standards
-            val finalPathEvents = pathEventsMutable?.let { pathEvents + it } ?: pathEvents
+            // 追加 lazy 事件
+            val added = if (env is AbstractBugEnv && env.appendEvents.isNotEmpty()) {
+                env.appendEvents.mapNotNull { it(BugPathEventEnvironment(cache)) }
+            } else emptyList()
 
             return Report(
-                file,
-                region,
-                message,
-                checkName,
-                checkerName,
-                typeStr,
-                standards,
-                null,
-                null,
-                categoryStr,
-                null,
-                checkType,
-                finalPathEvents.toMutableList()
+                bugResFile = file,
+                region = region,
+                message = msgMap,
+                checkName = kind,
+                detectorName = checkerName,
+                type = checkType.toString(),
+                standard = checkType.standards,
+                category = categoryStr(checkType),
+                checkType = checkType,
+                pathEvents = (extraEvents + added).toMutableList()
             )
         }
 
-        private fun CheckType.categoryStr(): String {
-            return when (hashVersion) {
-                1 -> deprecatedRuleCategoryMap[CheckType2StringKind.RuleDotTYName.convert(this)] ?: "unknown"
-                2 -> CheckType2StringKind.Companion.checkType2StringKind.convert(this)
-                else -> throw IllegalStateException("Bad hash version: ${hashVersion}")
-            }
+        private fun categoryStr(ct: CheckType): String = when (hashVersion) {
+            1 -> deprecatedRuleCategoryMap[CheckType2StringKind.RuleDotTYName.convert(ct)] ?: "unknown"
+            2 -> CheckType2StringKind.active.convert(ct)
+            else -> "unknown"
         }
+
+        /* ---- helpers ---- */
+        private fun md5Hex(s: String): String = md5(s).toHex()
     }
 
-    enum class HashType {
-        CONTEXT_FREE,
-        PATH_SENSITIVE,
-        DIAGNOSTIC_MESSAGE;
+    enum class HashType { CONTEXT_FREE, PATH_SENSITIVE, DIAGNOSTIC_MESSAGE }
+}
 
-        companion object {
-            @JvmStatic
-            fun getEntries(): EnumEntries<HashType> = entries
-        }
+
+fun md5(str: String): ByteArray =
+    MessageDigest.getInstance("MD5").digest(str.toByteArray(UTF_8))
+
+fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+
+/* ---------- CheckType helpers ---------- */
+
+fun CheckType.bugMessage(lang: Language, env: BugMessage.Env): String =
+    bugMessage()[lang]?.msg?.invoke(env) ?: "$lang missing for $this"
+
+fun CheckType.bugMessage(env: BugMessage.Env): Map<Language, String> =
+    Language.entries.associateWith { bugMessage(it, env) }
+
+/* ---------- prefer message by language order ---------- */
+
+fun <T> Map<Language, T>.preferred(default: () -> T): T {
+    for (lang in MainConfig.preferredLanguages) {
+        this[lang]?.let { return it }
     }
+    return default()
 }

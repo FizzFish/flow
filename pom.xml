@@ -35,6 +35,11 @@
                 <groupId>org.jetbrains.kotlin</groupId>
                 <artifactId>kotlin-maven-plugin</artifactId>
                 <version>2.1.21</version>
+                <configuration>
+                    <args>
+                        <arg>-Xcontext-receivers</arg>
+                    </args>
+                </configuration>
                 <executions>
                     <execution>
                         <id>compile</id>

@@ -2,57 +2,32 @@ package cn.sast.api.report
 
 import com.feysh.corax.config.api.CheckType
 import java.util.Locale
-import kotlin.enums.EnumEntries
-import kotlin.jvm.internal.SourceDebugExtension
 
-@SourceDebugExtension(["SMAP\nReport.kt\nKotlin\n*S Kotlin\n*F\n+ 1 Report.kt\ncn/sast/api/report/CheckType2StringKind\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,451:1\n1#2:452\n*E\n"])
-public enum class CheckType2StringKind(convert: (CheckType) -> String) {
-    RuleDotTYName(CheckType2StringKind::_init_$lambda$0),
-    RuleDotTYName2(CheckType2StringKind::_init_$lambda$1),
-    RuleName(CheckType2StringKind::_init_$lambda$2);
+/**
+ * 运行时从 `CheckType` 变换到字符串的三种策略。
+ * 可通过系统环境变量 / JVM 参数 `REPORT_RULE_KIND` 覆盖。
+ */
+enum class CheckType2StringKind(val convert: (CheckType) -> String) {
 
-    public final val convert: (CheckType) -> String
+    /** `CERT.MSC13-C` → `CERT.MSC13-C.ClassName` */
+    RuleDotTYName({ "${it.report.realName}.${it::class.simpleName}" }),
 
-    @JvmStatic
-    public companion object {
-        private const val ruleNameKindEnv: String = "REPORT_RULE_KIND"
-        public val checkType2StringKind: CheckType2StringKind
+    /** 同上但把类名转小写 */
+    RuleDotTYName2({
+        "${it.report.realName}.${it::class.simpleName.lowercase(Locale.getDefault())}"
+    }),
 
-        init {
-            val envValue = System.getenv(ruleNameKindEnv) ?: System.getProperty(ruleNameKindEnv)
-            checkType2StringKind = if (envValue != null) {
-                valueOf(envValue)
-            } else {
-                RuleDotTYName
-            }
-        }
-    }
+    /** 仅保留规则名 */
+    RuleName({ it.report.realName });
 
-    init {
-        this.convert = convert
-    }
+    companion object {
+        private const val ENV_KEY = "REPORT_RULE_KIND"
 
-    @JvmStatic
-    public fun getEntries(): EnumEntries<CheckType2StringKind> {
-        return entries
-    }
-
-    @JvmStatic
-    private fun _init_$lambda$0(t: CheckType): String {
-        return "${t.getReport().getRealName()}.${t.getClass().getSimpleName()}"
-    }
-
-    @JvmStatic
-    private fun _init_$lambda$1(t: CheckType): String {
-        val var10000 = t.getReport().getRealName()
-        var var10001 = t.getClass().getSimpleName()
-        val var2 = Locale.getDefault()
-        var10001 = var10001.toLowerCase(var2)
-        return "$var10000.$var10001"
-    }
-
-    @JvmStatic
-    private fun _init_$lambda$2(t: CheckType): String {
-        return t.getReport().getRealName()
+        /** 当前生效策略 */
+        val active: CheckType2StringKind =
+            runCatching { System.getenv(ENV_KEY) ?: System.getProperty(ENV_KEY) }
+                .getOrNull()
+                ?.let { valueOf(it) }
+                ?: RuleDotTYName
     }
 }

@@ -5,35 +5,37 @@ import com.feysh.corax.cache.analysis.SootInfoCache
 import com.feysh.corax.config.api.BugMessage
 import com.feysh.corax.config.api.Language
 import com.feysh.corax.config.api.report.Region
-import java.nio.file.Path
-import java.util.ArrayList
-import kotlin.jvm.internal.SourceDebugExtension
 import soot.tagkit.Host
+import java.nio.file.Path
+import java.util.concurrent.CopyOnWriteArrayList
 
-@SourceDebugExtension(["SMAP\nReport.kt\nKotlin\n*S Kotlin\n*F\n+ 1 Report.kt\ncn/sast/api/report/AbstractBugEnv\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,451:1\n1#2:452\n*E\n"])
-public abstract class AbstractBugEnv : BugMessage.Env {
-    public final val appendEvents: MutableList<(BugPathEventEnvironment) -> BugPathEvent?> = ArrayList()
+/**
+ * 提供两种 `appendPathEvent` 默认实现，构造成 [BugPathEvent] 并缓存至 [appendEvents]。
+ */
+abstract class AbstractBugEnv : BugMessage.Env {
 
-    public override fun appendPathEvent(message: Map<Language, String>, loc: Path, region: Region) {
-        this.appendEvents.add(::appendPathEvent$lambda$0)
+    /** 存放延迟执行的事件构造器 */
+    val appendEvents: MutableList<(BugPathEventEnvironment) -> BugPathEvent?> =
+        CopyOnWriteArrayList()
+
+    /* ---------- API 实现 ---------- */
+
+    override fun appendPathEvent(
+        message: Map<Language, String>,
+        loc: Path,
+        region: Region
+    ) {
+        appendEvents += { BugPathEvent(message, FileResInfo(Resource.fileOf(loc)), region) }
     }
 
-    public override fun appendPathEvent(message: Map<Language, String>, loc: Host, region: Region?) {
-        this.appendEvents.add(::appendPathEvent$lambda$2)
-    }
-
-    @JvmStatic
-    private fun appendPathEvent$lambda$0(message: Map<Language, String>, loc: Path, region: Region, var3: BugPathEventEnvironment): BugPathEvent {
-        return BugPathEvent(message, FileResInfo(Resource.INSTANCE.fileOf(loc)), region, null, 8, null)
-    }
-
-    @JvmStatic
-    private fun appendPathEvent$lambda$2(region: Region?, message: Map<Language, String>, loc: Host, this$ret: BugPathEventEnvironment): BugPathEvent {
-        var finalRegion: Region = region ?: run {
-            val sootInfoCache = this$ret.getSootInfoCache()
-            sootInfoCache?.let { Region.invoke(it, loc) } ?: Region.ERROR
+    override fun appendPathEvent(
+        message: Map<Language, String>,
+        loc: Host,
+        region: Region?
+    ) {
+        appendEvents += { env ->
+            val finalRegion = region ?: env.sootInfoCache?.let { Region(it, loc) } ?: Region.ERROR
+            BugPathEvent(message, ClassResInfo.of(loc), finalRegion)
         }
-
-        return BugPathEvent(message, ClassResInfo.of(loc), finalRegion, null, 8, null)
     }
 }

@@ -1,50 +1,24 @@
 package cn.sast.api.report
 
 import com.feysh.corax.config.api.report.Region.Mutable
-import java.util.LinkedHashMap
-import soot.SootClass
-import soot.SootField
-import soot.SootMethod
-import soot.Unit
+import soot.*
 import soot.jimple.InvokeExpr
+import java.util.LinkedHashMap
 
-public open class DefaultEnv(
-    region: Mutable,
-    fileName: String? = null,
-    callSite: Unit? = null,
-    callee: SootMethod? = null,
-    container: SootMethod? = null,
-    invokeExpr: InvokeExpr? = null,
-    clazz: SootClass? = null,
-    field: SootField? = null,
-    method: SootMethod? = null
-) : AbstractBugEnv {
-    public open var region: Mutable = region
-        internal set
-
-    public open var fileName: String? = fileName
-        internal set
-
-    public open var callSite: Unit? = callSite
-        internal set
-
-    public open var callee: SootMethod? = callee
-        internal set
-
-    public open var container: SootMethod? = container
-        internal set
-
-    public open var invokeExpr: InvokeExpr? = invokeExpr
-        internal set
-
-    public open var clazz: SootClass? = clazz
-        internal set
-
-    public open var field: SootField? = field
-        internal set
-
-    public open var method: SootMethod? = method
-        internal set
-
-    public open val args: MutableMap<Any, Any> = LinkedHashMap()
-}
+/**
+ * 报告环境默认实现，持有各种可变定位信息。
+ *
+ * 所有属性对框架 **internal set**，防止插件随意更改。
+ */
+open class DefaultEnv(
+    override var region: Mutable,
+    override var fileName: String?    = null,
+    override var callSite: soot.Unit? = null,
+    override var callee: SootMethod?  = null,
+    override var container: SootMethod? = null,
+    override var invokeExpr: InvokeExpr? = null,
+    override var clazz: SootClass?    = null,
+    override var field: SootField?    = null,
+    override var method: SootMethod?  = null,
+    override val args: MutableMap<Any, Any> = LinkedHashMap()
+) : AbstractBugEnv()
