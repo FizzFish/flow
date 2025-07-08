@@ -10,10 +10,16 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <kotlin.code.style>official</kotlin.code.style>
-        <kotlin.compiler.jvmTarget>1.8</kotlin.compiler.jvmTarget>
-    </properties>
 
+        <!-- Kotlin 2.1.x 支持 jvmTarget=17 -->
+        <kotlin.compiler.jvmTarget>17</kotlin.compiler.jvmTarget>
+
+        <!-- 亦可在这里统一声明，供 maven-compiler-plugin / toolchains 等使用 -->
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <!-- 如果你更喜欢 <release> 语义化写法，可再加一行 -->
+        <!-- <maven.compiler.release>17</maven.compiler.release> -->
+    </properties>
     <repositories>
         <repository>
             <id>mavenCentral</id>
@@ -65,9 +71,11 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
                 <configuration>
-                    <source>8</source>
-                    <target>8</target>
+                    <source>${maven.compiler.source}</source>
+                    <target>${maven.compiler.target}</target>
+                    <!-- 或者只写 <release>${maven.compiler.release}</release> -->
                 </configuration>
             </plugin>
         </plugins>

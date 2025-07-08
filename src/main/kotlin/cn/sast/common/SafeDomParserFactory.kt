@@ -8,7 +8,7 @@ import org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
 public object SafeDomParserFactory {
    public fun createDocumentBuilder(namespaceAware: Boolean): DocumentBuilder {
       try {
-         val documentBuilderFactory: DocumentBuilderFactory = (new DocumentBuilderFactoryImpl()) as DocumentBuilderFactory;
+         val documentBuilderFactory: DocumentBuilderFactory = DocumentBuilderFactoryImpl() as DocumentBuilderFactory;
          documentBuilderFactory.setFeature("http://javax.xml.XMLConstants/feature/secure-processing", true);
          documentBuilderFactory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
          documentBuilderFactory.setFeature("http://xml.org/sax/features/external-general-entities", false);
@@ -23,7 +23,7 @@ public object SafeDomParserFactory {
          e.setErrorHandler(null);
          return e;
       } catch (var4: ParserConfigurationException) {
-         throw new IllegalStateException(var4);
+         throw IllegalStateException(var4);
       }
    }
 }

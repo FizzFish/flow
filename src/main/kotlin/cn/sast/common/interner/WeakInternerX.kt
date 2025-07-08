@@ -1,29 +1,28 @@
 package cn.sast.common.interner
 
 import com.google.common.base.Equivalence
+import com.google.common.collect.Interners
 import com.google.common.collect.Interner
-import kotlin.properties.ReadWriteProperty
 
-public class WeakInternerX {
-   private final val interner: Interner<InternerEquiv>
+/**
+ * Kotlin 封装版：基于 Guava WeakInterner。
+ * 用于对值对象做弱引用去重。
+ */
+class WeakInternerX<E : InternerEquiv>(
+   keyEquivalence: Equivalence<InternerEquiv> = Equivalence.equals() as Equivalence<InternerEquiv>
+) {
 
-   public fun <E : InternerEquiv> intern(value: E): E {
-      val representative: InternerEquiv = this.interner.intern(value) as InternerEquiv;
-      return (E)representative;
+   /** 实际的弱引用 interner */
+   private val interner: Interner<InternerEquiv> = Interners.newWeakInterner()
+
+   /**
+    * 对外暴露：对输入的值做 Intern，返回去重后共享的实例。
+    */
+   fun intern(value: E): E {
+      @Suppress("UNCHECKED_CAST")
+      return interner.intern(value) as E
    }
 
-   @JvmStatic
-   fun `_init_$lambda$0`(`$map$delegate`: ReadWriteProperty<Object, Object>): Any {
-      return `$map$delegate`.getValue(null, $$delegatedProperties[0]);
-   }
-
-   @JvmStatic
-   fun `_init_$lambda$1`(`$keyEquivalence$delegate`: ReadWriteProperty<Object, Equivalence<InternerEquiv>>): Equivalence<InternerEquiv> {
-      return `$keyEquivalence$delegate`.getValue(null, $$delegatedProperties[1]) as Equivalence<InternerEquiv>;
-   }
-
-   @JvmStatic
-   fun `_init_$lambda$2`(`$keyEquivalence$delegate`: ReadWriteProperty<Object, Equivalence<InternerEquiv>>, var1: Equivalence<InternerEquiv>) {
-      `$keyEquivalence$delegate`.setValue(null, $$delegatedProperties[1], var1);
-   }
+   /** 可选：暴露 Equivalence（如果需要） */
+   val equivalence: Equivalence<InternerEquiv> = keyEquivalence
 }

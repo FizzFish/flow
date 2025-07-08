@@ -1,14 +1,50 @@
-由于提供的代码片段实际上是 VineFlower 反编译器的错误报告而非可反编译的 Kotlin 代码，我无法直接进行修复。错误信息表明反编译器在处理某个类时遇到了空指针异常。
+package cn.sast.api.config
 
-要正确修复反编译结果，我需要实际的 Kotlin 反编译输出内容。如果您能提供：
+import com.feysh.corax.config.api.rules.ProcessRule
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.serializer
 
-1. 原始 class 文件（如果允许）
-2. 或 VineFlower 生成的部分 Kotlin 代码（即使是不完整的）
-3. 或至少类名和关键方法签名
+/**
+ * YAML 中 “process-regex” 节点的模型：
+ *
+ * ```yaml
+ * process-regex:
+ *   class:     []   # → clazzRules
+ *   classpath: []   # → classpathRules
+ *   file:      []   # → fileRules
+ * ```
+ *
+ * * 三个字段都是列表，元素类型分别对应
+ *   `ProcessRule.ClassMemberMatch / ClassPathMatch / FileMatch`
+ * * 定义在 `@Serializable` data class 中，自动生成
+ *   `copy / equals / hashCode / toString / componentN` 等
+ */
+@Serializable
+data class ProcessRegex(
 
-我将能够按照要求逐文件修复 Kotlin 代码。目前基于给出的错误信息，我只能建议：
+    @SerialName("class")
+    val clazzRules: List<ProcessRule.ClassMemberMatch> =
+        emptyList(),                                            // 默认：无规则
 
-1. 向 VineFlower 项目报告此问题（如错误提示所述）
-2. 尝试使用其他反编译器如 CFR 或 Procyon 作为临时解决方案
+    @SerialName("classpath")
+    val classpathRules: List<ProcessRule.ClassPathMatch> =
+    // 默认：把 MainConfig.excludeFiles 转成 (-)path=xxx 规则
+        MainConfig.excludeFiles.map {
+            ProcessRule.InlineRuleStringSerialize.deserializeMatchFromLineString(
+                serializer(), "(-)path=$it"
+            )
+        },
 
-请提供更多具体代码内容以便我能实际帮助修复 Kotlin 反编译输出。
+    @SerialName("file")
+    val fileRules: List<ProcessRule.FileMatch> =
+        emptyList()                                             // 默认：无规则
+) {
+
+    init {
+        // 反编译里调用 ProjectConfigKt.validate(...)，这里沿用
+        clazzRules.validate()
+        classpathRules.validate()
+        fileRules.validate()
+    }
+}

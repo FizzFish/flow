@@ -1,8 +1,9 @@
 package cn.sast.api.config
 
-import kotlin.enums.EnumEntries
-
-public enum class SrcPrecedence(public val sootFlag: Int) {
+/**
+ * 映射 SOOT `-src-prec` 取值。
+ */
+enum class SrcPrecedence(val sootFlag: Int) {
     prec_class(1),
     prec_only_class(2),
     prec_jimple(3),
@@ -12,13 +13,6 @@ public enum class SrcPrecedence(public val sootFlag: Int) {
     prec_apk_class_jimple(6),
     prec_dotnet(7);
 
-    public val isSootJavaSourcePrec: Boolean
-        get() = this == prec_java_soot
-
-    companion object {
-        @JvmStatic
-        fun getEntries(): EnumEntries<SrcPrecedence> {
-            return entries
-        }
-    }
+    /** 是否 `-src-prec java-soot` */
+    val isSootJavaSourcePrec: Boolean get() = this == prec_java_soot
 }

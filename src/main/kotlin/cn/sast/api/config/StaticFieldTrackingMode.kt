@@ -1,16 +1,15 @@
 package cn.sast.api.config
 
-import kotlin.enums.EnumEntries
-
-public enum class StaticFieldTrackingMode {
+/**
+ * 控制全局静态字段数据流分析粒度。
+ */
+enum class StaticFieldTrackingMode {
+    /** 上下文 & 流敏感 */
     ContextFlowSensitive,
-    ContextFlowInsensitive,
-    None;
 
-    companion object {
-        @JvmStatic
-        fun getEntries(): EnumEntries<StaticFieldTrackingMode> {
-            return entries
-        }
-    }
+    /** 仅上下文敏感 */
+    ContextFlowInsensitive,
+
+    /** 不跟踪静态字段 */
+    None
 }

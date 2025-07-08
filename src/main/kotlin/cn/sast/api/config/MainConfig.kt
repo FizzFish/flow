@@ -1,450 +1,317 @@
 package cn.sast.api.config
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Imports（保留原依赖，若无此库请在 build.gradle(.kts) 添加）
+ * ─────────────────────────────────────────────────────────────────────────── */
 import cn.sast.api.incremental.IncrementalAnalyze
 import cn.sast.api.incremental.IncrementalAnalyzeByChangeFiles
 import cn.sast.api.util.IMonitor
-import cn.sast.common.FileSystemLocator
-import cn.sast.common.IResDirectory
-import cn.sast.common.IResFile
-import cn.sast.common.IResource
-import cn.sast.common.OS
-import cn.sast.common.Resource
-import cn.sast.common.ResourceImplKt
+import cn.sast.common.*
 import cn.sast.common.FileSystemLocator.TraverseMode
-import com.feysh.corax.config.api.CheckType
-import com.feysh.corax.config.api.IRelativePath
-import com.feysh.corax.config.api.Language
+import com.charleskorn.kaml.*
+import com.feysh.corax.config.api.*
 import com.feysh.corax.config.api.rules.ProcessRule
+import kotlinx.collections.immutable.*
+import kotlinx.serialization.modules.SerializersModule
+import mu.KLogger
+import org.utbot.common.PathUtil
+import soot.Scene
 import java.io.File
 import java.nio.charset.Charset
-import java.nio.file.FileSystem
-import java.nio.file.Files
-import java.nio.file.LinkOption
-import java.nio.file.Path
-import java.util.ArrayList
-import java.util.Arrays
-import java.util.Collections
-import java.util.LinkedHashSet
-import java.util.Locale
-import kotlin.jvm.internal.SourceDebugExtension
-import kotlinx.collections.immutable.ExtensionsKt
-import kotlinx.collections.immutable.PersistentSet
-import mu.KLogger
-import soot.Scene
+import java.nio.file.*
+import java.util.*
+import kotlin.io.path.*
+import kotlin.math.max
 
-@SourceDebugExtension(["SMAP\nMainConfig.kt\nKotlin\n*S Kotlin\n*F\n+ 1 MainConfig.kt\ncn/sast/api/config/MainConfig\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n+ 3 fake.kt\nkotlin/jvm/internal/FakeKt\n+ 4 _Arrays.kt\nkotlin/collections/ArraysKt___ArraysKt\n*L\n1#1,463:1\n1611#2,9:464\n1863#2:473\n1864#2:475\n1620#2:476\n774#2:477\n865#2,2:478\n1557#2:480\n1628#2,3:481\n1619#2:484\n1863#2:485\n1864#2:488\n1620#2:489\n1454#2,5:490\n1628#2,3:495\n1557#2:499\n1628#2,3:500\n1755#2,3:503\n1755#2,3:506\n1755#2,3:509\n774#2:514\n865#2,2:515\n774#2:517\n865#2,2:518\n1#3:474\n1#3:486\n1#3:487\n1#3:498\n12574#4,2:512\n*S KotlinDebug\n*F\n+ 1 MainConfig.kt\ncn/sast/api/config/MainConfig\n*L\n182#1:464,9\n182#1:473\n182#1:475\n182#1:476\n197#1:477\n197#1:478,2\n197#1:480\n197#1:481,3\n224#1:484\n224#1:485\n224#1:488\n224#1:489\n262#1:490,5\n270#1:495,3\n303#1:499\n303#1:500,3\n342#1:503,3\n343#1:506,3\n344#1:509,3\n405#1:514\n405#1:515,2\n412#1:517\n412#1:518,2\n182#1:474\n224#1:487\n352#1:512,2\n*E\n"])
+/* ────────────────────────────────────────────────────────────────────────────
+ * 1. Kotlin 数据类/配置类
+ * ─────────────────────────────────────────────────────────────────────────── */
 class MainConfig(
-    sourceEncoding: Charset = Charsets.UTF_8,
-    monitor: IMonitor? = null,
-    saConfig: SaConfig? = null,
-    output_dir: IResDirectory = Resource.INSTANCE.dirOf("out/test-out"),
-    dumpSootScene: Boolean = false,
-    androidPlatformDir: String? = null,
-    use_wrapper: Boolean = true,
-    hideNoSource: Boolean = false,
-    traverseMode: TraverseMode = FileSystemLocator.TraverseMode.RecursivelyIndexArchive,
-    useDefaultJavaClassPath: Boolean = true,
-    processDir: PersistentSet<IResource> = ExtensionsKt.persistentSetOf(),
-    classpath: PersistentSet<String> = ExtensionsKt.persistentSetOf(),
-    sourcePath: PersistentSet<IResource> = ExtensionsKt.persistentSetOf(),
-    projectRoot: PersistentSet<IResource> = ExtensionsKt.persistentSetOf(),
-    autoAppClasses: PersistentSet<IResource> = ExtensionsKt.persistentSetOf(),
-    autoAppTraverseMode: TraverseMode = FileSystemLocator.TraverseMode.RecursivelyIndexArchive,
-    autoAppSrcInZipScheme: Boolean = true,
-    skipClass: Boolean = false,
-    incrementAnalyze: IncrementalAnalyze? = null,
-    enableLineNumbers: Boolean = true,
-    enableOriginalNames: Boolean = true,
-    output_format: Int = 14,
-    throw_analysis: Int = 3,
-    process_multiple_dex: Boolean = true,
-    appClasses: Set<String> = emptySet(),
-    src_precedence: SrcPrecedence = SrcPrecedence.prec_apk_class_jimple,
-    ecj_options: List<String> = emptyList(),
-    sunBootClassPath: String? = System.getProperty("sun.boot.class.path"),
-    javaExtDirs: String? = System.getProperty("java.ext.dirs"),
-    hashAbspathInPlist: Boolean = false,
-    deCompileIfNotExists: Boolean = true,
-    enableCodeMetrics: Boolean = true,
-    prepend_classpath: Boolean = false,
-    whole_program: Boolean = true,
-    no_bodies_for_excluded: Boolean = true,
-    allow_phantom_refs: Boolean = true,
-    enableReflection: Boolean = true,
-    staticFieldTrackingMode: StaticFieldTrackingMode = StaticFieldTrackingMode.ContextFlowSensitive,
-    callGraphAlgorithm: String = "insens",
-    callGraphAlgorithmBuiltIn: String = "cha",
-    memoryThreshold: Double = 0.9
+    /* —— CLI / 全局 —— */
+    val sourceEncoding:         Charset                  = Charsets.UTF_8,
+    var monitor:                IMonitor?                = null,
+    var saConfig:               SaConfig?                = null,
+
+    /* —— 路径相关 —— */
+    var outputDir:              IResDirectory            = Resource.dirOf("out/test-out"),
+    var traverseMode:           TraverseMode             = TraverseMode.RecursivelyIndexArchive,
+    var processDir:             PersistentSet<IResource> = persistentSetOf(),
+    var classpath:              PersistentSet<String>    = persistentSetOf(),
+    var sourcePath:             PersistentSet<IResource> = persistentSetOf(),
+    var projectRoot:            PersistentSet<IResource> = persistentSetOf(),
+
+    /* —— 代码分析选项 —— */
+    var skipClass:      Boolean = true,
+    var incrementAnalyze:      Boolean = false,
+    var enableLineNumbers:      Boolean = true,
+    var enableOriginalNames:    Boolean = true,
+    var wholeProgram:           Boolean = true,
+    var allowPhantomRefs:       Boolean = true,
+
+    /* —— Android 相关 —— */
+    var androidPlatformDir:     String?  = null,
+    var processMultipleDex:     Boolean  = true,
+
+    /* —— 其它 —— */
+    var memoryThreshold:        Double   = 0.9,
+    var excludeFiles: Set<String> = setOf("classes-header.jar", "classes-turbine.jar")
+
 ) {
-    val sourceEncoding: Charset = sourceEncoding
-    var monitor: IMonitor? = monitor
-        internal set
-    var saConfig: SaConfig? = saConfig
-        internal set
-    var output_dir: IResDirectory = output_dir
-        internal set
-    var dumpSootScene: Boolean = dumpSootScene
-        internal set
-    var use_wrapper: Boolean = use_wrapper
-        internal set
-    var hideNoSource: Boolean = hideNoSource
-        internal set
-    var traverseMode: TraverseMode = traverseMode
-        internal set
-    var useDefaultJavaClassPath: Boolean = useDefaultJavaClassPath
-        internal set
-    var processDir: PersistentSet<IResource> = processDir
-        internal set
-    var classpath: PersistentSet<String> = classpath
-        internal set
-    var projectRoot: PersistentSet<IResource> = projectRoot
-        internal set
-    var autoAppClasses: PersistentSet<IResource> = autoAppClasses
-        internal set
-    var autoAppTraverseMode: TraverseMode = autoAppTraverseMode
-        internal set
-    var autoAppSrcInZipScheme: Boolean = autoAppSrcInZipScheme
-        internal set
-    var skipClass: Boolean = skipClass
-        internal set
-    var incrementAnalyze: IncrementalAnalyze? = incrementAnalyze
-        internal set
-    var enableLineNumbers: Boolean = enableLineNumbers
-        internal set
-    var enableOriginalNames: Boolean = enableOriginalNames
-        internal set
-    var output_format: Int = output_format
-        internal set
-    var throw_analysis: Int = throw_analysis
-        internal set
-    var process_multiple_dex: Boolean = process_multiple_dex
-        internal set
-    var appClasses: Set<String> = appClasses
-        internal set
-    var src_precedence: SrcPrecedence = src_precedence
-        internal set
-    var ecj_options: List<String> = ecj_options
-        internal set
-    var sunBootClassPath: String? = sunBootClassPath
-        internal set
-    var javaExtDirs: String? = javaExtDirs
-        internal set
-    var hashAbspathInPlist: Boolean = hashAbspathInPlist
-        internal set
-    var deCompileIfNotExists: Boolean = deCompileIfNotExists
-        internal set
-    var enableCodeMetrics: Boolean = enableCodeMetrics
-        internal set
-    var prepend_classpath: Boolean = prepend_classpath
-        internal set
-    var whole_program: Boolean = whole_program
-        internal set
-    var no_bodies_for_excluded: Boolean = no_bodies_for_excluded
-        internal set
-    var allow_phantom_refs: Boolean = allow_phantom_refs
-        internal set
-    var enableReflection: Boolean = enableReflection
-        internal set
-    var staticFieldTrackingMode: StaticFieldTrackingMode = staticFieldTrackingMode
-        internal set
-    var memoryThreshold: Double = memoryThreshold
-        internal set
-    var version: String? = null
-        internal set
-    var checkerInfo: Lazy<CheckerInfoGenResult?>? = null
-        internal set
 
-    val configDirs: MutableList<IResource> = ArrayList()
-    val checkerInfoDir: IResDirectory?
-        get() = MainConfigKt.checkerInfoDir(configDirs, false)
+    /* ─────────────── 延迟派生字段 ─────────────── */
 
-    val checker_info_csv: IResFile?
-        get() {
-            val dir = checkerInfoDir
-            return dir?.resolve("checker_info.csv")?.toFile()
+    val useDefaultJavaClassPath: Boolean = false
+    val sqliteReportDb: IResFile
+        get() = outputDir
+            .resolve("sqlite")
+            .resolve("sqlite_report_coraxjava.db")
+            .toFile()
+
+    /** 并行线程数：默认为 `CPU-1`，最少 1 */
+    var parallelsNum: Int = max(OS.maxThreadNum - 1, 1)
+        get() = if (field <= 0) OS.maxThreadNum else field
+        set(value) { if (value > 0) field = value }
+
+    /** 自动判断 `androidPlatformDir` 是否指向单独 jar */
+    val forceAndroidJar: Boolean? by lazy {
+        androidPlatformDir?.let { File(it).run {
+            require(exists()) { "androidPlatformDir not exist: $it" }
+            isFile
+        } }
+    }
+
+    /* ======================== 功能方法 ======================== */
+
+    /** 根据当前配置拼出最终 Soot class-path */
+    fun sootClasspath(): Set<String> {
+        val cp = buildSet {
+            if (processDir.isNotEmpty()) addAll(
+                processDir.flatMap { globPaths(it.toString()) ?: emptyList() }
+                    .map { it.expandRes(outputDir).absolutePath }
+            )
+            if (classpath.isNotEmpty()) addAll(classpath)
+            if (useDefaultJavaClassPath) {
+                Scene.defaultJavaClassPath().takeIf { it.isNotEmpty() }
+                    ?.split(File.pathSeparatorChar)
+                    ?.let { addAll(it) }
+            }
         }
+        return skipInvalidClassPaths(cp)
+    }
 
-    val rule_sort_yaml: IResFile?
-        get() {
-            val dir = checkerInfoDir
-            return dir?.resolve("rule_sort.yaml")?.toFile()
+    /** 类路径过滤：排除损坏 zip / jar */
+    private fun skipInvalidClassPaths(paths: Collection<String>): Set<String> = buildSet {
+        for (p in paths) {
+            if (isSkipClassSource(p)) continue
+            val res = Resource.of(p)
+            if (res.isFile && res.zipLike) {
+                runCatching { Resource.getEntriesUnsafe(res.path) }
+                    .onSuccess { add(p) }
+                    .onFailure { e -> logger.error { "Skip invalid archive $p: ${e.message}" } }
+            } else {
+                add(p)
+            }
         }
+    }
 
-    var apponly: Boolean = false
-        internal set
+    /** 判断 classPath 是否在过滤规则中 */
+    fun isSkipClassSource(path: String): Boolean =
+        runCatching { isSkipClassSource(Path.of(path)) }.getOrDefault(false)
 
-    var sourcePath: PersistentSet<IResource> = sourcePath
-        internal set(value) {
-            field = value
-            sourcePathZFS = value.mapNotNull {
-                if (!it.zipLike) null else try {
-                    Resource.INSTANCE.getZipFileSystem(it.path)
-                } catch (e: Exception) {
-                    null
-                }
-            }.toPersistentSet()
-        }
+    fun isSkipClassSource(path: Path): Boolean =
+        scanFilter.getActionOfClassPath("Process", path, null) == ProcessRule.ScanAction.Skip
 
-    var sourcePathZFS: PersistentSet<FileSystem> = ExtensionsKt.persistentSetOf()
-        private set
+    /* —— 相对路径转换工具 —— */
 
+    fun tryGetRelativePath(abs: String): RelativePath =
+        allResourcePathNormalized
+            .firstOrNull { abs.startsWith(it) }
+            ?.let { src -> RelativePath(src, buildRelative(src, abs)) }
+            ?: RelativePath("", abs.replace("\\", "/"))
+
+    private fun buildRelative(src: String, path: String): String =
+        path.substring(src.length)
+            .replace("\\", "/")
+            .replace("//", "/")
+            .let { if (it.startsWith('/')) it else "/$it" }
+
+    /* ======================== 初始化 / 派生 ======================== */
+
+    /** 根路径列表，用于相对路径推导（由外部注入） */
     var rootPathsForConvertRelativePath: List<IResource> = emptyList()
-        internal set(value) {
-            field = value
-            allResourcePathNormalized = value.filter {
-                it.isDirectory() || it.zipLike
-            }.map {
-                it.absolute.normalize.toString()
-            }.distinct()
-        }
-
-    var allResourcePathNormalized: List<String> = emptyList()
-        internal set
-
-    val sqlite_report_db: IResFile
-        get() = output_dir.resolve("sqlite").resolve("sqlite_report_coraxjava.db").toFile()
-
-    var callGraphAlgorithm: String = callGraphAlgorithm
-        internal set(value) {
-            field = value.toLowerCase(Locale.getDefault())
-        }
-
-    var callGraphAlgorithmBuiltIn: String = callGraphAlgorithmBuiltIn
-        internal set(value) {
-            field = value.toLowerCase(Locale.getDefault())
-        }
-
-    var isAndroidScene: Boolean? = false
-        internal set
-
-    var parallelsNum: Int = maxOf(OS.INSTANCE.maxThreadNum - 1, 1)
-        get() = if (field <= 0) OS.INSTANCE.maxThreadNum else field
-        set(value) {
-            if (value > 0) {
-                field = value
-            }
-        }
-
-    private val forceAndroidJar$delegate = lazy { forceAndroidJar_delegate$lambda$12(this) }
-    val forceAndroidJar: Boolean?
-        get() = forceAndroidJar$delegate.value
-
-    var androidPlatformDir: String? = androidPlatformDir
-        get() = if (field == "ANDROID_JARS") System.getenv("ANDROID_JARS") else field
         set(value) {
             field = value
-            if (value != null && value.isEmpty()) {
-                throw IllegalStateException("Check failed.")
-            }
+            allResourcePathNormalized = value
+                .filter { it.isDirectory || it.zipLike }
+                .map { it.absolute.normalize.toString() }
+                .distinct()
         }
 
+    private var allResourcePathNormalized: List<String> = emptyList()
     var scanFilter: ScanFilter = ScanFilter(this)
-        internal set
-
-    var projectConfig: ProjectConfig = ProjectConfig()
-        internal set(value) {
-            field = value
-            scanFilter.update(value)
-        }
 
     init {
         setSourcePath(sourcePath)
-        scanFilter.update(projectConfig)
     }
 
-    fun skipInvalidClassPaths(paths: Collection<String>): Set<String> {
-        return paths.filterTo(LinkedHashSet()) { path ->
-            if (isSkipClassSource(path)) {
-                logger.info("Exclude class path: $path")
-                false
-            } else {
-                try {
-                    val resource = Resource.INSTANCE.of(path)
-                    if (!resource.isFile || !resource.zipLike) {
-                        true
-                    } else {
-                        try {
-                            Resource.INSTANCE.getEntriesUnsafe(resource.path)
-                            true
-                        } catch (e: Exception) {
-                            logger.error("skip the invalid archive file: $resource e: ${e.message}")
-                            false
-                        }
-                    }
-                } catch (e: Exception) {
-                    true
-                }
-            }
-        }
+    private fun setSourcePath(value: PersistentSet<IResource>) {
+        sourcePath = value
+        sourcePathZFS = value.mapNotNull { res ->
+            if (!res.zipLike) null else runCatching {
+                Resource.getZipFileSystem(res.path)
+            }.getOrNull()
+        }.toPersistentSet()
     }
 
-    fun get_expand_class_path(): Set<IResource> {
-        return if (!apponly) {
-            classpath.flatMap { path ->
-                ResourceImplKt.globPaths(path) ?: throw IllegalStateException("classpath option: \"$path\" is invalid or target not exists")
-            }.toSet()
-        } else {
-            emptySet()
-        }
-    }
+    var sourcePathZFS: PersistentSet<FileSystem> = persistentSetOf()
+        private set
 
-    fun get_soot_classpath(): Set<String> {
-        val javaClasspath = get_expand_class_path().map { it.expandRes(output_dir).absolutePath }.toMutableSet()
-        if (useDefaultJavaClassPath) {
-            val defaultPath = Scene.defaultJavaClassPath()
-            if (defaultPath.isNotEmpty()) {
-                javaClasspath.addAll(defaultPath.split(File.pathSeparatorChar))
-            }
-        }
-        return skipInvalidClassPaths(javaClasspath)
-    }
-
-    fun getAndroidJarClasspath(targetAPKFile: String): String? {
-        return forceAndroidJar?.let { force ->
-            val androidJar = if (force) {
-                androidPlatformDir
-            } else {
-                Scene.v().getAndroidJarPath(androidPlatformDir, targetAPKFile)
-            }
-            if (androidJar.isNullOrEmpty()) {
-                throw IllegalArgumentException("Failed requirement.")
-            }
-            androidJar
-        }
-    }
-
-    fun isSkipClassSource(path: Path): Boolean {
-        return scanFilter.getActionOfClassPath("Process", path, null) === ProcessRule.ScanAction.Skip
-    }
-
-    fun isSkipClassSource(path: String): Boolean {
-        return try {
-            val normalizedPath = Path.of(path).takeIf { Files.exists(it) } ?: return false
-            isSkipClassSource(normalizedPath)
-        } catch (e: Exception) {
-            false
-        }
-    }
+    /* ======================== 日志 / 校验 ======================== */
 
     fun validate() {
-        if (classpath.any { it.isEmpty() }) {
-            throw IllegalStateException("classpath has empty string")
-        }
-        if (processDir.any { it.toString().isEmpty() }) {
-            throw IllegalStateException("processDir has empty string")
-        }
-        if (sourcePath.any { it.toString().isEmpty() }) {
-            throw IllegalStateException("sourcePath has empty string")
-        }
+        require(classpath.none { it.isEmpty() }) { "classpath 有空字符串" }
+        require(processDir.none { it.toString().isEmpty() }) { "processDir 有空字符串" }
+        require(sourcePath.none { it.toString().isEmpty() }) { "sourcePath 有空字符串" }
     }
 
-    fun isEnable(type: CheckType): Boolean {
-        return saConfig?.isEnable(type) ?: true
-    }
+    /* ======================== 嵌套数据类 ======================== */
 
-    fun isAnyEnable(vararg type: CheckType): Boolean {
-        return type.any { isEnable(it) }
-    }
-
-    private fun getRelative(src: String, path: String): String {
-        var relative = path.substring(src.length)
-            .replace("\\", "/")
-            .replace("//", "/")
-        
-        return when {
-            relative.startsWith("/") -> relative
-            relative.startsWith("!/") -> relative.substring(1)
-            else -> "/$relative"
-        }
-    }
-
-    fun tryGetRelativePathFromAbsolutePath(abs: String): RelativePath {
-        allResourcePathNormalized.forEach { src ->
-            if (abs.startsWith(src)) {
-                val normalizedSrc = src.replace("\\", "/").replace("//", "/").removeSuffix("/")
-                return RelativePath(normalizedSrc, getRelative(src, abs))
-            }
-        }
-        return RelativePath("", abs.replace("\\", "/").replace("//", "/"))
-    }
-
-    fun tryGetRelativePathFromAbsolutePath(abs: IResource): RelativePath {
-        return tryGetRelativePathFromAbsolutePath(abs.toString())
-    }
-
-    fun tryGetRelativePath(p: IResource): RelativePath {
-        return tryGetRelativePathFromAbsolutePath(p.absolute.normalize)
-    }
-
-    fun tryGetRelativePath(p: Path): RelativePath {
-        return tryGetRelativePath(Resource.INSTANCE.of(p))
-    }
-
-    fun <E : Any> simpleDeclIncrementalAnalysisFilter(targets: Collection<E>): Collection<E> {
-        return (incrementAnalyze as? IncrementalAnalyzeByChangeFiles)
-            ?.simpleDeclAnalysisDependsGraph
-            ?.let { graph ->
-                targets.filter { graph.shouldReAnalyzeTarget(it) != ProcessRule.ScanAction.Skip }
-            } ?: targets
-    }
-
-    fun <E : Any> InterProceduralIncrementalAnalysisFilter(targets: Collection<E>): Collection<E> {
-        return (incrementAnalyze as? IncrementalAnalyzeByChangeFiles)
-            ?.interProceduralAnalysisDependsGraph
-            ?.let { graph ->
-                targets.filter { graph.shouldReAnalyzeTarget(it) != ProcessRule.ScanAction.Skip }
-            } ?: targets
-    }
-
-    companion object {
-        const val CHECKER_INFO_CSV_NAME = "checker_info.csv"
-        const val RULE_SORT_YAML = "rule_sort.yaml"
-
-        var preferredLanguages: List<Language> = listOf(Language.ZH, Language.EN)
-            internal set(value) {
-                field = if (value.isEmpty()) listOf(Language.ZH, Language.EN) else value
-            }
-
-        private val logger: KLogger = TODO("Initialize logger")
-        val excludeFiles: Set<String> = emptySet()
-
-        @JvmStatic
-        fun forceAndroidJar_delegate$lambda$12(config: MainConfig): Boolean? {
-            val platformDir = config.androidPlatformDir ?: return null
-            if (platformDir.isEmpty()) {
-                throw RuntimeException("Android platform directory is empty")
-            }
-            val file = File(platformDir)
-            if (!file.exists()) {
-                throw IllegalArgumentException("androidPlatformDir not exist")
-            }
-            return file.isFile
-        }
-    }
-
-    data class RelativePath(
-        val prefix: String,
-        val relativePath: String
-    ) : IRelativePath {
-        val identifier: String
-            get() = "${short(prefix)}$relativePath"
-
-        val absoluteNormalizePath: String
-            get() = "$prefix$relativePath"
-
-        init {
-            if (prefix.isNotEmpty()) {
-                prefixes.add(prefix)
-            }
-        }
+    data class RelativePath(override val prefix: String, override val relativePath: String) : IRelativePath {
+        val identifier: String get() = "${short(prefix)}$relativePath"
+        val absoluteNormalizePath: String get() = "$prefix$relativePath"
 
         companion object {
-            val prefixes: MutableSet<String> = Collections.synchronizedSet(LinkedHashSet())
-
-            fun short(prefix: String): String {
-                val lastSeparator = prefix.lastIndexOfAny(listOf("/", "\\"))
-                return if (lastSeparator == -1) prefix else prefix.substring(lastSeparator + 1)
-            }
+            private fun short(prefix: String): String =
+                prefix.substringAfterLast('/', prefix)
         }
+    }
+
+    /* ======================== 静态成员 ======================== */
+
+    companion object {
+        const val CHECKER_INFO_CSV = "checker_info.csv"
+        const val RULE_SORT_YAML   = "rule_sort.yaml"
+
+        /** 优先语言顺序 */
+        var preferredLanguages: List<Language> = listOf(Language.ZH, Language.EN)
+            set(value) { field = if (value.isEmpty()) listOf(Language.ZH, Language.EN) else value }
+
+        /* ——— 日志 & YAML 工具由项目注入 ——— */
+        val logger: KLogger = TODO("Inject mu.KotlinLogging logger")
+        val yaml:   Yaml    = TODO("Inject kaml.Yaml instance")
+
+        /** 给 Java 调用的辅助封装 */
+        @JvmStatic fun checkerInfoDir(
+            configDirs: List<IResource>,
+            stopOnError: Boolean = true
+        ): IResDirectory? = when (configDirs.size) {
+            1 -> {
+                val dir = configDirs.single().path.normalize()
+                if (!Files.exists(dir)) {
+                    if (stopOnError) error("$dir 不存在") else null
+                } else {
+                    val checkerInfoDir = dir.takeIf {
+                        Files.exists(it.resolve(CHECKER_INFO_CSV))
+                    } ?: dir.resolve("../../Canary/analysis-config").normalize()
+                    if (Files.exists(checkerInfoDir.resolve(CHECKER_INFO_CSV)))
+                        Resource.dirOf(checkerInfoDir) else {
+                        if (stopOnError) error("在 $dir 未找到 $CHECKER_INFO_CSV")
+                        else null
+                    }
+                }
+            }
+            else -> if (stopOnError) error("只能存在一个插件目录: $configDirs") else null
+        }
+    }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * 2. 扩展函数 (原 MainConfigKt.kt)
+ * ─────────────────────────────────────────────────────────────────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * 1. 全局 YAML / 序列化配置
+ * ------------------------------------------------------------------------- */
+
+/** 若需要多态注册，可在此 `SerializersModule { }` 区块里补充 */
+val serializersModule: SerializersModule = SerializersModule { }
+
+val yamlConfiguration = YamlConfiguration(
+    encodeDefaults = true,
+    polymorphismStyle = PolymorphismStyle.Tag,
+    sequenceStyle   = SequenceStyle.Block
+)
+
+/** 统一的 YAML 实例；供全项目复用 */
+val yamlFormat: Yaml = Yaml(
+    serializersModule = serializersModule,
+    configuration     = yamlConfiguration
+)
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * 2. MainConfig 扩展工具
+ * ------------------------------------------------------------------------- */
+
+/** 增量分析：简单声明依赖 */
+fun MainConfig.simpleIAnalysisDepends(): IAnalysisDepends =
+    (incrementAnalyze as? IncrementalAnalyzeByChangeFiles)
+        ?.simpleDeclAnalysisDependsGraph
+        ?: PhantomAnalysisDepends
+
+/** 增量分析：跨过程依赖 */
+fun MainConfig.interProceduralAnalysisDepends(): IAnalysisDepends =
+    (incrementAnalyze as? IncrementalAnalyzeByChangeFiles)
+        ?.interProceduralAnalysisDependsGraph
+        ?: PhantomAnalysisDepends
+
+/**
+ * 判断归档资源是否应跳过（已列入 sourcePathZFS 时不过滤）
+ */
+fun MainConfig.skipResourceInArchive(res: IResource): Boolean =
+    !res.isJarScheme || runCatching {
+        !sourcePathZFS.contains(Resource.getZipFileSystem(res.schemePath))
+    }.getOrDefault(true)
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * 3. 检查器配置目录探测
+ * ------------------------------------------------------------------------- */
+
+private const val CHECKER_INFO_CSV = "checker_info.csv"
+
+/**
+ * 根据插件目录列表解析出真正含有 `checker_info.csv` 的目录。
+ *
+ * @param stopOnError 为 `false` 时，遇到异常场景返回 `null` 而非抛错
+ */
+fun checkerInfoDir(
+    configDirs: List<IResource>,
+    stopOnError: Boolean = true
+): IResDirectory? {
+    if (configDirs.size != 1) {
+        if (stopOnError) error("Only one plugin folder could exist: $configDirs") else return null
+    }
+
+    val analysisConfigDir = configDirs.single().path.normalize()
+    if (!Files.exists(analysisConfigDir)) {
+        if (stopOnError) error("$analysisConfigDir does not exist") else return null
+    }
+
+    val linkOpts = emptyArray<LinkOption>()
+    fun Path.hasCheckerInfo() =
+        Files.exists(this, *linkOpts) && Files.exists(resolve(CHECKER_INFO_CSV), *linkOpts)
+
+    // ① 首选插件自身目录
+    val primary: Path? = analysisConfigDir.takeIf { it.hasCheckerInfo() }
+
+    // ② 退回到 Canary/analysis-config
+    val fallback = analysisConfigDir
+        .resolve("../../Canary/analysis-config")
+        .normalize()
+        .takeIf { it.hasCheckerInfo() }
+
+    val resolved = primary ?: fallback
+    return when {
+        resolved != null     -> Resource.dirOf(resolved)
+        stopOnError          -> error("$CHECKER_INFO_CSV not found under $analysisConfigDir")
+        else                 -> null
     }
 }

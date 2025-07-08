@@ -1,61 +1,44 @@
 package cn.sast.api.config
 
 import com.charleskorn.kaml.Yaml
-import java.io.File
-import kotlin.jvm.internal.SourceDebugExtension
-import kotlinx.serialization.DeserializationStrategy
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import java.io.File
+import com.feysh.corax.config.api.rules.ProcessRule.IMatchItem
+import com.feysh.corax.config.api.rules.ProcessRule.ErrorCommit
+import kotlinx.serialization.decodeFromString
 
+/**
+ * project-level YAML：只包含一组 [ProcessRegex]（scan include/exclude）。
+ */
 @Serializable
-public data class ProjectConfig(
+data class ProjectConfig(
     @SerialName("process-regex")
-    public val processRegex: ProcessRegex = ProcessRegex(null, null, null, 7, null)
+    val processRegex: ProcessRegex = ProcessRegex()
 ) {
+    /** 反序列化时保存来源 yml 文件位置（运行期使用，不参与序列化） */
     @Transient
-    public var ymlFile: File? = null
+    var ymlFile: File? = null
+        private set
 
-    public operator fun component1(): ProcessRegex {
-        return this.processRegex
+    companion object {
+        /** 缺省 YAML 文件名（可按需用） */
+        const val RECORD_FILE_NAME = "project-config.yaml"
+
+        /**
+         * 从 YAML 文件读取 [ProjectConfig]。
+         * 会把读取到的 File 存入 [ymlFile] 方便后续定位。
+         */
+        fun load(yamlFile: File): ProjectConfig =
+            Yaml.default.decodeFromString<ProjectConfig>(yamlFile.readText())
+                .also { it.ymlFile = yamlFile }
     }
-
-    public fun copy(processRegex: ProcessRegex = this.processRegex): ProjectConfig {
-        return ProjectConfig(processRegex)
-    }
-
-    public override fun toString(): String {
-        return "ProjectConfig(processRegex=${this.processRegex})"
-    }
-
-    public override fun hashCode(): Int {
-        return this.processRegex.hashCode()
-    }
-
-    public override operator fun equals(other: Any?): Boolean {
-        if (this === other) {
-            return true
-        } else if (other !is ProjectConfig) {
-            return false
-        } else {
-            return this.processRegex == other.processRegex
-        }
-    }
-
-    @SourceDebugExtension(["SMAP\nProjectConfig.kt\nKotlin\n*S Kotlin\n*F\n+ 1 ProjectConfig.kt\ncn/sast/api/config/ProjectConfig$Companion\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,45:1\n1#2:46\n*E\n"])
-    public companion object {
-        public const val RECORD_FILE_NAME: String = TODO("FIXME — missing constant value")
-
-        public fun load(yamlFile: File): ProjectConfig {
-            val var2 = Yaml.default
-                .decodeFromString(serializer(), yamlFile.readText())
-            (var2 as ProjectConfig).ymlFile = yamlFile
-            return var2
-        }
-
-        public fun serializer(): KSerializer<ProjectConfig> {
-            return ProjectConfig.serializer()
+}
+fun List<IMatchItem>.validate() {
+    for (e in this) {
+        if (e is ErrorCommit && e.error != null) {
+            error("Invalid process-regex: `$e`, error: ${e.error}")
         }
     }
 }

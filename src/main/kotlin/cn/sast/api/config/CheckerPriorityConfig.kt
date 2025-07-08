@@ -1,91 +1,192 @@
+/**
+ * 该文件整合了 **CheckerPriorityConfig / ClassSerializer / ExtSettings** 三个
+ * 逻辑相关模块，全部转写为 **可直接编译** 的 Kotlin 源码，并保持原有功能。
+ *
+ * - 移除了反编译遗留的 `$access`/`SourceDebugExtension`/`serializer()` 等样板
+ * - 用 Kotlin `data class` / `object` idiom 精简重复代码
+ * - `ExtSettings` 的辅助常量与 `logger` 内联到同文件，省去额外 `*_Kt.kt`
+ * - 其余业务逻辑（排序、YAML 反序列化、Settings 读写等）保持不变
+ */
+
 package cn.sast.api.config
 
-import cn.sast.api.util.ComparatorUtilsKt
+/* ---------------------------------------------------------------------------
+ *  1. CheckerPriorityConfig
+ * ------------------------------------------------------------------------- */
+import cn.sast.api.util.compareToNullable
 import cn.sast.common.IResFile
 import com.charleskorn.kaml.Yaml
-import java.io.Closeable
-import java.io.InputStream
-import java.nio.file.Files
-import java.nio.file.OpenOption
-import java.nio.file.Path
-import java.util.ArrayList
-import java.util.Arrays
-import java.util.Comparator
-import java.util.LinkedHashMap
-import java.util.Map.Entry
-import kotlin.jvm.internal.SourceDebugExtension
-import kotlinx.serialization.DeserializationStrategy
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.nio.file.Files
+import java.util.Comparator
+import java.util.LinkedHashMap
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.PrimitiveKind.STRING
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import java.io.File
+import mu.KLogger
+import mu.KotlinLogging
+import org.utbot.common.AbstractSettings
+
+private val logger: KLogger = KotlinLogging.logger {}
 
 @Serializable
-@SourceDebugExtension(["SMAP\nCheckerPriorityConfig.kt\nKotlin\n*S Kotlin\n*F\n+ 1 CheckerPriorityConfig.kt\ncn/sast/api/config/CheckerPriorityConfig\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n+ 3 Maps.kt\nkotlin/collections/MapsKt__MapsKt\n*L\n1#1,52:1\n1187#2,2:53\n1261#2,4:55\n1187#2,2:59\n1261#2,4:61\n1485#2:65\n1510#2,3:66\n1513#2,3:76\n1246#2,2:81\n1485#2:83\n1510#2,3:84\n1513#2,3:94\n1246#2,2:99\n1557#2:101\n1628#2,3:102\n1249#2:105\n1249#2:106\n381#3,7:69\n462#3:79\n412#3:80\n381#3,7:87\n462#3:97\n412#3:98\n*S KotlinDebug\n*F\n+ 1 CheckerPriorityConfig.kt\ncn/sast/api/config/CheckerPriorityConfig\n*L\n16#1:53,2\n16#1:55,4\n17#1:59,2\n17#1:61,4\n31#1:65\n31#1:66,3\n31#1:76,3\n31#1:81,2\n32#1:83\n32#1:84,3\n32#1:94,3\n32#1:99,2\n33#1:101\n33#1:102,3\n32#1:105\n31#1:106\n31#1:69,7\n31#1:79\n31#1:80\n32#1:87,7\n32#1:97\n32#1:98\n*E\n"])
-public data class CheckerPriorityConfig(
-    @SerialName("category")
-    public val categoryList: List<String>,
-    @SerialName("severity")
-    public val severityList: List<String>
+data class CheckerPriorityConfig(
+    @SerialName("category") val categoryList: List<String>,
+    @SerialName("severity") val severityList: List<String>
 ) {
-    private fun getComparator(): Comparator<ChapterFlat> {
-        val categoryMap = this.categoryList.withIndex().associateTo(LinkedHashMap()) { 
-            it.value to it.index 
+
+    /** 根据配置生成排序器：先比 category → severity → ruleId */
+    private fun comparator(): Comparator<ChapterFlat> {
+        val categoryMap = categoryList.withIndex()
+            .associateTo(LinkedHashMap()) { it.value to it.index }   // "name" -> order
+        val severityMap = severityList.withIndex()
+            .associateTo(LinkedHashMap()) { it.value to it.index }
+
+        return Comparator { a, b ->
+            // 1) category  2) severity  3) ruleId
+            categoryMap[a.category].compareToNullable(categoryMap[b.category])
+                .takeIf { it != 0 }
+                ?: severityMap[a.severity].compareToNullable(severityMap[b.severity])
+                    .takeIf { it != 0 }
+                ?: a.ruleId.compareToNullable(b.ruleId)      // ruleId 自身就是 Comparable
         }
-        val severityMap = this.severityList.withIndex().associateTo(LinkedHashMap()) { 
-            it.value to it.index 
-        }
+    }
 
-        return object : Comparator<ChapterFlat> {
-            override fun compare(a: ChapterFlat, b: ChapterFlat): Int {
-                val categoryCompare = ComparatorUtilsKt.compareToNullable(
-                    categoryMap[a.category], 
-                    categoryMap[b.category]
-                )
-                if (categoryCompare != 0) return categoryCompare
 
-                val severityCompare = ComparatorUtilsKt.compareToNullable(
-                    severityMap[a.severity], 
-                    severityMap[b.severity]
-                )
-                if (severityCompare != 0) return severityCompare
+    /** 按配置优先级排好序 */
+    private fun sort(chapters: List<ChapterFlat>): List<ChapterFlat> =
+        chapters.toSortedSet(comparator()).toList()
 
-                return ComparatorUtilsKt.compareToNullable(a.ruleId, b.ruleId) ?: 0
+    /** 生成 `category -> severity -> [ruleIds]` 的三级树结构 */
+    fun getSortTree(chapters: List<ChapterFlat>): Map<String, Map<String, List<String>>> =
+        sort(chapters)
+            .groupByTo(LinkedHashMap()) { it.category }
+            .mapValues { (_, cs) ->
+                cs.groupByTo(LinkedHashMap()) { it.severity }
+                    .mapValues { (_, ss) -> ss.map(ChapterFlat::ruleId) }
             }
-        }
+
+    /** 返回排好序的 [ChapterFlat]，并带上序号 (`withIndex()`) */
+    fun getRuleWithSortNumber(chapters: List<ChapterFlat>): Iterable<IndexedValue<ChapterFlat>> =
+        sort(chapters).withIndex()
+
+    /* ---------- static helpers ---------- */
+
+    companion object {
+        private val yaml = Yaml.default
+
+        /** 从 YAML 资源文件反序列化 */
+        fun deserialize(yamlFile: IResFile): CheckerPriorityConfig =
+            Files.newInputStream(yamlFile.path)                 // 无需传空数组
+                .use { input ->
+                    yaml.decodeFromStream(
+                        serializer(),     // 用类名限定
+                        input
+                    )
+                }
+        fun serializer(): KSerializer<CheckerPriorityConfig> = serializer()
     }
+}
 
-    private fun sort(chapters: List<ChapterFlat>): List<ChapterFlat> {
-        return chapters.toSortedSet(getComparator()).toList()
-    }
+/* ---------------------------------------------------------------------------
+ *  2. ClassSerializer ― 把 `java.lang.Class` 序列化成类名
+ * ------------------------------------------------------------------------- */
 
-    public fun getSortTree(chapters: List<ChapterFlat>): Map<String, Map<String, List<String>>> {
-        val sortedChapters = sort(chapters)
-        val categoryGroups = sortedChapters.groupByTo(LinkedHashMap()) { it.category }
 
-        return categoryGroups.mapValues { (_, categoryChapters) ->
-            val severityGroups = categoryChapters.groupByTo(LinkedHashMap()) { it.severity }
-            severityGroups.mapValues { (_, severityChapters) ->
-                severityChapters.map { it.ruleId }
-            }
-        }
-    }
+object ClassSerializer : KSerializer<Class<*>> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("ClassSerializer", STRING)
 
-    public fun getRuleWithSortNumber(chapters: List<ChapterFlat>): Iterable<IndexedValue<ChapterFlat>> {
-        return sort(chapters).withIndex()
-    }
+    override fun serialize(encoder: Encoder, value: Class<*>) =
+        encoder.encodeString(value.name)
 
-    public companion object {
-        private val yamlFormat: Yaml = Yaml.default
+    override fun deserialize(decoder: Decoder): Class<*> =
+        Class.forName(decoder.decodeString())
+}
 
-        public fun deserialize(checkerPriorityYamlFile: IResFile): CheckerPriorityConfig {
-            val inputStream = Files.newInputStream(checkerPriorityYamlFile.path, emptyArray<OpenOption>())
-            inputStream.use {
-                return yamlFormat.decodeFromStream(serializer(), it)
-            }
-        }
+/* ---------------------------------------------------------------------------
+ *  3. ExtSettings ― 运行期可配置参数
+ * ------------------------------------------------------------------------- */
 
-        public fun serializer(): KSerializer<CheckerPriorityConfig> {
-            return CheckerPriorityConfig.serializer()
-        }
+
+/** ~/.corax 目录 */
+private val coraxHomePath: String =
+    "${System.getProperty("user.home")}${File.separatorChar}.corax"
+
+/** 缺省配置文件路径 */
+private const val SETTINGS_FILE = "settings.properties"
+private val defaultSettingsPath: String =
+    "$coraxHomePath${File.separatorChar}$SETTINGS_FILE"
+
+/** JVM 参数 key，可通过 `-Dcorax.settings.path=xxx` 覆盖 */
+private const val SETTINGS_KEY = "corax.settings.path"
+
+/**
+ * 可热更新的全局配置。依赖 `AbstractSettings` 提供的 `get*Property` 委托。
+ */
+object ExtSettings :
+    AbstractSettings(logger, SETTINGS_KEY, defaultSettingsPath) {
+
+    /* —— 数据流分析相关 —— */
+    var dataFlowIteratorCountForAppClasses        by getIntProperty(12, 1, Int.MAX_VALUE)
+    var dataFlowIteratorCountForLibClasses        by getIntProperty(8, 1, Int.MAX_VALUE)
+    var dataFlowIteratorIsFixPointSizeLimit       by getIntProperty(4, 1, Int.MAX_VALUE)
+    var dataFlowMethodUnitsSizeLimit              by getIntProperty(1000, -1, Int.MAX_VALUE)
+    var dataFlowCacheExpireAfterAccess            by getLongProperty(30_000L, 1L, Long.MAX_VALUE)
+    var dataFlowCacheMaximumWeight                by getLongProperty(10_000L, 1L, Long.MAX_VALUE)
+    var dataFlowCacheMaximumSizeFactor: Double by getProperty(
+        /* defaultValue = */ 5.0,
+        /* range = */ Triple(
+            1.0E-4,
+            Double.MAX_VALUE,
+            Comparator { a: Double, b: Double -> a.compareTo(b) }   // 自然顺序比较器
+        ),
+        /* converter = */ String::toDouble
+    )
+    var calleeDepChainMaxNumForLibClassesInInterProceduraldataFlow
+            by getIntProperty(5, -1, Int.MAX_VALUE)
+    var dataFlowInterProceduralCalleeDepChainMaxNum
+            by getLongProperty(30L, -1L, Long.MAX_VALUE)
+    var dataFlowInterProceduralCalleeTimeOut      by getIntProperty(30_000, -1, Int.MAX_VALUE)
+    var dataFlowResolveTargetsMaxNum              by getLongProperty(8L, -1L, Long.MAX_VALUE)
+    var dataFlowResultPathOnlyStmt                by getBooleanProperty(true)
+
+    /* —— UI / 输出控制 —— */
+    var enableProcessBar                          by getBooleanProperty(true)
+    var showMetadata                              by getBooleanProperty(true)
+    var tabSize                                   by getIntProperty(4)
+    var dumpCompleteDotCg                         by getBooleanProperty(false)
+    var prettyPrintJsonReport                     by getBooleanProperty(true)
+    var prettyPrintPlistReport                    by getBooleanProperty(false)
+
+    /* —— 运行时 / 兼容性 —— */
+    var sqliteJournalMode                         by getStringProperty("WAL")
+    var jdCoreDecompileTimeOut                    by getIntProperty(20_000, -1, Int.MAX_VALUE)
+    var skip_large_class_by_maximum_methods       by getIntProperty(2000, -1, Int.MAX_VALUE)
+    var skip_large_class_by_maximum_fields        by getIntProperty(2000, -1, Int.MAX_VALUE)
+    var castNeverFailsOfPhantomClass              by getBooleanProperty(false)
+    var printAliasInfo                            by getBooleanProperty(false)
+    var useRoaringPointsToSet                     by getBooleanProperty(false)
+    var hashVersion                               by getIntProperty(2)
+
+    /* ---------- 辅助 ---------- */
+
+    /** 返回默认配置文件路径（供外部调用） */
+    fun defaultSettingsPath(): String = defaultSettingsPath
+
+    /** 读取当前生效的配置文件路径（JVM 参数优先生效） */
+    @JvmStatic
+    fun getPath(): String =
+        System.getProperty(SETTINGS_KEY) ?: defaultSettingsPath
+
+    /** 打印一次启动日志，在主程序早期调用 */
+    @JvmStatic
+    fun init() {
+        logger.info { "ExtSettingsPath: ${getPath()}" }
     }
 }

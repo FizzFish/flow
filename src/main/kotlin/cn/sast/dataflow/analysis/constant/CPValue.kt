@@ -1,6 +1,6 @@
 package cn.sast.dataflow.analysis.constant
 
-class CPValue private constructor(val value: Int?) {
+open class CPValue private constructor(val value: Int?) {
 
    fun value(): Int? = value
 

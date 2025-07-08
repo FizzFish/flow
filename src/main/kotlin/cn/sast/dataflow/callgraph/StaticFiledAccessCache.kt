@@ -23,7 +23,7 @@ class StaticFiledAccessCache(val cg: CallGraph) {
 
    /** Reachability 缓存 */
    private val cache: LoadingCache<Pair<SootMethod, SootMethod>, Boolean> = CacheBuilder.newBuilder()
-      .concurrencyLevel(OS.INSTANCE.maxThreadNum)
+      .concurrencyLevel(OS.maxThreadNum)
       .initialCapacity(initialCapacity)
       .maximumSize(initialCapacity * 2L)
       .softValues()

@@ -1,87 +1,39 @@
 package cn.sast.api.config
 
-import kotlin.jvm.internal.SourceDebugExtension
 import kotlinx.serialization.EncodeDefault
-import kotlinx.serialization.KSerializer
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.EncodeDefault.Mode
+import kotlinx.serialization.Serializable
 
+/**
+ * 检查器元信息。
+ *
+ * * 保留了全部字段、`@EncodeDefault` 行为和运行时逻辑
+ * * 依赖 Kotlin `data class` 自动生成 `copy / componentN / toString / hashCode / equals`
+ * * `@Serializable` 已自动在 `Companion` 中注入 `serializer()`，无需手写
+ */
 @Serializable
-@SourceDebugExtension(["SMAP\nCheckerInfo.kt\nKotlin\n*S Kotlin\n*F\n+ 1 CheckerInfo.kt\ncn/sast/api/config/CheckerInfo\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,49:1\n1#2:50\n*E\n"])
-public data class CheckerInfo(
-    public val type: String,
-    public val format_version: String,
-    public val analyzer: String,
-    public val language: String,
-    public val checker_id: String,
-    public val severity: String,
-    public val category: Map<String, String>,
-    public val name: Map<String, String>,
-    public val `abstract`: Map<String, String>,
-    public val description: MutableMap<String, String>,
-    public val tags: List<Tag>,
-    @EncodeDefault(mode = Mode.ALWAYS)
-    public val impact: String? = null,
-    @EncodeDefault(mode = Mode.ALWAYS)
-    public val likelihood: String? = null,
-    @EncodeDefault(mode = Mode.ALWAYS)
-    public val precision: String? = null,
-    @EncodeDefault(mode = Mode.ALWAYS)
-    public val reCall: String? = null,
-    @EncodeDefault(mode = Mode.ALWAYS)
-    public val impl: String? = null,
-    @EncodeDefault(mode = Mode.ALWAYS)
-    public val implemented: Boolean? = null
+data class CheckerInfo(
+    val type: String,
+    val format_version: String,
+    val analyzer: String,
+    val language: String,
+    val checker_id: String,
+    val severity: String,
+    val category: Map<String, String>,
+    val name: Map<String, String>,
+    val `abstract`: Map<String, String>,
+    val description: MutableMap<String, String>,
+    val tags: List<Tag>,
+
+    @EncodeDefault(Mode.ALWAYS) val impact: String? = null,
+    @EncodeDefault(Mode.ALWAYS) val likelihood: String? = null,
+    @EncodeDefault(Mode.ALWAYS) val precision: String? = null,
+    @EncodeDefault(Mode.ALWAYS) val reCall: String? = null,
+    @EncodeDefault(Mode.ALWAYS) val impl: String? = null,
+    @EncodeDefault(Mode.ALWAYS) val implemented: Boolean? = null
 ) {
-    public val chapterFlat: ChapterFlat?
-        get() {
-            val zhCN = this.category["zh-CN"]
-            return if (zhCN != null) ChapterFlat(zhCN, this.severity, this.checker_id) else null
-        }
 
-    public fun copy(
-        type: String = this.type,
-        format_version: String = this.format_version,
-        analyzer: String = this.analyzer,
-        language: String = this.language,
-        checker_id: String = this.checker_id,
-        severity: String = this.severity,
-        category: Map<String, String> = this.category,
-        name: Map<String, String> = this.name,
-        `abstract`: Map<String, String> = this.`abstract`,
-        description: MutableMap<String, String> = this.description,
-        tags: List<Tag> = this.tags,
-        impact: String? = this.impact,
-        likelihood: String? = this.likelihood,
-        precision: String? = this.precision,
-        reCall: String? = this.reCall,
-        impl: String? = this.impl,
-        implemented: Boolean? = this.implemented
-    ): CheckerInfo {
-        return CheckerInfo(
-            type,
-            format_version,
-            analyzer,
-            language,
-            checker_id,
-            severity,
-            category,
-            name,
-            `abstract`,
-            description,
-            tags,
-            impact,
-            likelihood,
-            precision,
-            reCall,
-            impl,
-            implemented
-        )
-    }
-
-    public companion object {
-        public fun serializer(): KSerializer<CheckerInfo> {
-            return CheckerInfo.serializer()
-        }
-    }
+    /** 提取中文分类、严重级别与 CheckerId 以便在侧边栏等处扁平展示。 */
+    val chapterFlat: ChapterFlat?
+        get() = category["zh-CN"]?.let { ChapterFlat(it, severity, checker_id) }
 }
