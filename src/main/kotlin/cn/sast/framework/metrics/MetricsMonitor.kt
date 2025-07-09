@@ -1,238 +1,190 @@
 package cn.sast.framework.metrics
 
-import cn.sast.api.config.MainConfigKt
 import cn.sast.api.report.ProjectMetrics
-import cn.sast.api.report.Report
 import cn.sast.api.util.IMonitor
-import cn.sast.api.util.PhaseIntervalTimerKt
 import cn.sast.api.util.Timer
+import cn.sast.api.util.currentNanoTime
 import cn.sast.common.CustomRepeatingTimer
 import cn.sast.common.IResDirectory
 import cn.sast.framework.result.ResultCollector
 import cn.sast.framework.result.ResultCounter
 import cn.sast.idfa.analysis.UsefulMetrics
 import com.charleskorn.kaml.Yaml
-import java.io.Closeable
-import java.io.OutputStream
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.modules.SerializersModuleBuilder
 import java.nio.file.Files
 import java.nio.file.OpenOption
-import java.nio.file.Path
+import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
 import java.util.concurrent.atomic.AtomicLong
 import java.util.function.LongUnaryOperator
-import kotlin.jvm.internal.SourceDebugExtension
+import kotlin.math.max
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.DurationUnit
-import kotlinx.serialization.KSerializer
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationStrategy
-import kotlinx.serialization.Transient
-import kotlinx.serialization.modules.SerializersModuleBuilder
-import org.eclipse.microprofile.metrics.Gauge
-import kotlin.collections.ArrayList
-import kotlin.collections.LinkedHashMap
-import kotlin.collections.Map.Entry
-import kotlin.collections.addAll
-import kotlin.collections.component1
-import kotlin.collections.component2
-import kotlin.collections.component3
-import kotlin.collections.component4
-import kotlin.collections.component5
-import kotlin.collections.component6
-import kotlin.collections.firstOrNull
-import kotlin.collections.mapOf
-import kotlin.collections.mutableListOf
-import kotlin.collections.mutableMapOf
-import kotlin.collections.set
-import kotlin.comparisons.compareValues
 
+/**
+ * `MetricsMonitor` records JVM + project specific metrics from *start* to *end* of the analysis.
+ * It exposes a small DSL so callers can add *phase* timers and arbitrary name/number pairs that
+ * will end up in the final YAML file.
+ */
 @Serializable
-@SourceDebugExtension(["SMAP\nMetricsMonitor.kt\nKotlin\n*S Kotlin\n*F\n+ 1 MetricsMonitor.kt\ncn/sast/framework/metrics/MetricsMonitor\n+ 2 MapsJVM.kt\nkotlin/collections/MapsKt__MapsJVMKt\n+ 3 fake.kt\nkotlin/jvm/internal/FakeKt\n+ 4 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n+ 5 Maps.kt\nkotlin/collections/MapsKt__MapsKt\n+ 6 SerializersModuleBuilders.kt\nkotlinx/serialization/modules/SerializersModuleBuildersKt\n*L\n1#1,249:1\n72#2,2:250\n1#3:252\n1#3:253\n1485#4:254\n1510#4,3:255\n1513#4,3:265\n1246#4,4:270\n1246#4,4:276\n808#4,11:280\n1863#4,2:291\n381#5,7:258\n462#5:268\n412#5:269\n477#5:274\n423#5:275\n31#6,3:293\n*S KotlinDebug\n*F\n+ 1 MetricsMonitor.kt\ncn/sast/framework/metrics/MetricsMonitor\n*L\n92#1:250,2\n92#1:252\n159#1:254\n159#1:255,3\n159#1:265,3\n159#1:270,4\n160#1:276,4\n165#1:280,11\n218#1:291,2\n159#1:258,7\n159#1:268\n159#1:269\n160#1:274\n160#1:275\n228#1:293,3\n*E\n"])
 class MetricsMonitor : IMonitor {
-    private var beginDate: String = ""
+
+    // -------------------------------------------------------------------------
+    //  Publicly exposed immutable timestamps
+    // -------------------------------------------------------------------------
     val beginMillis: Long = System.currentTimeMillis()
+    @Transient val beginNanoTime: Long = currentNanoTime()
+
+    // -------------------------------------------------------------------------
+    //  JVM runtime metrics
+    // -------------------------------------------------------------------------
+    private val jvmMemoryMaxGb: Double = UsefulMetrics.metrics.jvmMemoryMax?.let { it.value.inMemGB() } ?: -1.0
+    @Transient private val maxUsedMemory = AtomicLong(0)
+
+    // -------------------------------------------------------------------------
+    //  Timers & helpers
+    // -------------------------------------------------------------------------
+    @Transient private val allPhaseTimer: ConcurrentMap<String, Timer> = ConcurrentHashMap()
+    private val phaseTimer = mutableListOf<PhaseTimer>()
+    @Transient private val timer = CustomRepeatingTimer(delayMillis = 2_000) { record() }
+    @Transient private val analyzeFinishHook = mutableListOf<Thread>()
+
+    // -------------------------------------------------------------------------
+    //  Collected project metrics & results
+    // -------------------------------------------------------------------------
+    override val projectMetrics = ProjectMetrics()
+    private val finalNumbers = mutableMapOf<String, Any>()
+    private val reports = mutableListOf<ReportKey>()
+    private val snapshot = mutableListOf<MetricsSnapshot>()
+
+    // -------------------------------------------------------------------------
+    //  Lazily filled at [serialize]
+    // -------------------------------------------------------------------------
+    private var endNanoTime: Long? = null
     private var elapsedSeconds: Double = -1.0
-    private var elapsedTime: String = ""
-    private var endDate: String = ""
-    private var endTime: Long = 0L
-    private var jvmMemoryUsedMax: Double = -1.0
-    private val jvmMemoryMax: Double
-    val projectMetrics: ProjectMetrics
-    private val phaseTimer: MutableList<PhaseTimer> = mutableListOf()
-    private val final: MutableMap<String, Any> = LinkedHashMap()
-    private val reports: MutableList<ReportKey> = mutableListOf()
-    private val snapshot: MutableList<MetricsSnapshot> = mutableListOf()
 
-    @Transient
-    val beginNanoTime: Long = PhaseIntervalTimerKt.currentNanoTime()
+    // -------------------------------------------------------------------------
+    //  IMonitor implementation
+    // -------------------------------------------------------------------------
+    override fun timer(phase: String): Timer =
+        allPhaseTimer.computeIfAbsent(phase) { Timer(phase) }
 
-    @Transient
-    private val allPhaseTimer: ConcurrentMap<String, Timer> = ConcurrentHashMap()
+    // -------------------------------------------------------------------------
+    //  Public API – lifecycle
+    // -------------------------------------------------------------------------
+    fun start() = timer.start()
+    fun stop() = timer.stop()
 
-    @Transient
-    private val analyzeFinishHook: MutableList<Thread> = mutableListOf()
-
-    @Transient
-    val maxUsedMemory: AtomicLong = AtomicLong(0L)
-
-    @Transient
-    private val timer: CustomRepeatingTimer
-
-    private val g: Double
-        get() = TODO("FIXME — Original logic was unclear")
-
-    init {
-        val gauge = UsefulMetrics.Companion.getMetrics().getJvmMemoryMax()
-        this.jvmMemoryMax = MetricsMonitorKt.inMemGB$default(if (gauge != null) this.getG(gauge) else null, 0, 1, null)
-        this.projectMetrics = ProjectMetrics(null, null, 0, 0, 0, 0, 0, 0, 0.0F, 0, 0.0F, 0, 0, 0, 0L, 0L, 0L, 0, 0, 0, 0.0F, 0, 0.0F, 0, 16777215, null)
-        
-        val timer = CustomRepeatingTimer(2000L) { this.record() }
-        timer.setRepeats(true)
-        this.timer = timer
-        this.record()
-    }
-
-    override fun timer(phase: String): Timer {
-        return allPhaseTimer.getOrPut(phase) { Timer(phase) }
-    }
-
+    /**
+     * Snapshot *current* JVM runtime metrics and append to [snapshot] list.
+     * Keeps track of maximum *used* memory encountered so far.
+     */
     fun record() {
-        val m = UsefulMetrics.Companion.getMetrics()
         synchronized(this) {
-            val gauge = m.getJvmMemoryUsed()
-            if (gauge != null) {
-                val value = gauge.value as? Long
-                if (value != null) {
-                    maxUsedMemory.updateAndGet { current -> if (current < value) value else current }
-                }
+            val metrics = UsefulMetrics.metrics
+            metrics.jvmMemoryUsed?.value?.let { usedBytes ->
+                maxUsedMemory.updateAndGet(LongUnaryOperator { current -> max(current, usedBytes) })
             }
 
-            val timeInSeconds = PhaseIntervalTimerKt.nanoTimeInSeconds(
-                MetricsMonitorKt.timeSub(PhaseIntervalTimerKt.currentNanoTime(), beginNanoTime)
-            )
-            val memoryUsed = MetricsMonitorKt.inMemGB(m.getJvmMemoryUsed()?.let { getG(it) })
-            val memoryMax = MetricsMonitorKt.inMemGB(getG(maxUsedMemory.get()))
-            val memoryCommitted = MetricsMonitorKt.inMemGB(m.getJvmMemoryCommitted()?.let { getG(it) })
-            val freePhysical = MetricsMonitorKt.inMemGB(m.getFreePhysicalSize()?.let { getG(it) })
-            val cpuLoad = m.getCpuSystemCpuLoad()?.value as? Double?.let { PhaseIntervalTimerKt.retainDecimalPlaces(it, 2) }
-
-            snapshot.add(
-                MetricsSnapshot(
-                    timeInSeconds,
-                    memoryUsed,
-                    memoryMax,
-                    memoryCommitted,
-                    freePhysical,
-                    cpuLoad
-                )
+            snapshot += MetricsSnapshot(
+                timeInSecond = nanoTimeInSeconds(
+                    currentNanoTime() - beginNanoTime
+                ),
+                jvmMemoryUsed = metrics.jvmMemoryUsed?.value.inMemGB(),
+                jvmMemoryUsedMax = maxUsedMemory.get().inMemGB(),
+                jvmMemoryCommitted = metrics.jvmMemoryCommitted?.value.inMemGB(),
+                freePhysicalSize = metrics.freePhysicalSize?.value.inMemGB(),
+                cpuSystemCpuLoad = metrics.cpuSystemCpuLoad?.value?.let { retainDecimalPlaces(it, 2) },
             )
         }
     }
+    // -------------------------------------------------------------------------
+    //  Public API – custom numbers / strings
+    // -------------------------------------------------------------------------
+    fun <T : Number> put(name: String, value: T) = synchronized(this) { finalNumbers[name] = value }
+    fun put(name: String, value: String)        = synchronized(this) { finalNumbers[name] = value }
 
-    fun start() {
-        timer.start()
-    }
+    // -------------------------------------------------------------------------
+    //  Aggregates [result] into *projectMetrics* & report statistics
+    // -------------------------------------------------------------------------
+    fun take(result: ResultCollector) = synchronized(this) {
+        projectMetrics.serializedReports = result.reports.size
 
-    fun stop() {
-        timer.stop()
-    }
+        // 1️⃣ Build a (category,type) → size map
+        val grouped: Map<ReportKey, Int> = result.reports.groupingBy {
+            ReportKey(it.category, it.type)
+        }.eachCount()
 
-    @JvmName("putNumber")
-    fun <T : Number> put(name: String, value: T) {
-        synchronized(this) {
-            final[name] = value
+        // 2️⃣ Update ReportKey.size and transfer to [reports]
+        grouped.forEach { (key, size) ->
+            key.size = size
+            reports += key
+        }
+
+        // 3️⃣ Copy interesting numbers from the *first* [ResultCounter] (if present)
+        result.counters.filterIsInstance<ResultCounter>().firstOrNull()?.let { c ->
+            put("infoflow.results",          c.infoflowResCount.get())
+            put("infoflow.abstraction",      c.infoflowAbsAtSinkCount.get())
+            put("symbolic.execution",        c.symbolicUTbotCount.get())
+            put("PreAnalysis.results",       c.preAnalysisResultCount.get())
+            put("built‑in.Analysis.results", c.builtInAnalysisCount.get())
+            put("AbstractInterpretationAnalysis.results", c.dataFlowCount.get())
         }
     }
+    // -------------------------------------------------------------------------
+    //  Serialisation → YAML file
+    // -------------------------------------------------------------------------
+    fun serialize(outDir: IResDirectory) {
+        stop()                                   // make sure the repeating timer is stopped
+        endNanoTime = currentNanoTime()
 
-    fun put(name: String, value: String) {
-        synchronized(this) {
-            final[name] = value
+        // 1️⃣ Convert phase timers to serialisable DTOs
+        val elapsedFromBegin: (Long) -> Double = { ns ->
+            nanoTimeInSeconds(ns - beginNanoTime)
         }
-    }
-
-    fun take(result: ResultCollector) {
-        synchronized(this) {
-            projectMetrics.serializedReports = result.reports.size
-            val reportsByKey = result.reports.groupBy { report ->
-                ReportKey(report.category, report.type)
-            }.mapValues { (_, reports) -> reports.size }
-
-            reports.addAll(reportsByKey.keys)
-            
-            val counter = result.collectors.filterIsInstance<ResultCounter>().firstOrNull()
-            if (counter != null) {
-                put("infoflow.results", counter.infoflowResCount.get())
-                put("infoflow.abstraction", counter.infoflowAbsAtSinkCount.get())
-                put("symbolic.execution", counter.symbolicUTbotCount.get())
-                put("PreAnalysis.results", counter.preAnalysisResultCount.get())
-                put("built-in.Analysis.results", counter.builtInAnalysisCount.get())
-                put("AbstractInterpretationAnalysis.results", counter.dataFlowCount.get())
-            }
-        }
-    }
-
-    fun serialize(out: IResDirectory) {
-        stop()
-        val file = out.resolve("metrics.yml").path
-        synchronized(this) {
-            projectMetrics.process()
-            beginDate = MetricsMonitorKt.getDateStringFromMillis(beginMillis)
-
-            allPhaseTimer.forEach { (phaseName, timer) ->
-                phaseTimer.add(
-                    PhaseTimer(
-                        phaseName,
-                        PhaseIntervalTimerKt.nanoTimeInSeconds(MetricsMonitorKt.timeSub(timer.startTime, beginNanoTime)),
-                        PhaseIntervalTimerKt.nanoTimeInSeconds(timer.elapsedTime),
-                        timer.phaseStartCount.value,
-                        PhaseIntervalTimerKt.nanoTimeInSeconds(timer.phaseAverageElapsedTime, 6),
-                        PhaseIntervalTimerKt.nanoTimeInSeconds(MetricsMonitorKt.timeSub(timer.endTime, beginNanoTime))
-                    )
+        phaseTimer += allPhaseTimer.entries
+            .sortedBy { it.value.startTime }
+            .map { (name, timer) ->
+                PhaseTimer(
+                    name = name,
+                    start = elapsedFromBegin(timer.startTime),
+                    elapsedTime = nanoTimeInSeconds(timer.elapsedTime),
+                    phaseStartCount = timer.phaseStartCount.get(),
+                    averageElapsedTime = nanoTimeInSeconds(timer.phaseAverageElapsedTime),
+                    end = elapsedFromBegin(timer.endTime)
                 )
             }
 
-            phaseTimer.sortWith(compareBy { it.name })
-            endTime = PhaseIntervalTimerKt.currentNanoTime()
-            val totalTime = MetricsMonitorKt.timeSub(endTime, beginNanoTime)
-            endDate = MetricsMonitorKt.getDateStringFromMillis(System.currentTimeMillis())
-            elapsedSeconds = PhaseIntervalTimerKt.nanoTimeInSeconds(totalTime)
-            elapsedTime = totalTime?.let { 
-                Duration.milliseconds(it).toString() 
-            } ?: "invalid"
-            
-            jvmMemoryUsedMax = MetricsMonitorKt.inMemGB(getG(maxUsedMemory.get()))
-            
-            Files.newOutputStream(file).use { output ->
-                Yaml.default.encodeToStream(serializer(), this, output)
-            }
+        // 2️⃣ High‑level metrics
+        elapsedSeconds = nanoTimeInSeconds(endNanoTime!! - beginNanoTime)
+
+        // 3️⃣ Write YAML
+        val file = outDir.resolve("metrics.yml").path
+        Files.newOutputStream(file, *arrayOf<OpenOption>()).use { os ->
+            yamlFormat.encodeToStream(serializer(), this, os)
         }
     }
 
-    fun addAnalyzeFinishHook(t: Thread) {
-        analyzeFinishHook.add(t)
-    }
+    // -------------------------------------------------------------------------
+    //  Analyse‑finish hooks
+    // -------------------------------------------------------------------------
+    fun addAnalyzeFinishHook(t: Thread) = analyzeFinishHook.add(t)
 
     fun runAnalyzeFinishHook() {
         synchronized(analyzeFinishHook) {
-            analyzeFinishHook.forEach { thread ->
-                thread.start()
-                thread.join()
+            analyzeFinishHook.forEach { th ->
+                th.start(); th.join()
             }
             analyzeFinishHook.clear()
         }
     }
 
-    companion object {
-        val yamlFormat: Yaml = Yaml(SerializersModuleBuilder().apply {
-            contextual(Any::class, DynamicLookupSerializer())
-        }.build(), MainConfigKt.yamlConfiguration)
-
-        fun serializer(): KSerializer<MetricsMonitor> = MetricsMonitor.serializer()
-    }
-
+    // -------------------------------------------------------------------------
+    //  Data classes used in the YAML file
+    // -------------------------------------------------------------------------
     @Serializable
     data class MetricsSnapshot(
         val timeInSecond: Double,
@@ -240,7 +192,7 @@ class MetricsMonitor : IMonitor {
         val jvmMemoryUsedMax: Double?,
         val jvmMemoryCommitted: Double?,
         val freePhysicalSize: Double?,
-        val cpuSystemCpuLoad: Double?
+        val cpuSystemCpuLoad: Double?,
     )
 
     @Serializable
@@ -250,12 +202,43 @@ class MetricsMonitor : IMonitor {
         val elapsedTime: Double,
         val phaseStartCount: Int,
         val averageElapsedTime: Double,
-        val end: Double
+        val end: Double,
     )
-}
 
-private class MetricsMonitor$serialize$lambda$15$$inlined$compareBy$1<T> : Comparator<T> {
-    override fun compare(a: T, b: T): Int {
-        return compareValues((a as MetricsMonitor.PhaseTimer).name, (b as MetricsMonitor.PhaseTimer).name)
+    // -------------------------------------------------------------------------
+    //  Companion – YAML format + KSerializer
+    // -------------------------------------------------------------------------
+    companion object {
+        /** YAML format configured with contextual lookup for *Any* values. */
+        val yamlFormat: Yaml by lazy {
+            val module = SerializersModuleBuilder().apply {
+                contextual(Any::class, DynamicLookupSerializer)
+            }.build()
+            Yaml(module, MainConfigKt.yamlConfiguration)
+        }
     }
 }
+
+private val DATE_FMT = SimpleDateFormat("yyyy.MM.dd HH:mm:ss")
+
+/**
+ * Convert *absolute* `time` (a nano‑timestamp) into a *relative* duration since [begin].
+ * Returns `null` if [time] < [begin].
+ */
+internal fun timeSub(time: Long?, begin: Long): Long? =
+    time?.takeIf { it >= begin }?.let { it - begin }
+
+/** Human‑readable *GB* string – e.g. `"1.23GB"`. */
+internal fun Number.fmt(postfix: String, scale: Int = 2): String =
+    "% .${scale}f$postfix".format(this.toDouble())
+
+/** Bytes → Gigabytes (*rounded* to [scale] decimals). Returns `-1.0` on `null`. */
+internal fun Number?.inMemGB(scale: Int = 3): Double =
+    this?.let { retainDecimalPlaces(it.toDouble(), scale) } ?: -1.0
+
+/** Convenience overload for [Duration]. */
+fun getDateStringFromMillis(duration: Duration): String =
+    getDateStringFromMillis(duration.inWholeMilliseconds)
+
+fun getDateStringFromMillis(epochMillis: Long): String =
+    DATE_FMT.format(Date(epochMillis))

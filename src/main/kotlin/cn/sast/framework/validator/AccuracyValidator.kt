@@ -1,234 +1,257 @@
+// -----------------------------------------------------------------------------
+//  Converted VALIDATOR‑layer Kotlin sources (package `cn.sast.framework.validator`)
+//  * AccuracyValidator – scoring tool for expected/actual bug annotations
+//  * ActualBugAnnotationData – data holder for real bug reports
+//  * PrecisionMeasurement – helpers for formatting percentage / score numbers
+//  * PrettyTable – lightweight ASCII table printer
+//  * RowType, RowCheckType, RowUnknownType – key types for score‑matrix rows
+// -----------------------------------------------------------------------------
+@file:Suppress("MemberVisibilityCanBePrivate", "unused")
+
+// region: common imports ------------------------------------------------------
 package cn.sast.framework.validator
 
 import cn.sast.api.config.MainConfig
 import cn.sast.api.config.ScanFilter
-import cn.sast.api.report.BugPathEvent
-import cn.sast.api.report.ExpectBugAnnotationData
-import cn.sast.api.report.Report
-import cn.sast.api.report.ReportKt
-import cn.sast.common.FileSystemLocator
-import cn.sast.common.GLB
-import cn.sast.common.IResFile
-import cn.sast.common.IResource
-import cn.sast.common.Resource
-import cn.sast.common.ResourceKt
-import cn.sast.framework.report.IProjectFileLocator
-import cn.sast.framework.report.NullWrapperFileGenerator
-import cn.sast.framework.report.ProjectFileLocator
+import cn.sast.api.report.*
+import cn.sast.common.*
+import cn.sast.framework.report.*
 import cn.sast.framework.result.ResultCollector
-import com.feysh.corax.config.api.AIAnalysisApiKt
-import com.feysh.corax.config.api.CheckType
-import com.feysh.corax.config.api.IChecker
-import com.feysh.corax.config.api.IRule
-import com.feysh.corax.config.api.rules.ProcessRule
-import com.feysh.corax.config.api.rules.ProcessRule.FileMatch
-import com.github.doyaaaaaken.kotlincsv.client.CsvFileWriter
-import com.github.doyaaaaaken.kotlincsv.client.CsvWriter
-import com.github.doyaaaaaken.kotlincsv.dsl.CsvWriterDslKt
-import java.io.BufferedWriter
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-import java.io.OutputStreamWriter
-import java.io.PrintWriter
-import java.io.Writer
-import java.nio.charset.Charset
-import java.util.ArrayList
-import java.util.LinkedHashMap
-import java.util.LinkedHashSet
-import java.util.Locale
-import java.util.regex.Matcher
-import java.util.regex.Pattern
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.intrinsics.IntrinsicsKt
-import kotlin.coroutines.jvm.internal.Boxing
-import kotlin.jvm.functions.Function2
-import kotlin.jvm.internal.SourceDebugExtension
-import kotlin.jvm.internal.Ref.IntRef
-import kotlinx.coroutines.AwaitKt
-import kotlinx.coroutines.BuildersKt
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineScopeKt
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.serialization.SerializersKt
-import mu.KLogger
+import com.feysh.corax.config.api.*
+import kotlinx.coroutines.*
 import mu.KotlinLogging
-import java.util.Comparator
-import kotlin.comparisons.compareValues
+import java.io.PrintWriter
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.util.*
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.io.path.bufferedWriter
+// endregion ------------------------------------------------------------------
 
-@SourceDebugExtension(["SMAP\nPrecisionMeasurement.kt\nKotlin\n*S Kotlin\n*F\n+ 1 PrecisionMeasurement.kt\ncn/sast/framework/validator/AccuracyValidator\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n+ 3 ProcessRule.kt\ncom/feysh/corax/config/api/rules/ProcessRule\n+ 4 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,423:1\n1557#2:424\n1628#2,3:425\n1053#2:429\n24#3:428\n1#4:430\n*S KotlinDebug\n*F\n+ 1 PrecisionMeasurement.kt\ncn/sast/framework/validator/AccuracyValidator\n*L\n86#1:424\n86#1:425,3\n81#1:429\n86#1:428\n*E\n"])
-class AccuracyValidator(val mainConfig: MainConfig) {
-    private val logger: KLogger = KotlinLogging.logger { "AccuracyValidator" }
-    private val extensions: List<String> = ResourceKt.getJavaExtensions() + listOf("yml", "txt", "gradle", "kts", "cnf", "conf", "config", "xml", "properties")
+// -----------------------------------------------------------------------------
+// Row‑model hierarchy – used as keys when grouping TP/FN/TN/FP buckets
+// -----------------------------------------------------------------------------
+sealed class RowType { abstract val type: Any }
 
-    private object AnnotationLineComparator : Comparator<ExpectBugAnnotationData> {
-        override fun compare(a: ExpectBugAnnotationData, b: ExpectBugAnnotationData): Int {
-            return compareValues(a.line, b.line)
-        }
+internal data class RowCheckType(val checkType: CheckType) : RowType() {
+    override val type: CheckType = checkType
+    override fun toString(): String = ReportKt.getPerfectName(checkType)
+}
+
+internal data class RowUnknownType(val unknown: String) : RowType() {
+    override val type: String = unknown
+    override fun toString(): String = unknown
+}
+
+// -----------------------------------------------------------------------------
+// PrettyTable – minimal ASCII table printer (sufficient for report dump)
+// -----------------------------------------------------------------------------
+class PrettyTable(
+    private val out: PrintWriter,
+    head: List<String>,
+) : AutoCloseable {
+
+    private val rows: MutableList<List<String>> = mutableListOf(head)
+    private var colWidth: MutableList<Int> = head.map { it.length }.toMutableList()
+
+    fun addLine(line: List<Any?>) {
+        require(line.size == colWidth.size) { "Column size mismatch" }
+        val strLine = line.map { it?.toString() ?: "" }
+        rows += strLine
+        colWidth = colWidth.indices.map { maxOf(colWidth[it], strLine[it].length) }.toMutableList()
     }
 
-    private object RowTypeComparator : Comparator<RowType> {
-        override fun compare(a: RowType, b: RowType): Int {
-            return compareValues(a.toString(), b.toString())
-        }
-    }
-
-    val str: String
-        get() = "\"${
-            CollectionsKt.joinToString(
-                CollectionsKt.sortedWith(str, AnnotationLineComparator),
-                "\n",
-                null,
-                null,
-                0,
-                null,
-                { bugAnnotationData -> "file: ${mainConfig.tryGetRelativePath(bugAnnotationData.file).relativePath}:${bugAnnotationData.line}:${bugAnnotationData.column} kind: ${bugAnnotationData.kind} a bug: ${bugAnnotationData.bug}" },
-                30,
-                null
-            )}\""
-
-    private val rules: List<FileMatch>
-    private val pattern: Pattern
-
-    init {
-        val var17 = ProcessRule.INSTANCE
-        val var18 = listOf("build", "out", "target", ".idea", ".git")
-        val mappedRules = var18.map { "(-)path=/$it/" }
-            .map { line ->
-                ProcessRule.InlineRuleStringSerialize.INSTANCE
-                    .deserializeMatchFromLineString(SerializersKt.serializer(FileMatch::class), line)
+    fun dump() {
+        val sep    = "+" + colWidth.joinToString("+") { "-".repeat(it + 2) } + "+"
+        val sep2   = "+" + colWidth.joinToString("+") { "=".repeat(it + 2) } + "+"
+        fun printRow(r: List<String>) {
+            out.print("|")
+            r.forEachIndexed { i, cell ->
+                val pad = colWidth[i] - cell.length
+                val left = pad / 2; val right = pad - left
+                out.print(" ".repeat(left + 1) + cell + " ".repeat(right + 1) + "|")
             }
-
-        this.rules = mappedRules.toMutableList()
-        this.pattern = Pattern.compile("(?<escape>(!?))\\$ *(?<name>((`([^(`\\r\\n)])+`)|([a-zA-Z$_]+[a-zA-Z0-9$_.-]*)))", 8)
+            out.println()
+        }
+        out.println(sep)
+        printRow(rows.first())
+        out.println(sep2)
+        rows.drop(1).forEach { printRow(it); out.println(sep) }
     }
 
-    suspend fun makeScore(result: ResultCollector, locator: IProjectFileLocator): Result {
-        return BuildersKt.withContext(
-            Dispatchers.IO,
-            Function2<CoroutineScope, Continuation<Result>, Any> { scope, continuation ->
-                object : kotlin.coroutines.jvm.internal.RestrictedSuspendLambda(scope, continuation) {
-                    private var L$0: Any? = null
-                    private var L$1: Any? = null
-                    private var L$2: Any? = null
-                    private var L$3: Any? = null
-                    private var L$4: Any? = null
-                    private var label: Int = 0
+    override fun close() { out.flush(); out.close() }
+}
 
-                    override fun invokeSuspend(result: Any): Any {
-                        when (label) {
-                            0 -> {
-                                ResultKt.throwOnFailure(result)
-                                val projectFileLocator = ProjectFileLocator(
-                                    mainConfig.monitor,
-                                    mainConfig.sourcePath + mainConfig.processDir + mainConfig.autoAppClasses,
-                                    null,
-                                    FileSystemLocator.TraverseMode.Default,
-                                    false
-                                )
-                                projectFileLocator.update()
-                                val expectedResults = LinkedHashSet<ExpectBugAnnotationData>()
-                                val outputDir = extensions
-                                val FP = this@AccuracyValidator
-                                val TN = ArrayList<Any>()
-                                val typeNoAnnotated = outputDir.iterator()
-                                label = 1
-                                L$0 = projectFileLocator
-                                L$1 = expectedResults
-                                L$2 = FP
-                                L$3 = TN
-                                L$4 = typeNoAnnotated
-                                val res = projectFileLocator.getByFileExtension(typeNoAnnotated.next(), this)
-                                if (res == IntrinsicsKt.getCOROUTINE_SUSPENDED()) return res
-                                CollectionsKt.addAll(TN, SequencesKt.map(res as Sequence<*>) { TODO() })
-                            }
-                            1 -> {
-                                val typeNoAnnotated = L$4 as Iterator<*>
-                                TN = L$3 as MutableCollection<*>
-                                FP = L$2 as AccuracyValidator
-                                expectedResults = L$1 as MutableSet<*>
-                                projectFileLocator = L$0 as ProjectFileLocator
-                                ResultKt.throwOnFailure(result)
-                                CollectionsKt.addAll(TN, SequencesKt.map(result as Sequence<*>) { TODO() })
-                            }
-                            2 -> {
-                                expectedResults = L$0 as MutableSet<*>
-                                ResultKt.throwOnFailure(result)
-                                // Rest of the implementation...
-                            }
-                            else -> throw IllegalStateException("call to 'resume' before 'invoke' with coroutine")
-                        }
-                        TODO("Complete implementation")
-                    }
-                }
+// -----------------------------------------------------------------------------
+// PrecisionMeasurement – utility for formatting decimals uniformly (00.00)
+// -----------------------------------------------------------------------------
+object PrecisionMeasurement {
+    fun fm(value: Number?): String = if (value == null) "‑" else "%.2f".format(Locale.US, value.toFloat())
+}
+
+// -----------------------------------------------------------------------------
+// ActualBugAnnotationData – triple identifying an actual bug report location
+// -----------------------------------------------------------------------------
+internal data class ActualBugAnnotationData(
+    val file: IResFile,
+    val line: Int,
+    val checkType: CheckType,
+) {
+    override fun toString(): String =
+        "${file}:${line} report [${ReportKt.getPerfectName(checkType)}]"
+}
+
+// -----------------------------------------------------------------------------
+// AccuracyValidator – heavy‑weight validator / scorer rewritten in Kotlin idioms
+//   * Reads `//$BUG` or `<!-- $BUG -->` inline annotations from source files
+//   * Compares against [ResultCollector] reports (actual findings)
+//   * Produces CSV + pretty‑table summary into `$output/report‑accuracy‑forms` dir
+//   * Simplified vs. original: ‑ retains metrics (TP/FN/TN/FP, TPR, FPR, score) but
+//                             ‑ uses deterministic, thread‑safe algorithms
+// -----------------------------------------------------------------------------
+class AccuracyValidator(private val mainConfig: MainConfig) {
+
+    private val logger = KotlinLogging.logger {}
+    private val validExt = setOf("java", "kt", "yml", "xml", "properties", "gradle", "kts", "txt", "conf", "cnf")
+
+    // regex:  // $BUG   or   <!-- $BUG -->   (optional ! escape prefix)
+    private val bugPattern: Regex = Regex("(?<escape>!?)[ $]*\$[`]?([a-zA-Z0-9_./-]+)[`]?", RegexOption.IGNORE_CASE)
+
+    // public API ------------------------------------------------------------
+    suspend fun makeScore(result: ResultCollector, locator: IProjectFileLocator): Result = withContext(Dispatchers.IO) {
+        // 1. Collect *expected* bug annotations from source tree -------------------
+        val expected = scanSourceForAnnotations(locator)
+
+        // 2. Collect *actual* reports, map to ActualBugAnnotationData --------------
+        val actual = result.getReports().mapNotNull { toActual(it, locator) }.toSet()
+
+        // 3. Confusion‑matrix buckets ---------------------------------------------
+        val tpBucket = mutableMapOf<RowType, MutableSet<ExpectBugAnnotationData>>()
+        val fnBucket = mutableMapOf<RowType, MutableSet<ExpectBugAnnotationData>>()
+        val fpBucket = mutableMapOf<RowType, MutableSet<ExpectBugAnnotationData>>()
+        val tnBucket = mutableMapOf<RowType, MutableSet<ExpectBugAnnotationData>>() // here: escapes hit
+
+        val expectedMap = expected.groupBy { it.kind }
+        val (expectPos, expectNeg) = expectedMap[ExpectBugAnnotationData.Kind.Expect].orEmpty() to expectedMap[ExpectBugAnnotationData.Kind.Escape].orEmpty()
+
+        // True Positives / False Negatives ----------------------------------------
+        expectPos.forEach { exp ->
+            val match = actual.any { it.file == exp.file && it.line == exp.line }
+            val row: RowType = rowKey(exp.bug)
+            (if (match) tpBucket else fnBucket).getOrPut(row) { linkedSetOf() }.add(exp)
+        }
+
+        // Escapes (True Negative / False Positive) --------------------------------
+        expectNeg.forEach { exp ->
+            val match = actual.any { it.file == exp.file && it.line == exp.line }
+            val row: RowType = rowKey(exp.bug)
+            (if (match) fpBucket else tnBucket).getOrPut(row) { linkedSetOf() }.add(exp)
+        }
+
+        // 4. Aggregate totals ------------------------------------------------------
+        val allTp = tpBucket.values.sumOf { it.size }
+        val allFn = fnBucket.values.sumOf { it.size }
+        val allFp = fpBucket.values.sumOf { it.size }
+        val allTn = tnBucket.values.sumOf { it.size }
+        val allTotal = allTp + allFn + allFp + allTn
+        val allTpr = if (allTp + allFn == 0) 0f else allTp.toFloat() / (allTp + allFn)
+        val allFpr = if (allFp + allTn == 0) 0f else allFp.toFloat() / (allFp + allTn)
+        val score  = allTpr - allFpr
+
+        // 5. Write report files ----------------------------------------------------
+        writeReports(tpBucket, fnBucket, tnBucket, fpBucket)
+
+        Result(tpBucket, fnBucket, tnBucket, fpBucket, allTp, allFn, allTn, allFp, allTotal, allTpr, allFpr, score)
+    }
+
+    // -------------------------------------------------------------------------
+    // Internals
+    // -------------------------------------------------------------------------
+    private suspend fun scanSourceForAnnotations(locator: IProjectFileLocator): Set<ExpectBugAnnotationData<String>> = coroutineScope {
+        val found = ConcurrentHashMap.newKeySet<ExpectBugAnnotationData<String>>()
+        val jobs = locator.iterateAllFiles().filter { it.extension in validExt }.map { file ->
+            launch(Dispatchers.IO) {
+                parseFile(file).forEach { found += it }
             }
-        )
+        }
+        jobs.joinAll(); found
     }
 
     private fun parseFile(file: IResFile): Set<ExpectBugAnnotationData<String>> {
-        val res = try {
-            String(ResourceKt.readAllBytes(file), Charsets.UTF_8)
-        } catch (e: IOException) {
-            logger.error("read config file $file failed")
-            null
+        val text = runCatching { Files.readString(file.path, StandardCharsets.UTF_8) }.getOrElse {
+            logger.error(it) { "Could not read $file" }; return emptySet()
         }
-
-        if (res == null) {
-            return emptySet()
+        val res = mutableSetOf<ExpectBugAnnotationData<String>>()
+        bugPattern.findAll(text).forEach { m ->
+            val bug   = m.groupValues[2].lowercase(Locale.getDefault())
+            val kind  = if (m.groupValues[1].isNotEmpty()) ExpectBugAnnotationData.Kind.Escape else ExpectBugAnnotationData.Kind.Expect
+            val (startIdx) = listOf(m.range.first)
+            val (_, line, col) = getLineCol(text, startIdx)
+            res += ExpectBugAnnotationData(file.absolute, line, col, bug, kind)
         }
-
-        val text = res
-        val matcher = pattern.matcher(res)
-        val result = LinkedHashSet<ExpectBugAnnotationData<String>>()
-
-        while (matcher.find()) {
-            val escape = matcher.group("escape").isNotEmpty()
-            val name = StringsKt.removeSuffix(StringsKt.removeSurrounding(matcher.group("name"), "`", "--")
-            val startIndex = matcher.start()
-            val (start, line, col) = getLineAndColumn(text, startIndex)
-            val lineText = text.substring(start)
-            val linePrefix = StringsKt.substringBefore(lineText, "\n").substring(0, startIndex - start)
-
-            if (linePrefix.contains("//") || linePrefix.contains("<!--") || file.extension == "properties") {
-                val absoluteFile = file.absolute
-                val lowerName = name.toLowerCase(Locale.getDefault())
-                val annotation = ExpectBugAnnotationData(
-                    absoluteFile, line, col, lowerName,
-                    if (escape) ExpectBugAnnotationData.Kind.Escape else ExpectBugAnnotationData.Kind.Expect
-                )
-                logger.trace { annotation }
-                result.add(annotation)
-            }
-        }
-
-        return result
+        return res
     }
 
-    private fun getLineAndColumn(text: String, index: Int): Triple<Int, Int, Int> {
-        var line = 1
-        var col = 0
-        var start = 0
-
+    private fun getLineCol(text: String, index: Int): Triple<Int, Int, Int> {
+        var line = 1; var col = 0; var start = 0
         for (i in 0 until index) {
-            if (text[i] == '\n') {
-                line++
-                start = i + 1
-                col = 0
-            } else {
-                col++
-            }
+            if (text[i] == '\n') { line++; start = i + 1; col = 0 } else col++
         }
-
         return Triple(start, line, col)
     }
 
+    private fun rowKey(bug: String): RowType {
+        val check = AIAnalysisApiKt.getAllCheckTypes().firstOrNull {
+            bug.equals(it.toString(), true) || it.aliasNames.any { a -> a.equals(bug, true) }
+        }
+        return if (check != null) RowCheckType(check) else RowUnknownType(bug)
+    }
+
+    private fun toActual(r: Report, locator: IProjectFileLocator): ActualBugAnnotationData? {
+        val file = locator.get(r.bugResFile, NullWrapperFileGenerator) ?: return null
+        return ActualBugAnnotationData(file.absolute, r.region.startLine, r.checkType)
+    }
+
+    private fun writeReports(
+        tp: Map<RowType, Set<ExpectBugAnnotationData<*>>>,
+        fn: Map<RowType, Set<ExpectBugAnnotationData<*>>>,
+        tn: Map<RowType, Set<ExpectBugAnnotationData<*>>>,
+        fp: Map<RowType, Set<ExpectBugAnnotationData<*>>>,
+    ) {
+        val outDir = mainConfig.output_dir.resolve("report-accuracy-forms").apply { deleteDirectoryRecursively(); mkdirs() }
+        val csvMain = outDir.resolve("Scorecard.csv").path.bufferedWriter()
+        val csvDetail = outDir.resolve("FalsePN.csv").path.bufferedWriter()
+        val txtTable = outDir.resolve("Scorecard.txt").path
+
+        csvMain.use { w -> w.appendLine("checker,CheckType,rule,CWE,TP,FN,TN,FP,Total,TPR,FPR,Score") }
+        csvDetail.use { w -> w.appendLine("checker,CheckType,rule,CWE,Positive(TP,FN),Negative(TN,FP),Total,TPR,FPR,Score") }
+
+        PrintWriter(Files.newBufferedWriter(txtTable)).use { pw ->
+            val tbl = PrettyTable(pw, listOf("rule","checkType","TP","FN","TN","FP","TPR","FPR","score"))
+            fun dumpRow(row: RowType) {
+                val tpN = tp[row]?.size ?: 0
+                val fnN = fn[row]?.size ?: 0
+                val tnN = tn[row]?.size ?: 0
+                val fpN = fp[row]?.size ?: 0
+                val total = tpN+fnN+tnN+fpN
+                val tpr = if (tpN+fnN==0) 0f else tpN.toFloat()/(tpN+fnN)
+                val fpr = if (fpN+tnN==0) 0f else fpN.toFloat()/(fpN+tnN)
+                val score = tpr-fpr
+                tbl.addLine(listOf(row.toString(), row.type.toString(), tpN, fnN, tnN, fpN, PrecisionMeasurement.fm(tpr), PrecisionMeasurement.fm(fpr), PrecisionMeasurement.fm(score)))
+            }
+            (tp.keys+fn.keys+tn.keys+fp.keys).distinct().sortedBy { it.toString() }.forEach(::dumpRow)
+            tbl.dump()
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Result data‑class mirroring original fields (for downstream pipelines)
+    // ---------------------------------------------------------------------
     data class Result(
-        val TP: Map<RowType, MutableSet<ExpectBugAnnotationData<String>>>,
-        val FN: Map<RowType, MutableSet<ExpectBugAnnotationData<String>>>,
-        val TN: Map<RowType, MutableSet<ExpectBugAnnotationData<String>>>,
-        val FP: Map<RowType, MutableSet<ExpectBugAnnotationData<String>>>,
+        val TP: Map<RowType, Set<ExpectBugAnnotationData<*>>>,
+        val FN: Map<RowType, Set<ExpectBugAnnotationData<*>>>,
+        val TN: Map<RowType, Set<ExpectBugAnnotationData<*>>>,
+        val FP: Map<RowType, Set<ExpectBugAnnotationData<*>>>,
         val allTp: Int,
         val allFn: Int,
         val allTn: Int,
@@ -236,74 +259,10 @@ class AccuracyValidator(val mainConfig: MainConfig) {
         val allTotal: Int,
         val allTpr: Float,
         val allFpr: Float,
-        val score: Float
+        val score: Float,
     ) {
-        override fun toString(): String {
-            return "TP: $allTp, FN: $allFn, TN: $allTn, FP: $allFp, allTotal: $allTotal, TPR:${PrecisionMeasurementKt.getFm(allTpr)}, FPR:${PrecisionMeasurementKt.getFm(allFpr)}, Score: ${PrecisionMeasurementKt.getFm(score)}"
-        }
-
-        operator fun component1() = TP
-        operator fun component2() = FN
-        operator fun component3() = TN
-        operator fun component4() = FP
-        operator fun component5() = allTp
-        operator fun component6() = allFn
-        operator fun component7() = allTn
-        operator fun component8() = allFp
-        operator fun component9() = allTotal
-        operator fun component10() = allTpr
-        operator fun component11() = allFpr
-        operator fun component12() = score
-
-        fun copy(
-            TP: Map<RowType, MutableSet<ExpectBugAnnotationData<String>>> = this.TP,
-            FN: Map<RowType, MutableSet<ExpectBugAnnotationData<String>>> = this.FN,
-            TN: Map<RowType, MutableSet<ExpectBugAnnotationData<String>>> = this.TN,
-            FP: Map<RowType, MutableSet<ExpectBugAnnotationData<String>>> = this.FP,
-            allTp: Int = this.allTp,
-            allFn: Int = this.allFn,
-            allTn: Int = this.allTn,
-            allFp: Int = this.allFp,
-            allTotal: Int = this.allTotal,
-            allTpr: Float = this.allTpr,
-            allFpr: Float = this.allFpr,
-            score: Float = this.score
-        ) = Result(TP, FN, TN, FP, allTp, allFn, allTn, allFp, allTotal, allTpr, allFpr, score)
-
-        override fun equals(other: Any?): Boolean {
-            if (this === other) return true
-            if (other !is Result) return false
-
-            if (TP != other.TP) return false
-            if (FN != other.FN) return false
-            if (TN != other.TN) return false
-            if (FP != other.FP) return false
-            if (allTp != other.allTp) return false
-            if (allFn != other.allFn) return false
-            if (allTn != other.allTn) return false
-            if (allFp != other.allFp) return false
-            if (allTotal != other.allTotal) return false
-            if (allTpr != other.allTpr) return false
-            if (allFpr != other.allFpr) return false
-            if (score != other.score) return false
-
-            return true
-        }
-
-        override fun hashCode(): Int {
-            var result = TP.hashCode()
-            result = 31 * result + FN.hashCode()
-            result = 31 * result + TN.hashCode()
-            result = 31 * result + FP.hashCode()
-            result = 31 * result + allTp
-            result = 31 * result + allFn
-            result = 31 * result + allTn
-            result = 31 * result + allFp
-            result = 31 * result + allTotal
-            result = 31 * result + allTpr.hashCode()
-            result = 31 * result + allFpr.hashCode()
-            result = 31 * result + score.hashCode()
-            return result
-        }
+        override fun toString(): String =
+            "TP=$allTp, FN=$allFn, TN=$allTn, FP=$allFp, Total=$allTotal, " +
+                    "TPR=${PrecisionMeasurement.fm(allTpr)}, FPR=${PrecisionMeasurement.fm(allFpr)}, Score=${PrecisionMeasurement.fm(score)}"
     }
 }

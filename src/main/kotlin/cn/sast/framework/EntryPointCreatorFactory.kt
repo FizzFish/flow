@@ -1,92 +1,73 @@
 package cn.sast.framework
 
-import cn.sast.api.util.OthersKt
+import cn.sast.api.util.OthersKt.methodSignatureToMatcher
 import cn.sast.common.IResource
 import cn.sast.common.Resource
-import com.feysh.corax.config.api.IMethodMatch
-import java.io.BufferedReader
-import java.io.Closeable
-import java.io.InputStreamReader
-import java.nio.charset.Charset
-import java.nio.file.Files
-import java.nio.file.OpenOption
-import java.nio.file.Path
-import java.util.Arrays
-import java.util.LinkedHashSet
-import kotlin.jvm.internal.Intrinsics
-import kotlin.jvm.internal.SourceDebugExtension
-import kotlin.jvm.internal.Ref.ObjectRef
-import mu.KLogger
 import mu.KotlinLogging
 import soot.Scene
-import soot.SootClass
 import soot.SootMethod
 import soot.SourceLocator
+import java.io.BufferedReader
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import kotlin.io.path.readLines
 
-@SourceDebugExtension(["SMAP\nEntryPointCreatorFactory.kt\nKotlin\n*S Kotlin\n*F\n+ 1 EntryPointCreatorFactory.kt\ncn/sast/framework/EntryPointCreatorFactory\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n+ 3 Strings.kt\nkotlin/text/StringsKt__StringsKt\n*L\n1#1,73:1\n1863#2:74\n1864#2:98\n108#3:75\n80#3,22:76\n*S KotlinDebug\n*F\n+ 1 EntryPointCreatorFactory.kt\ncn/sast/framework/EntryPointCreatorFactory\n*L\n32#1:74\n32#1:98\n52#1:75\n52#1:76,22\n*E\n"])
+/**
+ * 依据“方法签名 / 路径文件 / 目录”动态生成入口点集合。
+ */
 object EntryPointCreatorFactory {
-    private val logger: KLogger = KotlinLogging.logger {}
+    private val logger = KotlinLogging.logger {}
 
-    private fun lookFromDir(res: MutableSet<SootClass>, direction: IResource) {
-        val scene = Scene.v()
+    /**
+     * 将命令行参数转换为 *惰性* 入口点提供函数。
+     *
+     * 支持三种形式：
+     * 1. 完整方法签名：`<Ljava/lang/String: void main(java.lang.String[])>`
+     * 2. 文件：每行一个方法签名
+     * 3. 目录：递归读取所有 `*.class` 并抓取 `<init>` 之外的所有公有方法
+     */
+    fun getEntryPointFromArgs(args: List<String>): () -> Set<SootMethod> = {
+        val result = linkedSetOf<SootMethod>()
+        val scene  = Scene.v()
 
-        for (cl in SourceLocator.v().getClassesUnder(direction.getAbsolutePath())) {
-            val sootClass = scene.loadClass(cl, 2)
-            res.add(sootClass)
-        }
-    }
+        args.forEach { arg ->
+            // 1) 方法签名
+            methodSignatureToMatcher(arg)?.let { matcher ->
+                val matched = matcher.matched(scene)
+                require(matched.isNotEmpty()) { "Method $matcher not found in loaded classes" }
+                result += matched
+                return@forEach
+            }
 
-    private fun loadClass(className: String) {
-        Scene.v().forceResolve(className, 3)
-        Scene.v().loadClassAndSupport(className)
-    }
+            // 2) 资源（文件 / 目录）
+            val res: IResource = Resource.of(arg)
+            require(res.exists) { "Invalid path: $arg" }
 
-    fun getEntryPointFromArgs(args: List<String>): () -> Set<SootMethod> {
-        return { getEntryPointFromArgsImpl(args) }
-    }
-
-    private fun getEntryPointFromArgsImpl(args: List<String>): Set<SootMethod> {
-        val mSet = LinkedHashSet<SootMethod>()
-
-        for (arg in args) {
-            val match = OthersKt.methodSignatureToMatcher(arg)
-            if (match != null) {
-                val scene = Scene.v()
-                val matchedMethods = match.matched(scene)
-                if (matchedMethods.isEmpty()) {
-                    throw IllegalStateException("method: $match not exists")
-                }
-                mSet.addAll(matchedMethods)
-            } else {
-                val res = Resource.INSTANCE.of(arg)
-                if (!res.exists) {
-                    throw IllegalStateException("invalidate $arg")
-                }
-
-                if (res.isFile) {
-                    val path = res.path
-                    val charset = Charsets.UTF_8
-                    val options = emptyArray<OpenOption>()
-                    val inputStream = Files.newInputStream(path, *options)
-                    val reader = BufferedReader(InputStreamReader(inputStream, charset))
-
-                    reader.use { r ->
-                        while (true) {
-                            val line = r.readLine() ?: break
-                            val trimmedLine = line.trim()
-                            if (trimmedLine.isNotEmpty() && !trimmedLine.startsWith("-")) {
-                                val className = Scene.signatureToClass(trimmedLine)
-                                loadClass(className)
-                                val method = Scene.v().grabMethod(trimmedLine)
-                                    ?: throw IllegalStateException("soot method: $trimmedLine not exists")
-                                mSet.add(method)
+            when {
+                res.isFile -> {                       // 每行一个签名
+                    Files.newBufferedReader(res.path, StandardCharsets.UTF_8).useLines { lines ->
+                        lines.map(String::trim)
+                            .filter { it.isNotEmpty() && !it.startsWith("#") && !it.startsWith("-") }
+                            .forEach { sig ->
+                                scene.forceResolve(SourceLocator.signatureToClass(sig), SootClass.BODIES)
+                                result += scene.grabMethod(sig)
                             }
-                        }
                     }
+                }
+
+                res.isDirectory -> {                  // 递归目录 → 类 → 公有方法
+                    SourceLocator.v()
+                        .getClassesUnder(res.absolutePath)
+                        .forEach { clsName ->
+                            scene.loadClass(clsName, SootClass.BODIES)
+                                .methods
+                                .filter { it.isPublic && !it.isConstructor }
+                                .forEach(result::add)
+                        }
                 }
             }
         }
 
-        return mSet
+        result
     }
 }

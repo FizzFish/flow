@@ -88,7 +88,6 @@ import soot.jimple.toolkits.pointer.DumbPointerAnalysis
 import soot.options.Options
 import soot.util.Chain
 
-@SourceDebugExtension(["SMAP\nSootCtx.kt\nKotlin\n*S Kotlin\n*F\n+ 1 SootCtx.kt\ncn/sast/framework/SootCtx\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n+ 3 Logging.kt\norg/utbot/common/LoggingKt\n+ 4 Timer.kt\ncn/sast/api/util/TimerKt\n+ 5 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,731:1\n2632#2,3:732\n1557#2:767\n1628#2,2:768\n2318#2,14:770\n1630#2:784\n1053#2:785\n1368#2:787\n1454#2,5:788\n774#2:793\n865#2,2:794\n774#2:796\n865#2,2:797\n1053#2:871\n1053#2:872\n49#3,13:735\n62#3,11:756\n49#3,13:799\n62#3,11:836\n49#3,24:847\n16#4,8:748\n16#4,8:812\n16#4,8:820\n16#4,8:828\n1#5:786\n*S KotlinDebug\n*F\n+ 1 SootCtx.kt\ncn/sast/framework/SootCtx\n*L\n192#1:732,3\n313#1:767\n313#1:768,2\n314#1:770,14\n313#1:784\n315#1:785\n537#1:787\n537#1:788,5\n537#1:793\n537#1:794,2\n538#1:796\n538#1:797,2\n580#1:871\n586#1:872\n201#1:735,13\n201#1:756,11\n608#1:799,13\n608#1:836,11\n706#1:847,24\n212#1:748,8\n609#1:812,8\n612#1:820,8\n615#1:828,8\n*E\n"])
 open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
     val mainConfig: MainConfig
     val monitor: IMonitor?
@@ -778,3 +777,22 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
         }
     }
 }
+
+/**
+ * Reflection-based extension property that exposes Scene’s private
+ * `excludedPackages` field as a mutable [LinkedList] of package names.
+ */
+val Scene.excludedPackages: LinkedList<String>
+    get() {
+        val field: Field = Scene::class.java.getDeclaredField("excludedPackages").apply {
+            isAccessible = true
+        }
+        return field.get(this) as LinkedList<String>
+    }
+
+/**
+ * Convenience extension to obtain a [SootCtx] bound to this [Scene].
+ * (Assumes `SootCtx` has an appropriate constructor.)
+ */
+fun Scene.sootCtx(cfg: MainConfig): SootCtx =
+    SootCtx(cfg)

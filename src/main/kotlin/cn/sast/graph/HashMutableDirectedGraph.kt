@@ -31,6 +31,10 @@ class HashMutableDirectedGraph<N> : MutableDirectedGraph<N>, Cloneable {
    /* ---------- MutableDirectedGraph ---------- */
 
    override fun size(): Int = nodeToPreds.size
+   override fun getNodes(): MutableList<N> {
+      return nodeToPreds.keys.toMutableList()
+   }
+
    override fun iterator(): MutableIterator<N> = nodeToPreds.keys.iterator()
 
    override fun getHeads(): MutableList<N> = heads.toMutableList()
@@ -48,7 +52,7 @@ class HashMutableDirectedGraph<N> : MutableDirectedGraph<N>, Cloneable {
       nodeToPreds.clear(); nodeToSuccs.clear(); heads.clear(); tails.clear()
    }
 
-   fun addNode(node: N) {
+   override fun addNode(node: N) {
       if (node !in nodeToPreds) {
          nodeToPreds[node] = LinkedHashSet()
          nodeToSuccs[node] = LinkedHashSet()
@@ -56,7 +60,7 @@ class HashMutableDirectedGraph<N> : MutableDirectedGraph<N>, Cloneable {
       }
    }
 
-   fun removeNode(node: N) {
+   override fun removeNode(node: N) {
       nodeToSuccs[node]?.toList()?.forEach { removeEdge(node, it) }
       nodeToPreds[node]?.toList()?.forEach { removeEdge(it, node) }
       nodeToSuccs.remove(node)
@@ -64,12 +68,12 @@ class HashMutableDirectedGraph<N> : MutableDirectedGraph<N>, Cloneable {
       heads.remove(node); tails.remove(node)
    }
 
-   fun containsNode(node: N): Boolean = node in nodeToPreds
+   override fun containsNode(node: N): Boolean = node in nodeToPreds
 
-   fun containsEdge(from: N, to: N): Boolean =
+   override fun containsEdge(from: N, to: N): Boolean =
       nodeToSuccs[from]?.contains(to) == true
 
-   fun addEdge(from: N, to: N) {
+   override fun addEdge(from: N, to: N) {
       if (from == to || containsEdge(from, to)) return
       addNode(from); addNode(to)
 
@@ -79,7 +83,7 @@ class HashMutableDirectedGraph<N> : MutableDirectedGraph<N>, Cloneable {
       heads.remove(to); tails.remove(from)
    }
 
-   fun removeEdge(from: N, to: N) {
+   override fun removeEdge(from: N, to: N) {
       if (!containsEdge(from, to)) return
       nodeToSuccs[from]!!.remove(to)
       nodeToPreds[to]!!.remove(from)

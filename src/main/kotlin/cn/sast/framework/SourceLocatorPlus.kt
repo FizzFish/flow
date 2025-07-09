@@ -1,126 +1,107 @@
 package cn.sast.framework
 
 import cn.sast.api.config.MainConfig
-import cn.sast.common.FileSystemLocator
-import cn.sast.common.IResFile
-import cn.sast.common.IResource
-import cn.sast.common.Resource
+import cn.sast.common.*
 import cn.sast.framework.report.AbstractFileIndexer
 import cn.sast.framework.report.ProjectFileLocator
 import com.feysh.corax.cache.XOptional
-import com.github.benmanes.caffeine.cache.CacheLoader
 import com.github.benmanes.caffeine.cache.Caffeine
-import com.github.benmanes.caffeine.cache.LoadingCache
-import java.io.Closeable
-import java.io.IOException
-import java.io.InputStream
-import java.nio.file.Files
-import java.nio.file.OpenOption
-import java.nio.file.Path
-import java.util.Arrays
-import java.util.LinkedHashSet
-import kotlin.jvm.internal.SourceDebugExtension
 import soot.FoundFile
 import soot.IFoundFile
 import soot.SourceLocator
+import java.nio.file.Files
+import kotlin.io.path.inputStream
+import kotlin.io.path.pathString
 
-@SourceDebugExtension(["SMAP\nSourceLocatorPlus.kt\nKotlin\n*S Kotlin\n*F\n+ 1 SourceLocatorPlus.kt\ncn/sast/framework/SourceLocatorPlus\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n+ 3 _Sequences.kt\nkotlin/sequences/SequencesKt___SequencesKt\n+ 4 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n*L\n1#1,116:1\n1#2:117\n183#3,2:118\n1628#4,3:120\n*S KotlinDebug\n*F\n+ 1 SourceLocatorPlus.kt\ncn/sast/framework/SourceLocatorPlus\n*L\n69#1:118,2\n77#1:120,3\n*E\n"])
-class SourceLocatorPlus(mainConfig: MainConfig) : SourceLocator(null) {
-    val mainConfig: MainConfig
-    private val cacheClassNameMap: LoadingCache<Path, String?>
-    private val cacheClassLookMap: LoadingCache<String, XOptional<FoundFile?>>
-    private val locator$delegate by lazy { locator_delegate$lambda$10(this) }
+/**
+ * 在 Soot 原生 [SourceLocator] 基础上增加：
+ * * Caffeine 缓存：① class-file → 内部类名；② class name → [FoundFile]
+ * * 与 [ProjectFileLocator] 协同工作，在 IDE / 多模块工程下快速定位源文件
+ */
+class SourceLocatorPlus(
+    private val mainConfig: MainConfig,
+) : SourceLocator(null) {
 
-    val locator: ProjectFileLocator
-        get() = locator$delegate
-
-    init {
-        this.mainConfig = mainConfig
-        this.cacheClassNameMap = Caffeine.newBuilder()
-            .softValues()
-            .initialCapacity(5000)
-            .build(CacheLoader { path -> cacheClassNameMap$lambda$2(path) })
-        
-        this.cacheClassLookMap = Caffeine.newBuilder()
-            .softValues()
-            .initialCapacity(5000)
-            .build(CacheLoader { fileName -> cacheClassLookMap$lambda$7(this, fileName) })
-    }
-
-    fun update() {
-    }
-
-    fun getClassNameOf(cls: IResFile): String? {
-        return cacheClassNameMap.get(cls.getPath())
-    }
-
-    fun isInvalidClassFile(fileName: String, cls: IResFile): Boolean {
-        val className = getClassNameOf(cls)
-        return className != null && className == fileName
-    }
-
-    override fun lookupInClassPath(fileName: String): IFoundFile? {
-        if ("LinearLayout.class" == fileName) {
-            return null
-        }
-        
-        val optional = cacheClassLookMap.get(fileName)
-        return if (optional != null) {
-            optional.getValue()
-        } else {
-            super.lookupInClassPath(fileName) ?: null
-        }
-    }
-
-    protected fun lookupInArchive(archivePath: String, fileName: String): IFoundFile? {
-        val optional = cacheClassLookMap.get(fileName)
-        return optional?.getValue()
-    }
-
-    companion object {
-        @JvmStatic
-        fun cacheClassNameMap$lambda$2(cls: Path): String? {
-            try {
-                Files.newInputStream(cls).use { input ->
-                    val className = SourceLocator.getNameOfClassUnsafe(input)
-                    if (className != null) {
-                        return "${className.replace('.', '/')}.class"
-                    }
-                }
-            } catch (e: IOException) {
-                return null
-            }
-            return null
+    /** `.class` → 内含类全限定名 */
+    private val cacheClassNameMap = Caffeine
+        .newBuilder()
+        .initialCapacity(5_000)
+        .softValues()
+        .build<PathKey, String?> { clsPath ->
+            runCatching {
+                clsPath.inputStream().use(SourceLocator::getNameOfClassUnsafe)
+                    ?.replace('.', '/')?.plus(".class")
+            }.getOrNull()
         }
 
-        @JvmStatic
-        fun cacheClassLookMap$lambda$7(this$0: SourceLocatorPlus, fileName: String): XOptional<FoundFile?> {
-            val file = this$0.locator
-                .findFromFileIndexMap(
-                    fileName.split("/"),
-                    AbstractFileIndexer.Companion.getDefaultClassCompareMode()
-                )
-                .firstOrNull { !this$0.isInvalidClassFile(fileName, it as IResFile) }
-            
-            return if (file != null) {
-                XOptional.of(FoundFile((file as IResFile).getPath()))
-            } else {
-                XOptional.empty()
-            }
+    /** FQN → class 文件 */
+    private val cacheClassLookMap = Caffeine
+        .newBuilder()
+        .initialCapacity(5_000)
+        .softValues()
+        .build<String, XOptional<FoundFile?>> { fqn ->
+            locator.findFromFileIndexMap(
+                fqn.split('/'),
+                AbstractFileIndexer.Companion.defaultClassCompareMode
+            ).firstOrNull { !isInvalidClassFile(fqn, it) }
+                ?.let { XOptional.of(FoundFile(it.path)) }
+                ?: XOptional.empty()
         }
 
-        @JvmStatic
-        fun locator_delegate$lambda$10(this$0: SourceLocatorPlus): ProjectFileLocator {
-            val resources = this$0.mainConfig.getSoot_process_dir()
-                .mapTo(LinkedHashSet()) { Resource.INSTANCE.of(it as String) }
-            
-            return ProjectFileLocator(
-                this$0.mainConfig.getMonitor(),
-                SourceLocatorPlusKt.sootClassPathsCvt(resources as MutableSet<IResource>),
-                null,
-                FileSystemLocator.TraverseMode.IndexArchive,
-                false
-            ).also { it.update() }
-        }
+    /** 统一文件检索入口（外部可直接复用） */
+    val locator: ProjectFileLocator by lazy {
+        val sources = mainConfig.soot_process_dir
+            .map(Resource::of)
+            .toMutableSet<IResource>()
+
+        // 补充 classpath（含 JDK stub）
+        Scene.v().sootClassPath.split(System.getProperty("path.separator"))
+            .map(Resource::of)
+            .toCollection(sources)
+
+        ProjectFileLocator(
+            mainConfig.monitor,
+            sources,
+            null,
+            FileSystemLocator.TraverseMode.IndexArchive,
+            /* includeInnerArchive = */ false
+        ).apply { update() }
     }
+
+    /* ---------- API 覆写 ---------- */
+
+    override fun lookupInClassPath(fileName: String): IFoundFile? =
+        cacheClassLookMap[fileName].value
+            ?: super.lookupInClassPath(fileName)
+
+    override fun lookupInArchive(archivePath: String, fileName: String): IFoundFile? =
+        cacheClassLookMap[fileName].value
+
+    /* ---------- 自定义工具 ---------- */
+
+    /** 从 class 文件里读取到的 FQN 与参数 [fileName] 相悖时视为“无效类文件” */
+    fun isInvalidClassFile(fileName: String, cls: IResFile): Boolean =
+        cacheClassNameMap[cls.path]?.let { it != fileName } ?: false
+}
+
+/* 内部使用的简短包装，避免 caffeine 依赖 Kotlin 路径对象 */
+private typealias PathKey = java.nio.file.Path
+
+/**
+ * 将 `soot_process_dir + Scene.v().sootClassPath` 合并去重，返回统一的 [IResource] 集合。
+ */
+fun sootClassPathsCvt(sourceDir: Set<IResource>): Set<IResource> {
+    val merged = LinkedHashSet<IResource>()
+
+    // 指定目录
+    merged += sourceDir
+
+    // Soot classpath（含 jars / dirs）
+    Scene.v().sootClassPath
+        .split(File.pathSeparator)
+        .map { if (it == "VIRTUAL_FS_FOR_JDK") System.getProperty("java.home") else it }
+        .map(Resource::of)
+        .toCollection(merged)
+
+    return merged
 }

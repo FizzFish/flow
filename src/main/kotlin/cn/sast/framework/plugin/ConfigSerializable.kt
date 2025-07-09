@@ -1,25 +1,22 @@
 package cn.sast.framework.plugin
 
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
+/**
+ * All configuration DTOs that can appear in the SA‑Configuration YAML extend this sealed base
+ * class.  It provides a **natural ordering** that first sorts by *concrete class name* and then
+ * by [name] (case‑sensitive) within the same class.
+ */
 @Serializable
-public sealed class ConfigSerializable protected constructor() : IConfig, Comparable<ConfigSerializable> {
-    public abstract val name: String
+sealed class ConfigSerializable : IConfig, Comparable<ConfigSerializable> {
 
-    public open override operator fun compareTo(other: ConfigSerializable): Int {
-        val otherClassName = other::class.java.name
-        val thisClassName = this::class.java.name
-        return if (otherClassName.compareTo(thisClassName) == 0) {
-            this.name.compareTo(other.name)
-        } else {
-            0
-        }
-    }
+    /** Human‑readable unique identifier (enforced by concrete subclasses). */
+    abstract val name: String
 
-    public companion object {
-        public fun serializer(): KSerializer<ConfigSerializable> {
-            return ConfigSerializable.serializer()
-        }
-    }
+    @Transient private val className: String = javaClass.name
+
+    /** Class‑then‑name ordering so we get deterministic output when serialising. */
+    final override fun compareTo(other: ConfigSerializable): Int =
+        (className compareTo other.className).takeIf { it != 0 } ?: name.compareTo(other.name)
 }

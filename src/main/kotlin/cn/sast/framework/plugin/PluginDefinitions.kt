@@ -1,10 +1,49 @@
-由于提供的代码片段是 Vineflower 反编译失败的错误信息，而不是实际的反编译代码，我无法直接进行修复。错误信息表明 Vineflower 无法反编译 `cn.sast.framework.plugin.PluginDefinitions$Definition` 类的构造函数。
+package cn.sast.framework.plugin
 
-要修复这个问题，我需要实际的 Kotlin 反编译代码内容。如果您能提供：
+import com.feysh.corax.config.api.CheckType
+import com.feysh.corax.config.api.CheckerUnit
+import com.feysh.corax.config.api.ISootInitializeHandler
+import java.util.ServiceLoader
+import kotlin.reflect.KClass
 
-1. 完整的反编译 Kotlin 代码文件
-2. 或者原始的 Java 类文件（如果您有权限分享）
+/**
+ * Generic wrapper that binds a *type* (e.g. `CheckerUnit`) to its default [config] and a
+ * lazily‑loaded singleton *instance* discovered via Java’s `ServiceLoader` (or provided at init).
+ */
+sealed class PluginDefinitions<T : Any, C : IConfig>(
+    val type: KClass<T>,
+    val defaultConfig: C,
+    private val singletonProvider: (() -> T)? = null,
+) {
+    private val _singleton: Lazy<T> = lazy {
+        singletonProvider?.invoke()
+            ?: ServiceLoader.load(type.java).firstOrNull()
+            ?: error("No implementation found for ${type.qualifiedName}")
+    }
 
-我可以根据这些内容进行精确的 Kotlin 语法修复，同时保持所有语义不变。
+    /** Returns the **single** service implementation for [type]. */
+    fun singleton(): T = _singleton.value
 
-请提供具体的代码内容后，我将按照您要求的规范进行修复。
+    override fun toString(): String = "PluginDefinition(type=${type.simpleName})"
+
+    // -------------------------------------------------------------------------
+    //  Known concrete plugin definitions – extend as needed
+    // -------------------------------------------------------------------------
+    class CheckerUnitDefinition<T : CheckerUnit>(
+        type: KClass<T>,
+        defaultConfig: CheckersConfig,
+        provider: () -> T
+    ) : PluginDefinitions<T, CheckersConfig>(type, defaultConfig, provider)
+
+    class CheckTypeDefinition<T : CheckType>(
+        type: KClass<T>,
+        defaultConfig: CheckersConfig.CheckTypeConfig,
+        provider: () -> T
+    ) : PluginDefinitions<T, CheckersConfig.CheckTypeConfig>(type, defaultConfig, provider)
+
+    class ISootInitializeHandlerDefinition<T : ISootInitializeHandler>(
+        type: KClass<T>,
+        defaultConfig: SootOptionsConfig,
+        provider: () -> T
+    ) : PluginDefinitions<T, SootOptionsConfig>(type, defaultConfig, provider)
+}
