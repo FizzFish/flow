@@ -2,7 +2,7 @@ package cn.sast.api.config
 
 import cn.sast.common.IResDirectory
 import cn.sast.common.Resource
-import com.feysh.corax.config.api.rules.ProcessRule.*
+import com.feysh.corax.config.api.rules.ProcessRule
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
@@ -11,6 +11,7 @@ import soot.SootField
 import soot.SootMethod
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
 
@@ -45,29 +46,29 @@ class ScanFilter(
 
     /* ---------- 各类型资源 ---------- */
 
-    fun getActionOfClassPath(orig: String?, classpath: Path, prefix: String? = null): ScanAction =
+    fun getActionOfClassPath(orig: String?, classpath: Path, prefix: String? = null): ProcessRule.ScanAction =
         decide(processRegex.classpathRules, orig, getClassPath(classpath), prefix)
 
-    fun getActionOf(orig: String?, file: Path, prefix: String? = null): ScanAction =
+    fun getActionOf(orig: String?, file: Path, prefix: String? = null): ProcessRule.ScanAction =
         decide(processRegex.fileRules, orig, get(file), prefix)
 
-    fun getActionOf(orig: String?, sc: SootClass, prefix: String? = null): ScanAction =
+    fun getActionOf(orig: String?, sc: SootClass, prefix: String? = null): ProcessRule.ScanAction =
         decide(processRegex.clazzRules, orig, get(sc), prefix)
 
-    fun getActionOf(orig: String?, sm: SootMethod, prefix: String? = null): ScanAction =
+    fun getActionOf(orig: String?, sm: SootMethod, prefix: String? = null): ProcessRule.ScanAction =
         decide(processRegex.clazzRules, orig, get(sm), prefix)
 
-    fun getActionOf(orig: String?, sf: SootField, prefix: String? = null): ScanAction =
+    fun getActionOf(orig: String?, sf: SootField, prefix: String? = null): ProcessRule.ScanAction =
         decide(processRegex.clazzRules, orig, get(sf), prefix)
 
     /* ---------- 决策核心 ---------- */
 
     private fun decide(
-        rule: List<IMatchItem>,
+        rule: List<ProcessRule.IMatchItem>,
         origAction: String?,
-        target: IMatchTarget,
+        target: ProcessRule.IMatchTarget,
         prefix: String? = null
-    ): ScanAction {
+    ): ProcessRule.ScanAction {
         val (matchedRule, finalAction) = ProcessRule.matches(rule, target)
 
         if (origAction != null) {

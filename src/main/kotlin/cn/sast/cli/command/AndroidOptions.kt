@@ -26,7 +26,7 @@ class AndroidOptions(
 
     /* ---------- 公开读取 ---------- */
 
-    val infoFlowConfig: InfoflowAndroidConfiguration by lazy(::buildInfoFlowConfig)
+    override val infoFlowConfig: InfoflowAndroidConfiguration by lazy(::buildInfoFlowConfig)
 
     /** 解析后的单 APK 文件绝对路径 */
     private fun targetApkFile(mc: MainConfig): String {

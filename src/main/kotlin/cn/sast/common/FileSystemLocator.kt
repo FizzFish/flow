@@ -39,7 +39,7 @@ abstract class FileSystemLocator {
          MainConfig.excludeFiles.contains(file.name) -> false
          file.resolve("java.base/module-info.java").exists -> false
          file.resolve("jdk.zipfs/module-info.java").exists -> false
-         file.isZipLike && file.resolve("AndroidManifest.xml").exists && file.extension != "aar" -> false
+         file.zipLike && file.resolve("AndroidManifest.xml").exists && file.extension != "aar" -> false
          else -> true
       }
    } catch (_: Exception) { false }
@@ -103,7 +103,7 @@ abstract class FileSystemLocator {
          Files.walkFileTree(path, object : SimpleFileVisitor<Path>() {
             override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
                if (file == path) containsRoot.set(true)
-               files += file
+               files.add(file)
                return FileVisitResult.CONTINUE
             }
 
@@ -120,12 +120,12 @@ abstract class FileSystemLocator {
 
             override fun postVisitDirectory(dir: Path, exc: java.io.IOException?): FileVisitResult {
                if (dir == path) containsRoot.set(true)
-               dirs += dir
+               dirs.add(dir)
                return FileVisitResult.CONTINUE
             }
          })
 
-         if (!containsRoot.get()) dirs += path
+         if (!containsRoot.get()) dirs.add(path)
          return WalkFileTreeResult(path, files, dirs)
       }
    }

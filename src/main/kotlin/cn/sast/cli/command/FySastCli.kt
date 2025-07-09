@@ -6,100 +6,135 @@ package cn.sast.cli.command
 import cn.sast.api.AnalyzerEnv
 import cn.sast.api.config.*
 import cn.sast.api.report.IResultCollector
-import cn.sast.common.CustomRepeatingTimer
-import cn.sast.common.IResFile
-import cn.sast.common.OS
-import cn.sast.common.Resource
+import cn.sast.common.*
 import cn.sast.framework.metrics.MetricsMonitor
 import cn.sast.framework.plugin.CheckerFilterByName
 import cn.sast.framework.report.ProjectFileLocator
 import cn.sast.framework.result.*
 import com.feysh.corax.cache.analysis.SootInfoCache
+import com.feysh.corax.config.api.Language
 import com.github.ajalt.clikt.core.CliktCommand
-import com.github.ajalt.clikt.output.MordantHelpFormatter
-import com.github.ajalt.clikt.parameters.groups.GroupableOption
-import com.github.ajalt.clikt.parameters.options.Option
-import com.github.ajalt.clikt.parameters.options.OptionWithValues
+import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.mordant.rendering.Theme
 import com.google.gson.Gson
 import kotlinx.coroutines.*
 import mu.KotlinLogging
-import org.apache.logging.log4j.Level
+import org.slf4j.event.Level
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.core.config.Configurator
 import java.io.File
 import java.lang.management.ManagementFactory
 import java.net.URL
 import java.nio.charset.Charset
+import kotlin.enums.EnumEntries
 import kotlin.system.exitProcess
+import com.github.ajalt.clikt.parameters.types.choice
+import com.github.ajalt.clikt.parameters.types.enum
+import com.github.ajalt.clikt.parameters.types.path
+import java.nio.file.Path
 
 /* ―――――――― logger ―――――――― */
 private val logger = KotlinLogging.logger {}
 
+enum class ResultType {
+    PLIST,
+    SARIF,
+    SQLITE,
+    SarifPackSrc,
+    SarifCopySrc,
+    COUNTER;
+}
 /* ───────────── CLI ───────────── */
 class FySastCli : CliktCommand(
     name                = "corax",
     help                = "Static analysis CLI",
     printHelpOnEmptyArgs = true,
-    helpFormatter       = { MordantHelpFormatter(it, showDefaultValues = true) }
 ) {
 
-    /* ====== CLI 选项字段（后面可用 option{} DSL 绑定） ====== */
-    var verbosity: Level = Level.INFO
-    var config: String? = null
-    var rules: MutableList<String>? = null
+    val verbosity: Level by option("--verbosity")
+        .enum<Level>(ignoreCase = true)
+        .default(Level.INFO)
 
-    val defaultOutput: IResDirectory =
-        Resource.dirOf("${System.getProperty("user.dir")}${File.separator}output")
-    var output: IResDirectory = defaultOutput
+    val config: String? by option(
+        "--config",
+        help = "YAML/JSON config file"
+    )
 
-    var dumpSootScene: Boolean = false
-    var resultType: MutableSet<ResultType> = mutableSetOf()
+    val rules: List<String> by option(
+        "-r", "--rules",
+        help = "Rule id(s), comma-separated"
+    ).split(",")          // <-- 返回 OptionDelegate<List<String>>
+        .default(emptyList())
 
-    var preferredLanguages: MutableList<Language> = mutableListOf()
-    var enableDecompile: Boolean = false
-    var enableCodeMetrics: Boolean = false
+    /* ──────────── 输出目录与调试开关 ──────────── */
 
-    var dumpSrcFileList: String? = null
-    var target: TargetOptions? = null
+    private val defaultOutput: IResDirectory by lazy {
+        Resource.fileOf("out").toDirectory()
+    }
 
-    var process: MutableList<String> = mutableListOf()
-    var classPath: MutableList<String> = mutableListOf()
+    val output: IResDirectory by option(
+        "--output", help = "Report output directory"
+    ).convert { pathStr ->
+        Resource.fileOf(pathStr).toDirectory()   // ← 把 String → IResDirectory
+    }.default(defaultOutput)
 
-    var autoAppClasses: MutableList<String> = mutableListOf()
-    var autoAppTraverseMode: TraverseMode = TraverseMode.FILE
-    var autoAppSrcOnlyFileScheme: Boolean = false
+    val dumpSootScene by option("--dump-soot-scene")
+        .flag(default = false)
 
-    var disableDefaultJavaClassPath: Boolean = false
+    /* ──────────── 结果语言 / 类型 ──────────── */
 
-    var sourcePath: MutableSet<IResDirectory> = mutableSetOf()
-    var projectRoot: MutableList<String> = mutableListOf()
+    val resultType: List<ResultType> by option(
+        "--result-type",
+        help = "Allowed result types"
+    )
+        .enum<ResultType>(ignoreCase = true)
+        .multiple()
 
-    var srcPrecedence: SrcPrecedence = SrcPrecedence.prec_java
-    var incrementalScanOf: MutableList<String> = mutableListOf()
-    var disableMappingDiffInArchive: Boolean = false
+    val preferredLanguages: List<Language> by option("--lang")
+        .enum<Language>(ignoreCase = true)    // <String> → Language
+        .multiple()                           // List<Language>
+//        .default(listOf(Language.EN))
 
-    var sunBootClassPath: String = ""
-    var javaExtDirs: String = ""
+    /* ──────────── 代码度量 & 反编译 ──────────── */
 
-    var ecjOptions: MutableList<String>? = null
-    var serializeCG: Boolean = false
+    val enableDecompile     by option("--decompile").flag()
+    val enableCodeMetrics   by option("--code-metrics").flag()
 
-    var c2sMode: CompareMode = CompareMode.Path
-    var hideNoSource: Boolean = false
-    var traverseMode: TraverseMode = TraverseMode.FILE
+    /* ──────────── 其它零散选项（示例选几条） ──────────── */
 
-    var projectScanConfig: File? = null
-    var disableWrapper: Boolean = false
-    var apponly: Boolean = false
+    val target: TargetOptions by optionGroup(::TargetOptions)
 
-    var disablePreAnalysis: Boolean = false
-    var disableBuiltInAnalysis: Boolean = false
+    val process: List<Path> by option("--process-dir")
+        .path(canBeFile = false)
+        .multiple()
 
-    var dataFlowOptions: DataFlowOptions? = null
-    var checkerInfoGeneratorOptions: CheckerInfoGeneratorOptions? = null
-    var checkerInfoCompareOptions: CheckerInfoCompareOptions? = null
-    var subtoolsOptions: SubToolsOptions? = null
+    val classPath: List<Path> by option("--classpath")
+        .path()
+        .multiple()
+
+    val autoAppTraverseMode by option("--auto-app-traverse-mode")
+        .enum<TraverseMode>(ignoreCase = true)
+        .default(TraverseMode.RecursivelyIndexArchive)
+
+    val disableDefaultJavaClassPath by option("--disable-default-jcp").flag()
+
+    val sourcePath: Set<IResDirectory> by option("--src")
+        .path()
+        .convert(::Resource)
+        .multiple()
+        .toSet()
+
+    val srcPrecedence by option("--src-precedence")
+        .enum<SrcPrecedence>()
+        .default(SrcPrecedence.OnlySrc)
+
+    /* ──────────── 子工具 / 子功能选项组 ──────────── */
+
+    val dataFlowOptions: DataFlowOptions by optionGroup(::DataFlowOptions)
+    val checkerInfoGeneratorOptions by optionGroup(::CheckerInfoGeneratorOptions)
+    val checkerInfoCompareOptions   by optionGroup(::CheckerInfoCompareOptions)
+    val subtoolsOptions             by optionGroup(::SubToolsOptions)
+
     var flowDroidOptions: FlowDroidOptions? = null
     var utAnalyzeOptions: UtAnalyzeOptions? = null
 
@@ -125,11 +160,6 @@ class FySastCli : CliktCommand(
     var makeScorecard: Boolean = false
     var timeout: Int = 0                          // seconds
 
-    /* 下面每个字段都与你上传文件一致，这里省略 … */
-    // ---------------------------------------------------------------------
-    // 省略的字段请保留原先内容（dumpSootScene、dataFlowOptions …）
-    // ---------------------------------------------------------------------
-
     /* ===== 运行期状态 ===== */
     var collectors: List<IResultCollector> = emptyList()
     var anchorPointFile: IResFile? = null
@@ -138,46 +168,6 @@ class FySastCli : CliktCommand(
 
     /* ───────────────────────── Utils: 打印当前配置 ───────────────────────── */
     private fun printOptions() {
-        val theme  = currentContext.theme
-        val groups = registeredOptions()
-            .groupBy { (it as? GroupableOption)?.parameterGroup }
-
-        // 收集额外“工具”分组名称，若未启用则标记 [off]
-        val activeToolGroups: Set<String> = buildSet {
-            dataFlowOptions?.groupName?.let(::add)
-            flowDroidOptions?.groupName?.let(::add)
-            utAnalyzeOptions?.groupName?.let(::add)
-            checkerInfoGeneratorOptions?.groupName?.let(::add)
-            checkerInfoCompareOptions?.groupName?.let(::add)
-            subtoolsOptions?.groupName?.let(::add)
-        }
-
-        val body = buildString {
-            groups.forEach { (group, opts) ->
-                val title = (group?.groupName ?: commandName)
-                val header = theme.success(title)
-
-                if (group != null && title !in activeToolGroups) {
-                    append("$header [off]\n")
-                } else {
-                    append(header).append('\n')
-                    opts.joinTo(this, separator = "\n\t", prefix = "\t") { formatOption(theme, it) }
-                    append('\n')
-                }
-            }
-        }
-
-        // ——— 日志输出 ———
-        logger.info { theme.info("Current work directory: ${File(".").absolutePath}") }
-        logger.info { theme.info("PID: ${ProcessHandle.current().pid()}") }
-        logger.info { "log files: ${AnalyzerEnv.lastLogFile.parent}" }
-        logger.info { "\n$body" }
-        logger.info { "${theme.success(Application.version)}: ${OS.binaryUrl?.path}" }
-
-        // ——— 写入 output/command.txt ———
-        output.mkdirs()
-        output.resolve("command.txt").toFile().writeText(body)
-    }private fun printOptions() {
         val theme  = currentContext.theme
         val groups = registeredOptions()
             .groupBy { (it as? GroupableOption)?.parameterGroup }

@@ -54,7 +54,7 @@ class MainConfig(
 
     /* —— 其它 —— */
     var memoryThreshold:        Double   = 0.9,
-    var excludeFiles: Set<String> = setOf("classes-header.jar", "classes-turbine.jar")
+
 
 ) {
 
@@ -195,6 +195,7 @@ class MainConfig(
     companion object {
         const val CHECKER_INFO_CSV = "checker_info.csv"
         const val RULE_SORT_YAML   = "rule_sort.yaml"
+        var excludeFiles: Set<String> = setOf("classes-header.jar", "classes-turbine.jar")
 
         /** 优先语言顺序 */
         var preferredLanguages: List<Language> = listOf(Language.ZH, Language.EN)

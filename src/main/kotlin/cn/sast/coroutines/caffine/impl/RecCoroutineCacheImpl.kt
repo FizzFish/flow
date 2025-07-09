@@ -77,7 +77,7 @@ internal open class RecCoroutineCacheImpl<K, V> (
    ): Deferred<V>? = get(key, mapping) // 简版，同 get
 
    override fun validateAfterFinished(): Boolean {
-      val ok = graph.isComplete()
+      val ok = graph.isComplete
       if (!ok) logger.error { "${graph} is not complete" }
       return ok
    }

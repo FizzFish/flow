@@ -3,8 +3,6 @@ package cn.sast.framework.plugin
 import cn.sast.api.config.BuiltinAnalysisConfig
 import cn.sast.api.config.MainConfigKt
 import cn.sast.api.config.PreAnalysisConfig
-import cn.sast.api.report.Counter
-import cn.sast.common.GLB
 import cn.sast.common.IResFile
 import com.charleskorn.kaml.Yaml
 import com.feysh.corax.config.api.*

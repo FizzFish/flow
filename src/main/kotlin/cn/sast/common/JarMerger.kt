@@ -10,6 +10,7 @@ import java.util.jar.Manifest
 import org.apache.commons.compress.archivers.jar.*
 import org.apache.commons.compress.archivers.zip.ZipMethod
 import org.apache.commons.io.FilenameUtils
+import java.nio.file.attribute.BasicFileAttributes
 
 class JarMerger(
     jarFile: Path,

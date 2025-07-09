@@ -5,8 +5,8 @@ import com.feysh.corax.config.api.CheckerUnit
 import com.feysh.corax.config.api.ISootInitializeHandler
 
 data class SaConfig(
-    val builtinAnalysisConfig: BuiltinAnalysisConfig = BuiltinAnalysisConfig( 0, 15,),
-    val preAnalysisConfig: PreAnalysisConfig = PreAnalysisConfig(0, 0, 0, null, 0, 31, null),
+    val builtinAnalysisConfig: BuiltinAnalysisConfig = BuiltinAnalysisConfig(),
+    val preAnalysisConfig: PreAnalysisConfig = PreAnalysisConfig(),
     val checkers: Set<CheckerUnit>,
     val sootConfig: ISootInitializeHandler,
     val enableCheckTypes: Set<CheckType>?
