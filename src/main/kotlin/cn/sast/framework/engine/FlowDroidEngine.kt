@@ -34,6 +34,7 @@ import soot.jimple.infoflow.InfoflowConfiguration
 import soot.jimple.infoflow.InfoflowConfiguration.DataFlowDirection
 import soot.jimple.infoflow.android.InfoflowAndroidConfiguration
 import soot.jimple.infoflow.android.data.AndroidMemoryManager
+import soot.jimple.infoflow.android.source.AccessPathBasedSourceSinkManager
 import soot.jimple.infoflow.cfg.BiDirICFGFactory
 import soot.jimple.infoflow.cfg.DefaultBiDiICFGFactory
 import soot.jimple.infoflow.data.Abstraction
@@ -180,7 +181,6 @@ class FlowDroidEngine(
 
                 /* 构造并配置 InfoFlow 实例 */
                 val infoflow = FlowDroidFactory
-                    .INSTANCE
                     .createInfoFlow(
                         infoFlowConfig.dataFlowDirection,
                         mainConfig.androidPlatformDir,

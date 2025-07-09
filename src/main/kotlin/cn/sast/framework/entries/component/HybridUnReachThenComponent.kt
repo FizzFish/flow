@@ -1,5 +1,34 @@
-由于提供的代码片段实际上是 VineFlower 反编译失败的错误信息，而不是可修复的 Kotlin 代码，我无法直接进行修复。错误信息表明 Vineflower 无法反编译 `cn.sast.framework.entries.java.UnReachableEntryProvider` 类的构造函数。
+package cn.sast.framework.entries.custom
 
-如果您能提供实际的 Kotlin 反编译代码文件内容，我可以按照要求进行逐文件修复。请提供需要修复的具体 Kotlin 代码文件内容，我会帮您处理所有语法问题并保持语义不变。
+import cn.sast.framework.SootCtx
+import cn.sast.framework.entries.IEntryPointProvider
+import cn.sast.framework.entries.component.ComponentEntryProvider
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import soot.SootMethod
 
-目前根据给出的信息，我只能返回空结果，因为没有实际的 Kotlin 代码需要修复。
+/**
+ * ⚠️  Re​‑created stub because the original class could not be decompiled.
+ *     Replace the `UnReachableEntryProvider` reference once you can supply its source.
+ */
+class HybridUnReachThenComponent(
+    private val ctx: SootCtx,
+    private val unreachableEntries: Set<SootMethod>
+) : IEntryPointProvider {
+
+    // TODO: Provide the real implementation of UnReachableEntryProvider
+    private val unreachableProvider /* = UnReachableEntryProvider(ctx, unreachableEntries) */: IEntryPointProvider =
+        EmptyEntryProvider
+
+    private val componentProvider =
+        ComponentEntryProvider(ctx, unreachableEntries.map { it.signature })
+
+    override val iterator: Flow<IEntryPointProvider.AnalyzeTask> = flow {
+        emitAll(unreachableProvider.iterator)
+        emitAll(componentProvider.iterator)
+    }
+
+    override fun startAnalyse() = Unit
+    override fun endAnalyse() = Unit
+}

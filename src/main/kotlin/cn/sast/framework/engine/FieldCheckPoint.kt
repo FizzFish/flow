@@ -11,47 +11,49 @@ import com.feysh.corax.config.api.IFieldCheckPoint
 import com.feysh.corax.config.api.report.Region
 import com.github.javaparser.ast.body.BodyDeclaration
 import kotlin.LazyThreadSafetyMode
+import kotlin.lazy
 import soot.SootClass
 import soot.SootField
 import soot.tagkit.AbstractHost
 import soot.tagkit.VisibilityAnnotationTag
 
+/**
+ * A checkpoint bound to a single [SootField].
+ */
 class FieldCheckPoint(
-    val sootField: SootField,
-    private val infoCache: SootInfoCache
-) : CheckPoint(), IFieldCheckPoint, SootInfoCache by infoCache {
+    override val sootField: SootField,
+    private val info: SootInfoCache
+) : CheckPoint(),
+    IFieldCheckPoint,
+    SootInfoCache by info {
 
-    val visibilityAnnotationTag: VisibilityAnnotationTag?
+    override val visibilityAnnotationTag: VisibilityAnnotationTag?
         get() = sootField.getTag("VisibilityAnnotationTag") as? VisibilityAnnotationTag
 
-    override val region: Region =
-        Region.invoke(this, sootField as AbstractHost) ?: Region.getERROR()
+    override val region: Region get() =
+        Region(this, sootField as AbstractHost) ?: Region.ERROR
 
     override val file: IBugResInfo = ClassResInfo(sootField.declaringClass)
 
-    private val envDelegate by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    private val _env by lazy(LazyThreadSafetyMode.PUBLICATION) {
         DefaultEnv(
             region.mutable,
-            field = sootField,
-            clazz = sootField.declaringClass
+            clazz = sootField.declaringClass,
+            field = sootField
         )
     }
+    override val env: DefaultEnv get() = _env
 
-    override val env: DefaultEnv get() = envDelegate
+    // Delegations to the backing cache
+    override val cache: AnalysisCache get() = info.cache
+    override val ext: SootHostExtend? get() = info.getExt(this)
+    override val hostKey: Key<SootHostExtend?> get() = info.hostKey
 
-    override val cache: AnalysisCache get() = infoCache.cache
-    override val ext: SootHostExtend? get() = infoCache.getExt(this)
-    override val hostKey: Key<SootHostExtend?> get() = infoCache.hostKey
-
-    override val javaNameSourceEndColumnNumber: Int get() =
-        infoCache.getJavaNameSourceEndColumnNumber(this)
-    override val javaNameSourceEndLineNumber: Int get() =
-        infoCache.getJavaNameSourceEndLineNumber(this)
-    override val javaNameSourceStartColumnNumber: Int get() =
-        infoCache.getJavaNameSourceStartColumnNumber(this)
-    override val javaNameSourceStartLineNumber: Int get() =
-        infoCache.getJavaNameSourceStartLineNumber(this)
+    override val javaNameSourceEndColumnNumber: Int get() = info.javaNameSourceEndColumnNumber
+    override val javaNameSourceEndLineNumber: Int get() = info.javaNameSourceEndLineNumber
+    override val javaNameSourceStartColumnNumber: Int get() = info.javaNameSourceStartColumnNumber
+    override val javaNameSourceStartLineNumber: Int get() = info.javaNameSourceStartLineNumber
 
     override fun SootClass.getMemberAtLine(ln: Int): BodyDeclaration<*>? =
-        infoCache.getMemberAtLine(this, ln)
+        info.getMemberAtLine(this, ln)
 }

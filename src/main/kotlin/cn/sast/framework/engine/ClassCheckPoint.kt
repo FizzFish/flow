@@ -13,66 +13,72 @@ import com.feysh.corax.config.api.IMethodCheckPoint
 import com.feysh.corax.config.api.report.Region
 import com.github.javaparser.ast.body.BodyDeclaration
 import kotlin.LazyThreadSafetyMode
+import kotlin.lazy
 import soot.SootClass
 import soot.SootField
 import soot.SootMethod
 import soot.tagkit.AbstractHost
 
+/**
+ * A checkpoint bound to a single [SootClass].
+ * Delegates everything that is not explicitly overridden to the provided [info] cache.
+ */
 class ClassCheckPoint(
-    val sootClass: SootClass,
-    private val infoCache: SootInfoCache
-) : CheckPoint(), IClassCheckPoint, SootInfoCache by infoCache {
+    override val sootClass: SootClass,
+    private val info: SootInfoCache
+) : CheckPoint(),
+    IClassCheckPoint,
+    SootInfoCache by info {
 
     override val className: String get() = sootClass.name
 
-    override val region: Region =
-        Region.invoke(this, sootClass as AbstractHost) ?: Region.getERROR()
+    override val region: Region get() =
+        Region(this, sootClass as AbstractHost) ?: Region.ERROR
 
     override val file: IBugResInfo = ClassResInfo(sootClass)
 
-    private val envDelegate by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    private val _env by lazy(LazyThreadSafetyMode.PUBLICATION) {
         DefaultEnv(
             region.mutable,
             clazz = sootClass
         )
     }
+    override val env: DefaultEnv get() = _env
 
-    override val env: DefaultEnv get() = envDelegate
-    // ---------------------------------------------------------------------
-    //  Delegated helpers to information cache
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Short‑hand delegation to the underlying [info] cache for frequently used
+    // helpers and source‑position utilities.
+    // -------------------------------------------------------------------------
+    override val cache: AnalysisCache get() = info.cache
+    override val ext: SootHostExtend? get() = info.getExt(this)
+    override val hostKey: Key<SootHostExtend?> get() = info.hostKey
 
-    override val cache: AnalysisCache get() = infoCache.cache
-    override val ext: SootHostExtend? get() = infoCache.getExt(this)
-    override val hostKey: Key<SootHostExtend?> get() = infoCache.hostKey
+    override val javaNameSourceEndColumnNumber: Int get() = info.javaNameSourceEndColumnNumber
+    override val javaNameSourceEndLineNumber: Int get() = info.javaNameSourceEndLineNumber
+    override val javaNameSourceStartColumnNumber: Int get() = info.javaNameSourceStartColumnNumber
+    override val javaNameSourceStartLineNumber: Int get() = info.javaNameSourceStartLineNumber
 
-    override val javaNameSourceEndColumnNumber: Int get() =
-        infoCache.getJavaNameSourceEndColumnNumber(this)
-    override val javaNameSourceEndLineNumber: Int get() =
-        infoCache.getJavaNameSourceEndLineNumber(this)
-    override val javaNameSourceStartColumnNumber: Int get() =
-        infoCache.getJavaNameSourceStartColumnNumber(this)
-    override val javaNameSourceStartLineNumber: Int get() =
-        infoCache.getJavaNameSourceStartLineNumber(this)
+    // -------------------------------------------------------------------------
+    // Iteration helpers
+    // -------------------------------------------------------------------------
+    override fun eachMethod(block: (IMethodCheckPoint) -> Unit) {
+        sootClass.methods.forEach { block(MethodCheckPoint(it, info)) }
+    }
 
-    // ---------------------------------------------------------------------
-    //  Child checkpoints
-    // ---------------------------------------------------------------------
+    override fun eachField(block: (IFieldCheckPoint) -> Unit) {
+        sootClass.fields.forEach { block(FieldCheckPoint(it, info)) }
+    }
 
-    override fun eachMethod(block: (IMethodCheckPoint) -> Unit) =
-        sootClass.methods.forEach { block(MethodCheckPoint(it, infoCache)) }
+    // -------------------------------------------------------------------------
+    // Convenience extension
+    // -------------------------------------------------------------------------
+    override fun SootClass.getMemberAtLine(ln: Int): BodyDeclaration<*>? =
+        info.getMemberAtLine(this, ln)
 
-    override fun eachField(block: (IFieldCheckPoint) -> Unit) =
-        sootClass.fields.forEach { block(FieldCheckPoint(it, infoCache)) }
-
-    // ---------------------------------------------------------------------
-
+    // Keep default implementations for super‑type discovery
     override fun getSuperClasses(): Sequence<SootClass> =
         IClassCheckPoint.DefaultImpls.getSuperClasses(this)
 
     override fun getSuperInterfaces(): Sequence<SootClass> =
         IClassCheckPoint.DefaultImpls.getSuperInterfaces(this)
-
-    override fun SootClass.getMemberAtLine(ln: Int): BodyDeclaration<*>? =
-        infoCache.getMemberAtLine(this, ln)
 }

@@ -6,6 +6,7 @@ import com.feysh.corax.config.api.ICheckPoint
 import com.feysh.corax.config.api.INodeWithRange
 import com.feysh.corax.config.api.report.Region
 import soot.*
+import soot.jimple.Constant
 import soot.jimple.StringConstant
 import kotlin.reflect.jvm.jvmName
 

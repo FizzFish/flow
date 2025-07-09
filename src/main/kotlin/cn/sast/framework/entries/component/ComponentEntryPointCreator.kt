@@ -9,19 +9,20 @@ import soot.Type
 import soot.Value
 import soot.jimple.infoflow.entryPointCreators.SequentialEntryPointCreator
 
-public class ComponentEntryPointCreator(entry: Collection<String>) : SequentialEntryPointCreator(entry) {
-    private val p: PhantomValueForType = PhantomValueForType(null, 1, null)
+/**
+ * Same behaviour as the original Java implementation but expressed in idiomatic Kotlin.
+ */
+class ComponentEntryPointCreator(
+    entry: Collection<String>
+) : SequentialEntryPointCreator(entry) {
 
-    protected open fun getValueForType(
+    private val phantom = PhantomValueForType()
+
+    override fun getValueForType(
         tp: Type,
         constructionStack: MutableSet<SootClass>?,
         parentClasses: Set<SootClass>?,
         generatedLocals: MutableSet<Local>?,
         ignoreExcludes: Boolean
-    ): Value? {
-        val var10000: PhantomValueForType = this.p
-        val var10001: Body = this.body
-        val var10002: LocalGenerator = this.generator
-        return var10000.getValueForType(var10001, var10002, tp) as Value
-    }
+    ): Value? = phantom.getValueForType(body, generator, tp)
 }
