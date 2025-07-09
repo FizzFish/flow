@@ -25,7 +25,7 @@ fun getVersion(): String = runCatching {
 
 fun main(args: Array<String>) {
     // 记录启动参数供其他模块（如 OS 工具类）使用
-    OS.setArgs(args)
+    OS.args = args
 
     // ------------------------------------------------------------------ //
     // 全局未捕获异常处理

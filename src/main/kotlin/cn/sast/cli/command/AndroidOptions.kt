@@ -1,12 +1,10 @@
 package cn.sast.cli.command
 
 import cn.sast.api.config.MainConfig
-import cn.sast.common.IResource
 import cn.sast.framework.SootCtx
 import cn.sast.framework.entries.IEntryPointProvider
 import cn.sast.framework.entries.apk.ApkLifeCycleComponent
 import cn.sast.framework.report.ProjectFileLocator
-import kotlinx.collections.immutable.PersistentSet
 import mu.KotlinLogging
 import soot.jimple.infoflow.android.InfoflowAndroidConfiguration
 import java.io.File
@@ -51,7 +49,7 @@ class AndroidOptions(
         val apk = targetApkFile(mc)
         val androidJar = mc.getAndroidJarClasspath(apk)
             ?: error("Cannot find android.jar in $androidPlatformDir for $apk")
-        mc.classpath += androidJar
+        mc.classpath.add(androidJar)
         sootCtx.configureSoot()
         sootCtx.constructSoot(locator)
     }
@@ -75,16 +73,16 @@ class AndroidOptions(
             maxCallbacksPerComponent = 100
             callbackAnalysisTimeout  = 0
             maxAnalysisCallbackDepth = -1
-            serializeCallbacks       = false
+            isSerializeCallbacks = false
             callbacksFile            = ""
         }
 
         iccConfig.apply {
             iccModel              = null
-            isIccResultsPurify    = true
+            setIccResultsPurify(true)
         }
 
-        isOneComponentAtATime = oneComponentAtATime
+        oneComponentAtATime = oneComponentAtATime
     }
 
     companion object {

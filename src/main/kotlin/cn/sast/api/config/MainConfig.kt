@@ -99,6 +99,17 @@ class MainConfig(
         return skipInvalidClassPaths(cp)
     }
 
+    fun getAndroidJarClasspath(targetAPKFile: String): String? {
+
+        val androidJar = if (forceAndroidJar == true) {
+            androidPlatformDir
+        } else {
+            Scene.v().getAndroidJarPath(androidPlatformDir, targetAPKFile)
+        }
+
+        return androidJar
+    }
+
     /** 类路径过滤：排除损坏 zip / jar */
     private fun skipInvalidClassPaths(paths: Collection<String>): Set<String> = buildSet {
         for (p in paths) {

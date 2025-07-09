@@ -6,14 +6,22 @@ package cn.sast.cli.command
 import cn.sast.api.AnalyzerEnv
 import cn.sast.api.config.*
 import cn.sast.api.report.IResultCollector
+import cn.sast.cli.command.tools.CheckerInfoCompareOptions
+import cn.sast.cli.command.tools.CheckerInfoGeneratorOptions
+import cn.sast.cli.command.tools.SubToolsOptions
 import cn.sast.common.*
 import cn.sast.framework.metrics.MetricsMonitor
 import cn.sast.framework.plugin.CheckerFilterByName
 import cn.sast.framework.report.ProjectFileLocator
+import cn.sast.framework.report.coverage.JacocoCompoundCoverage
 import cn.sast.framework.result.*
+import cn.sast.idfa.analysis.UsefulMetrics
 import com.feysh.corax.cache.analysis.SootInfoCache
 import com.feysh.corax.config.api.Language
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.GroupableOption
+import com.github.ajalt.clikt.core.theme
+import com.github.ajalt.clikt.parameters.groups.provideDelegate
 import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.mordant.rendering.Theme
 import com.google.gson.Gson
@@ -31,7 +39,10 @@ import kotlin.system.exitProcess
 import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.path
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
+import java.time.LocalDateTime
 
 /* ―――――――― logger ―――――――― */
 private val logger = KotlinLogging.logger {}
@@ -130,10 +141,10 @@ class FySastCli : CliktCommand(
 
     /* ──────────── 子工具 / 子功能选项组 ──────────── */
 
-    val dataFlowOptions: DataFlowOptions by optionGroup(::DataFlowOptions)
-    val checkerInfoGeneratorOptions by optionGroup(::CheckerInfoGeneratorOptions)
-    val checkerInfoCompareOptions   by optionGroup(::CheckerInfoCompareOptions)
-    val subtoolsOptions             by optionGroup(::SubToolsOptions)
+    val dataFlowOptions: DataFlowOptions by DataFlowOptions()
+    val checkerInfoGeneratorOptions by CheckerInfoGeneratorOptions()
+    val checkerInfoCompareOptions   by CheckerInfoCompareOptions()
+    val subtoolsOptions             by SubToolsOptions()
 
     var flowDroidOptions: FlowDroidOptions? = null
     var utAnalyzeOptions: UtAnalyzeOptions? = null
@@ -141,7 +152,7 @@ class FySastCli : CliktCommand(
     var enableStructureAnalysis: Boolean = false
     var enableOriginalNames: Boolean = false
 
-    var staticFieldTrackingMode: StaticFieldTrackingMode = StaticFieldTrackingMode.Disabled
+    var staticFieldTrackingMode: StaticFieldTrackingMode = StaticFieldTrackingMode.ContextFlowInsensitive
     var callGraphAlgorithm: String = "CHATransformer"
     var callGraphAlgorithmBuiltIn: String = "SPARK"
 
@@ -235,7 +246,7 @@ class FySastCli : CliktCommand(
         }
 
         // 1️⃣ 解析 plugin 目录
-        val pluginRoots = Resource.globPaths(pluginsDir)
+        val pluginRoots = globPaths(pluginsDir)
             ?: error("$pluginsDir not exists")
         val tempDirs    = pluginRoots.map { it.resolve("plugins").toDirectory() }
 
