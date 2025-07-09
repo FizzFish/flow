@@ -1,50 +1,32 @@
 package cn.sast.framework.report
 
 import cn.sast.common.IResFile
-import cn.sast.framework.report.AbstractFileIndexer.CompareMode
-import java.nio.file.Path
-import java.util.Map.Entry
-import kotlin.Lazy
-import kotlin.collections.Map
-import kotlin.collections.Set
-import kotlin.collections.emptyList
-import kotlin.collections.toList
-import kotlin.lazy
+import java.util.concurrent.ConcurrentHashMap
 
-public class FileIndexer(
-    fileNameToPathMap: Map<String, Set<IResFile>>,
-    extensionToPathMap: Map<String, Set<IResFile>>
-) : AbstractFileIndexer<IResFile> {
-    internal val fileNameToPathMap: Map<String, Set<IResFile>>
-    internal val extensionToPathMap: Map<String, Set<IResFile>>
+/**
+ * 线程安全的文件索引：
+ * * `fileNameToPathMap`  – 同名文件集合
+ * * `extensionToPathMap` – 同后缀文件集合
+ */
+class FileIndexer(
+    private val fileNameToPathMap: Map<String, Set<IResFile>>,
+    private val extensionToPathMap: Map<String, Set<IResFile>>
+) : AbstractFileIndexer<IResFile>() {
 
-    public val count: Long by lazy {
-        var c = 0L
-        for ((_, value) in fileNameToPathMap) {
-            c += value.size
-        }
-        c
-    }
+    /** 总文件数（懒计算） */
+    val count: Long by lazy { fileNameToPathMap.values.sumOf { it.size }.toLong() }
 
-    init {
-        this.fileNameToPathMap = fileNameToPathMap
-        this.extensionToPathMap = extensionToPathMap
-    }
+    // ----------------------------------------------------------------- //
+    // AbstractFileIndexer 实现
+    // ----------------------------------------------------------------- //
 
-    public open fun getNames(path: IResFile, mode: CompareMode): List<String> {
-        val p: Path = path.getPath()
-        val names = mutableListOf<String>()
-        for (i in 0 until p.nameCount) {
-            names.add(p.getName(i).toString())
-        }
-        return names.toList()
-    }
+    override fun getNames(path: IResFile, mode: CompareMode): List<String> =
+        path.path.map { it.toString() }
 
-    public override fun getPathsByName(name: String): Collection<IResFile> {
-        return fileNameToPathMap[name] ?: emptyList()
-    }
+    override fun getPathsByName(name: String): Collection<IResFile> =
+        fileNameToPathMap[name] ?: emptyList()
 
-    public fun getPathsByExtension(extension: String): Collection<IResFile> {
-        return extensionToPathMap[extension] ?: emptyList()
-    }
+    /** 根据扩展名检索 */
+    fun getPathsByExtension(extension: String): Collection<IResFile> =
+        extensionToPathMap[extension] ?: emptyList()
 }

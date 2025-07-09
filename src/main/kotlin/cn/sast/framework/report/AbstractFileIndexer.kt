@@ -1,119 +1,114 @@
 package cn.sast.framework.report
 
-import java.util.ArrayList
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.intrinsics.IntrinsicsKt
-import kotlin.enums.EnumEntries
-import kotlin.jvm.functions.Function2
-import kotlin.jvm.internal.SourceDebugExtension
+import kotlin.math.min
 
-@SourceDebugExtension(["SMAP\nJavaSourceLocator.kt\nKotlin\n*S Kotlin\n*F\n+ 1 JavaSourceLocator.kt\ncn/sast/framework/report/AbstractFileIndexer\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n+ 3 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,490:1\n1381#2:491\n1469#2,2:492\n1471#2,3:495\n1#3:494\n*S KotlinDebug\n*F\n+ 1 JavaSourceLocator.kt\ncn/sast/framework/report/AbstractFileIndexer\n*L\n197#1:491\n197#1:492,2\n197#1:495,3\n*E\n"])
-public abstract class AbstractFileIndexer<PathType> {
-    private val errorMsgShow: Boolean
+/**
+ * 抽象文件索引器。
+ * `PathType` 可以是 `java.nio.file.Path`、`IResFile` 等任何
+ * 能够唯一定位文件/资源的类型。
+ */
+abstract class AbstractFileIndexer<PathType>(private val errorMsgShow: Boolean = false) {
 
-    public abstract fun getNames(path: Any, mode: CompareMode): List<String>
+    /** 文件名比较模式 */
+    enum class CompareMode(val isClass: Boolean) {
+        /** 完整路径（目录层级 + 文件名） */
+        Path(false),
 
-    public abstract fun getPathsByName(name: String): Collection<Any>
+        /** Java/Kotlin class 形式（包名 + 类名，不关心目录布局） */
+        Class(true),
 
-    private fun List<String>.hasDot(): Boolean {
-        val sz = size
-        if (sz <= 1) {
-            return false
-        } else {
-            var i = 0
-            for (e in this) {
-                if (++i != sz && e.contains(".")) {
-                    return true
-                }
-            }
-            return false
-        }
+        /**
+         * 仅比对名字 + 内部类，忽略包名。
+         *   例：`org/example/Demo.kt` 与 `Demo` 视作「相同」
+         */
+        ClassNoPackageLayout(true)
     }
 
-    private fun List<String>.normalizePathParts(mode: CompareMode = CompareMode.Path): List<String> {
-        if (mode.isClass && hasDot()) {
-            val lastIndex = lastIndex
-            val ret = ArrayList<String>(size + 2)
-            var i = 0
-            for (e in this) {
-                if (i++ != lastIndex && e.contains(".")) {
-                    ret.addAll(e.split("."))
-                } else {
-                    ret.add(e)
-                }
-            }
-            return ret
-        } else {
-            return this
-        }
-    }
+    // --------------------------------------------------------------------- //
+    // 必须由子类实现的抽象方法
+    // --------------------------------------------------------------------- //
 
-    public fun findFromFileIndexMap(
+    /** 将 [path] 映射成可比对的「名字分片」 */
+    abstract fun getNames(path: PathType, mode: CompareMode = CompareMode.Path): List<String>
+
+    /** 通过单个名字（通常是文件/类名最后一段）反查可能的路径 */
+    abstract fun getPathsByName(name: String): Collection<PathType>
+
+    // --------------------------------------------------------------------- //
+    // 公共查询 API
+    // --------------------------------------------------------------------- //
+
+    /** 通过名字分片序列查找匹配路径 */
+    fun findFromFileIndexMap(
         toFindNames: List<String>,
         mode: CompareMode = CompareMode.Path
     ): Sequence<PathType> {
-        return sequence {
-            if (toFindNames.isEmpty()) {
-                return@sequence
-            }
-            val find = normalizePathParts(toFindNames, mode)
-            val paths = getPathsByName(find.last())
-            for (element in paths) {
-                val checkNames = normalizePathParts(getNames(element, mode), mode)
-                if (mode == CompareMode.ClassNoPackageLayout) {
-                    yield(element as PathType)
-                } else {
-                    val r = JavaSourceLocatorKt.listEndsWith(checkNames, find)
-                    if (r == ListSuffixRelation.Equals || r == ListSuffixRelation.BIsSuffixOfA) {
-                        yield(element as PathType)
-                    }
-                }
+        if (toFindNames.isEmpty()) return emptySequence()
+
+        val target = toFindNames.normalizePathParts(mode)
+        val last   = target.last()
+
+        return getPathsByName(last).asSequence().filter { candidate ->
+            val parts = getNames(candidate, mode).normalizePathParts(mode)
+            when (mode) {
+                CompareMode.ClassNoPackageLayout -> true
+                else                             -> parts.endsWith(target)
             }
         }
     }
 
-    public fun findFromFileIndexMap(find: Any, mode: CompareMode = CompareMode.Path): Sequence<PathType> {
-        return findFromFileIndexMap(getNames(find as PathType, mode), mode)
-    }
+    /** 通过单个路径对象反查同名/同类文件 */
+    fun findFromFileIndexMap(
+        sample: PathType,
+        mode: CompareMode = CompareMode.Path
+    ): Sequence<PathType> = findFromFileIndexMap(getNames(sample, mode), mode)
 
-    public fun findFiles(fileNames: Collection<String>, mode: CompareMode): List<PathType> {
-        val destination = ArrayList<PathType>()
-        for (element in fileNames) {
-            if (element.indexOf('\\') != -1) {
-                throw IllegalArgumentException("invalid source file name: $element")
-            }
-            destination.addAll(findFromFileIndexMap(element.split("/"), mode).toList())
+    /** 返回 *所有* 命中路径 */
+    fun findFiles(
+        fileNames: Collection<String>,
+        mode: CompareMode = CompareMode.Path
+    ): List<PathType> =
+        fileNames.flatMap { name ->
+            require("\\" !in name) { "invalid source file name: $name" }
+            findFromFileIndexMap(name.split('/'), mode).toList()
         }
-        return destination
-    }
 
-    public fun findAnyFile(fileNames: Collection<String>, mode: CompareMode): PathType? {
-        for (s in fileNames) {
-            if (s.indexOf('\\') != -1) {
-                throw IllegalArgumentException("invalid source file name: $s in $fileNames")
-            }
-            val result = findFromFileIndexMap(s.split("/"), mode).firstOrNull()
-            if (result != null) {
-                return result
-            }
+    /** 找到第一条命中路径即返回；未命中返回 `null` */
+    fun findAnyFile(
+        fileNames: Collection<String>,
+        mode: CompareMode = CompareMode.Path
+    ): PathType? =
+        fileNames.firstNotNullOfOrNull { name ->
+            require("\\" !in name) { "invalid source file name: $name in $fileNames" }
+            findFromFileIndexMap(name.split('/'), mode).firstOrNull()
         }
-        return null
-    }
 
-    public companion object {
-        public lateinit var defaultClassCompareMode: CompareMode
-    }
+    // --------------------------------------------------------------------- //
+    // 私有辅助
+    // --------------------------------------------------------------------- //
 
-    public enum class CompareMode(val isClass: Boolean) {
-        Path(false),
-        Class(true),
-        ClassNoPackageLayout(true);
+    private fun List<String>.hasDot(): Boolean =
+        size > 1 && dropLast(1).any { '.' in it }
 
-        companion object {
-            @JvmStatic
-            fun getEntries(): EnumEntries<CompareMode> {
-                return enumEntries<CompareMode>()
+    /** 把 `com/example/My$Inner.class` ⇒ `[com, example, My, Inner, class]`（按模式拆分） */
+    private fun List<String>.normalizePathParts(
+        mode: CompareMode = CompareMode.Path
+    ): List<String> =
+        if (mode.isClass && hasDot())
+            flatMapIndexed { index, part ->
+                if (index != lastIndex && '.' in part) part.split('.') else listOf(part)
             }
-        }
+        else this
+
+    /** `a.endsWith(b)`（列表级别） */
+    private fun List<String>.endsWith(suffix: List<String>): Boolean {
+        if (size < suffix.size) return false
+        val offset = size - suffix.size
+        return indices.drop(offset).all { this[it] == suffix[it - offset] }
+    }
+
+    companion object {
+        /** 项目默认的类名比较模式 */
+        var defaultClassCompareMode: CompareMode = CompareMode.Path
     }
 }

@@ -2,60 +2,41 @@ package cn.sast.framework.report
 
 import cn.sast.common.IResDirectory
 import cn.sast.framework.result.OutputType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.Continuation
 
-public abstract class ReportConsumer(
-    public open val type: OutputType,
-    public final val outputDir: IResDirectory
+/**
+ * 抽象“结果消费端”——所有报告写出器共同基类
+ */
+abstract class ReportConsumer(
+    /** 消费器输出类型（JSON、CSV、PLIST …） */
+    final override val type: OutputType,
+    /** 结果写入目录（自动创建） */
+    val outputDir: IResDirectory,
 ) : IReportConsumer {
+
+    /** 每个子类声明自己的元数据 */
+    abstract val metadata: MetaData
+
     init {
         outputDir.mkdirs()
     }
 
-    public abstract val metadata: MetaData
+    /** 默认无初始化逻辑，可覆写 */
+    override suspend fun init() { /* no-op */ }
 
-    public override suspend fun init() {
-        return init$suspendImpl(this, `$completion`)
-    }
+    /**
+     * 默认直接调用 [IReportConsumer.run] 的接口默认实现，
+     * 如需 *单个文件* 输出，可在子类重写。
+     */
+    override suspend fun run(locator: IProjectFileLocator) =
+        IReportConsumer.DefaultImpls.run(this, locator)
 
-    override fun run(locator: IProjectFileLocator, `$completion`: Continuation<in Unit>): Any? {
-        return IReportConsumer.DefaultImpls.run(this, locator, `$completion`)
-    }
-
-    public data class MetaData(
-        val toolName: String,
-        val toolVersion: String,
-        val analyzerName: String
-    ) {
-        public operator fun component1(): String = toolName
-
-        public operator fun component2(): String = toolVersion
-
-        public operator fun component3(): String = analyzerName
-
-        public fun copy(
-            toolName: String = this.toolName,
-            toolVersion: String = this.toolVersion,
-            analyzerName: String = this.analyzerName
-        ): MetaData {
-            return MetaData(toolName, toolVersion, analyzerName)
-        }
-
-        public override fun toString(): String {
-            return "MetaData(toolName=$toolName, toolVersion=$toolVersion, analyzerName=$analyzerName)"
-        }
-
-        public override fun hashCode(): Int {
-            return (toolName.hashCode() * 31 + toolVersion.hashCode()) * 31 + analyzerName.hashCode()
-        }
-
-        public override fun equals(other: Any?): Boolean {
-            if (this === other) return true
-            if (other !is MetaData) return false
-            
-            return toolName == other.toolName &&
-                toolVersion == other.toolVersion &&
-                analyzerName == other.analyzerName
-        }
-    }
+    /** 元数据结构 —— 会写入各类报告头部 */
+    data class MetaData(
+        val toolName:     String,
+        val toolVersion:  String,
+        val analyzerName: String,
+    )
 }

@@ -1,83 +1,39 @@
 package cn.sast.framework.report.sarif
 
 import cn.sast.api.config.ExtSettings
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonBuilder
-
+import kotlinx.serialization.encodeToString
+/**
+ * 顶层 SARIF 日志对象（v2.1.0）。
+ *
+ * @param schema  `$schema` 字段，指向 SARIF JSON Schema URL
+ * @param version SARIF 版本号（通常为 "2.1.0"）
+ * @param runs    若干扫描结果批次
+ */
 @Serializable
-public data class SarifLog(
+data class SarifLog(
     @SerialName("\$schema")
-    public val schema: String,
-    public val version: String,
-    public val runs: List<Run>
+    val schema: String,
+    val version: String,
+    val runs: List<Run>,
 ) {
-    public fun toJson(): String {
-        return jsonFormat.encodeToString(serializer(), this)
-    }
 
-    public operator fun component1(): String {
-        return this.schema
-    }
+    /** 以项目统一的 JSON 配置序列化自身。 */
+    fun toJson(): String = jsonFormat.encodeToString(this)
 
-    public operator fun component2(): String {
-        return this.version
-    }
-
-    public operator fun component3(): List<Run> {
-        return this.runs
-    }
-
-    public fun copy(
-        schema: String = this.schema,
-        version: String = this.version,
-        runs: List<Run> = this.runs
-    ): SarifLog {
-        return SarifLog(schema, version, runs)
-    }
-
-    public override fun toString(): String {
-        return "SarifLog(schema=${this.schema}, version=${this.version}, runs=${this.runs})"
-    }
-
-    public override fun hashCode(): Int {
-        return (this.schema.hashCode() * 31 + this.version.hashCode()) * 31 + this.runs.hashCode()
-    }
-
-    public override operator fun equals(other: Any?): Boolean {
-        if (this === other) {
-            return true
-        } else if (other !is SarifLog) {
-            return false
-        } else {
-            val var2: SarifLog = other
-            if (this.schema != var2.schema) {
-                return false
-            } else if (this.version != var2.version) {
-                return false
-            } else {
-                return this.runs == var2.runs
-            }
+    companion object {
+        /**
+         * 项目级 SARIF 输出格式：
+         * * **useArrayPolymorphism = true** —— 与官方示例保持一致
+         * * **prettyPrint** – 由 [ExtSettings.prettyPrintJsonReport] 控制
+         * * **encodeDefaults = false** – 省略默认值字段，缩减体积
+         */
+        val jsonFormat: Json = Json {
+            useArrayPolymorphism = true
+            prettyPrint = ExtSettings.prettyPrintJsonReport
+            encodeDefaults = false
         }
-    }
-
-    @JvmStatic
-    fun JsonBuilder.`jsonFormat$lambda$0`() {
-        this.setUseArrayPolymorphism(true)
-        this.setPrettyPrint(ExtSettings.INSTANCE.getPrettyPrintJsonReport())
-        this.setEncodeDefaults(false)
-    }
-
-    public companion object {
-        private val jsonFormat: Json = Json {
-            setUseArrayPolymorphism(true)
-            setPrettyPrint(ExtSettings.INSTANCE.getPrettyPrintJsonReport())
-            setEncodeDefaults(false)
-        }
-
-        public fun serializer(): KSerializer<SarifLog> = SarifLog.serializer()
     }
 }

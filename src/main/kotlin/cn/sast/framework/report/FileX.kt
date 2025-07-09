@@ -4,41 +4,47 @@ import cn.sast.api.config.MainConfig.RelativePath
 import cn.sast.common.IResFile
 import cn.sast.framework.report.sqldelight.AbsoluteFilePath
 import cn.sast.framework.report.sqldelight.Database
-import cn.sast.framework.report.sqldelight.File
-import kotlin.collections.first
+import cn.sast.framework.report.sqldelight.File as DbFile
 
-public class FileX(
-    public val file: File,
-    public val relativePath: RelativePath,
-    public val associateAbsFile: IResFile,
-    public val lines: List<String>
+/**
+ * 把数据库中的 **File** 行 + 真实文件 / 源码行
+ * 绑定在一起，便于后续访问。
+ */
+class FileX(
+    val file: DbFile,
+    val relativePath: RelativePath,
+    val associateAbsFile: IResFile,
+    val lines: List<String>
 ) {
-    public val fileAbsPath: String = associateAbsFile.toString()
+    val fileAbsPath: String = associateAbsFile.toString()
 
-    public fun withId(id: Long): FileX.ID {
-        return ID(this, id)
-    }
+    /** 包装一个已知 ID（无需写库） */
+    fun withId(id: Long): ID = ID(id)
 
-    public fun insert(db: Database): FileX.ID {
-        db.getFileQueries()
-            .insert(
-                file.file_raw_content_hash,
-                file.relative_path,
-                file.lines,
-                file.file_raw_content_size,
-                file.file_raw_content
+    /** 插入数据库并返回写入后的行 ID */
+    fun insert(db: Database): ID {
+        with(db.fileQueries) {
+            insert(
+                file_raw_content_hash = file.file_raw_content_hash,
+                relative_path         = file.relative_path,
+                lines                 = file.lines,
+                file_raw_content_size = file.file_raw_content_size,
+                file_raw_content      = file.file_raw_content
             )
-        val id: Long = db.getFileQueries()
+        }
+
+        val id = db.fileQueries
             .id(file.file_raw_content_hash, file.relative_path)
-            .executeAsList()
-            .first()
-            .toLong()
-        db.getAbsoluteFilePathQueries().insert(AbsoluteFilePath(relativePath.absoluteNormalizePath, id))
-        return ID(this, id)
+            .executeAsOne()
+
+        db.absoluteFilePathQueries
+            .insert(AbsoluteFilePath(relativePath.absoluteNormalizePath, id))
+
+        return ID(id)
     }
 
-    public inner class ID(
-        public val file: FileX,
-        public val id: Long
-    )
+    /** *(inner class)* 行 ID + 外部文件对象 */
+    inner class ID(val id: Long) {
+        val file: FileX = this@FileX
+    }
 }

@@ -1,17 +1,22 @@
 package cn.sast.framework.report
 
 import cn.sast.api.report.Report
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.intrinsics.IntrinsicsKt
 
-public interface IFileReportConsumer : IReportConsumer {
-    public abstract suspend fun flush(reports: List<Report>, filename: String, locator: IProjectFileLocator)
+/**
+ * 面向“**单文件输出**”的结果消费端。
+ *
+ * 与 [IReportConsumer] 的差别：额外暴露 [flush]，方便把
+ * 多条 [Report] 合并写入一个文件。
+ */
+interface IFileReportConsumer : IReportConsumer {
 
-    internal class DefaultImpls {
-        @JvmStatic
-        fun run(`$this`: IFileReportConsumer, locator: IProjectFileLocator, `$completion`: Continuation<Unit>): Any? {
-            val var10000: Any = IReportConsumer.DefaultImpls.run(`$this`, locator, `$completion`)
-            return if (var10000 === IntrinsicsKt.getCOROUTINE_SUSPENDED()) var10000 else Unit
-        }
-    }
+    /**
+     * 将 [reports] 刷入 **单个文件** `filename`。<br/>
+     * 默认空实现，子类按需覆盖。
+     */
+    suspend fun flush(
+        reports: List<Report>,
+        filename: String,
+        locator: IProjectFileLocator
+    ) {}
 }

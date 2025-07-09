@@ -1,50 +1,57 @@
 package cn.sast.cli.command
 
 import com.github.ajalt.clikt.parameters.groups.OptionGroup
-import com.github.ajalt.clikt.parameters.options.OptionWithValues
-import com.github.ajalt.clikt.parameters.options.convert
-import com.github.ajalt.clikt.parameters.options.default
-import com.github.ajalt.clikt.parameters.options.flag
-import com.github.ajalt.clikt.parameters.options.option
-import kotlin.math.max
+import com.github.ajalt.clikt.parameters.options.*
 
 /**
- * CLI：数据流分析相关选项
+ * 数据流分析相关 CLI 选项
+ *
+ * - 与先前行为保持一致
+ * - 若需新增选项，请按 `option()` 链式 DSL 自行扩展
  */
 class DataFlowOptions : OptionGroup(
     name = "Data Flow Options",
-    helpTags = null,
+    help = null
 ) {
-    /** 是否启用污点分析 */
-    val enableDataFlow by option(
+    /** 是否启用污点 / 数据流分析 */
+    val enableDataFlow: Boolean by option(
         "--enable-data-flow",
         help = "Enable taint/data-flow analysis"
     ).flag(default = false)
 
-    /** 是否统计覆盖率（静态） */
-    val enableCoverage by option(
+    /** 是否统计静态覆盖率 */
+    val enableCoverage: Boolean by option(
         "--enable-coverage",
         help = "Enable coverage statistics"
     ).flag(default = false)
 
     /**
-     * “分支缩放因子”——可用 `--factor 3` 设置；
-     * 为方便校验，这里将空字符串视为 null。
+     * 调优因子；`null` 表示未设置
+     * 用法：`--factor 3`
      */
     val factor1: Int? by option(
         "--factor",
         metavar = "N",
         help = "Tuning factor for heuristics"
-    ).convert { it.toIntOrNull() ?: fail("must be an integer") }
+    ).convert("N") {
+        it.toIntOrNull() ?: fail("must be an integer")
+    }
 
-    /** 每个被调方法超时（ms） */
+    /**
+     * 被调方法超时（毫秒）；`null` 表示不限
+     * 用法：`--callee-timeout 30000`
+     */
     val dataFlowInterProceduralCalleeTimeOut: Int? by option(
         "--callee-timeout",
-        metavar = "MS"
-    ).convert { it.toInt() }
+        metavar = "MS",
+        help = "Per-callee time-out (ms)"
+    ).convert("MS") {
+        it.toIntOrNull() ?: fail("must be an integer")
+    }
 }
 
-/* ---------- OptionWithValues.ext ---------- */
+/* ---------- Option 工具扩展 ---------- */
 
-private fun <InT : Any, ValueT : Any> OptionWithValues<InT, ValueT>.fail(msg: String): Nothing =
-    error("Invalid value for option ${names.joinToString()} : $msg")
+/** 抛出一致的错误信息，保持与 Clikt 默认行为兼容 */
+private fun OptionWithValues<*, *, *>.fail(msg: String): Nothing =
+    fail("Invalid value for option ${names.joinToString()} : $msg")

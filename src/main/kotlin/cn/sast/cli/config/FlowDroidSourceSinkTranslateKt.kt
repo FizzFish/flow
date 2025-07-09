@@ -1,6 +1,5 @@
 package cn.sast.cli.config
 
-import java.nio.file.Path
 import org.utbot.common.ClassLocation
 import org.utbot.common.FileUtil
 import soot.jimple.infoflow.android.InfoflowAndroidConfiguration
@@ -8,37 +7,42 @@ import soot.jimple.infoflow.android.data.parsers.PermissionMethodParser
 import soot.jimple.infoflow.android.source.parsers.xml.XMLSourceSinkParser
 import soot.jimple.infoflow.rifl.RIFLSourceSinkDefinitionProvider
 import soot.jimple.infoflow.sourcesSinks.definitions.ISourceSinkDefinitionProvider
+import java.nio.file.Path
+import java.nio.file.Paths
+import kotlin.system.exitProcess
 
-public val flowDroidLoc: ClassLocation = FileUtil.INSTANCE.locateClass(InfoflowAndroidConfiguration::class.java)
-public val flowDroidClass: Path = FileUtil.INSTANCE.findPathToClassFiles(flowDroidLoc)
+/** FlowDroid 所在 JAR / class-files 的定位信息 */
+val flowDroidLoc: ClassLocation =
+    FileUtil.locateClass(InfoflowAndroidConfiguration::class.java)
 
-public fun getFlowDroidSourceSinkProvider(fileExtension: String, sourceSinkFile: String): ISourceSinkDefinitionProvider? {
-    return when (fileExtension.hashCode()) {
-        115312 -> if (fileExtension == "txt") {
-            PermissionMethodParser.fromFile(sourceSinkFile) as ISourceSinkDefinitionProvider
-        } else {
-            null
-        }
-        118807 -> if (fileExtension == "xml") {
-            XMLSourceSinkParser.fromFile(sourceSinkFile, null) as ISourceSinkDefinitionProvider
-        } else {
-            null
-        }
-        3500349 -> if (fileExtension == "rifl") {
-            RIFLSourceSinkDefinitionProvider(sourceSinkFile) as ISourceSinkDefinitionProvider
-        } else {
-            null
-        }
-        else -> null
+/** FlowDroid 主包的 class 路径 */
+val flowDroidClass: Path =
+    FileUtil.findPathToClassFiles(flowDroidLoc)
+
+/**
+ * 根据文件扩展名构建合适的 Source/Sink provider。
+ *
+ * * `txt`  → `PermissionMethodParser`
+ * * `xml`  → `XMLSourceSinkParser`
+ * * `rifl` → `RIFLSourceSinkDefinitionProvider`
+ */
+fun getFlowDroidSourceSinkProvider(
+    fileExtension: String,
+    sourceSinkFile: String
+): ISourceSinkDefinitionProvider? =
+    when (fileExtension.lowercase()) {
+        "txt"  -> PermissionMethodParser.fromFile(sourceSinkFile)
+        "xml"  -> XMLSourceSinkParser.fromFile(sourceSinkFile, /* component filter */ null)
+        "rifl" -> RIFLSourceSinkDefinitionProvider(sourceSinkFile)
+        else   -> null
     }
-}
 
-public fun main(args: Array<String>) {
+/** 便捷入口，直接转入 CLI */
+fun main(args: Array<String>) {
     try {
         FlowDroidSourceSinkTranslatorCli().main(args)
-    } catch (e: Throwable) {
-        e.printStackTrace()
-        System.exit(1)
-        throw RuntimeException("System.exit returned normally, while it was supposed to halt JVM.")
+    } catch (t: Throwable) {
+        t.printStackTrace()
+        exitProcess(1)
     }
 }

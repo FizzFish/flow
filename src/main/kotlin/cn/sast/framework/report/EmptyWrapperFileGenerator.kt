@@ -4,55 +4,50 @@ import cn.sast.api.report.ClassResInfo
 import cn.sast.api.report.IBugResInfo
 import cn.sast.common.IResDirectory
 import cn.sast.common.IResFile
-import cn.sast.common.IResource
-import cn.sast.common.ResourceKt
-import java.io.IOException
-import mu.KLogger
 import mu.KotlinLogging
+import org.mockito.internal.util.io.IOUtil.writeText
 
+/**
+ * 当源码缺失/无法读取时，用空文件占位，避免下游处理 NPE。
+ */
 object EmptyWrapperFileGenerator : IWrapperFileGenerator {
-    private val logger: KLogger = KotlinLogging.logger { }
 
-    override val name: String
-        get() = "empty"
+    private val logger = KotlinLogging.logger {}
 
-    private fun makeWrapperFileContent(resInfo: IBugResInfo): String {
-        return if (resInfo is ClassResInfo) {
-            var maxLine = resInfo.getMaxLine()
-            if (maxLine > 8000) {
-                maxLine = 8000
-            }
-            "\n".repeat(maxLine)
-        } else {
-            "\n"
+    override val name: String = "empty"
+
+    /** 大文件只生成 8 000 行空行；否则 1 行 */
+    private fun makeWrapperFileContent(resInfo: IBugResInfo): String =
+        when (resInfo) {
+            is ClassResInfo -> "\n".repeat(minOf(resInfo.maxLine, 8_000))
+            else            -> "\n"
         }
-    }
 
-    override fun makeWrapperFile(fileWrapperOutPutDir: IResDirectory, resInfo: IBugResInfo): IResFile? {
-        val missingSourceFile = fileWrapperOutPutDir.resolve(name).resolve(getInternalFileName(resInfo)).toFile()
-        return if (missingSourceFile.exists()) {
-            if (missingSourceFile.isFile) {
-                missingSourceFile
+    override fun makeWrapperFile(
+        fileWrapperOutPutDir: IResDirectory,
+        resInfo: IBugResInfo
+    ): IResFile? {
+        val outFile = fileWrapperOutPutDir
+            .resolve(name)
+            .resolve(getInternalFileName(resInfo))
+            .toFile()
+
+        if (outFile.exists()) {
+            return if (outFile.isFile) {
+                outFile
             } else {
-                logger.error { "duplicate folder exists $missingSourceFile" }
+                logger.error { "duplicate folder exists $outFile" }
                 null
             }
-        } else {
-            val text = makeWrapperFileContent(resInfo)
-
-            try {
-                missingSourceFile.parent?.mkdirs()
-                ResourceKt.writeText(missingSourceFile, text)
-            } catch (e: IOException) {
-                e.printStackTrace()
-                null
-            }
-
-            missingSourceFile.toFile()
         }
-    }
 
-    override fun getInternalFileName(resInfo: IBugResInfo): String {
-        return IWrapperFileGenerator.DefaultImpls.getInternalFileName(this, resInfo)
+        return try {
+            outFile.parentFile?.mkdirs()
+            writeText(outFile, makeWrapperFileContent(resInfo))
+            outFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 }

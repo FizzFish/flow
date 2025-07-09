@@ -23,8 +23,3 @@ class UtAnalyzeOptions : OptionGroup(
         help = "Maximum analysis depth"
     ).convert("N") { it.toIntOrNull() ?: fail("must be an integer >0") }
 }
-
-/* ---------- 工具 ---------- */
-
-private fun OptionWithValues<*, *>.fail(msg: String): Nothing =
-    fail("Invalid value for option ${names.joinToString()} : $msg")

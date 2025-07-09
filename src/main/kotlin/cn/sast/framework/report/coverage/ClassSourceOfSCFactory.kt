@@ -1,20 +1,25 @@
 package cn.sast.framework.report.coverage
 
-import com.feysh.corax.cache.AnalysisCache
-import com.feysh.corax.cache.AnalysisCacheKt
-import com.feysh.corax.cache.AnalysisDataFactory
-import com.feysh.corax.cache.XOptional
-import com.feysh.corax.cache.AnalysisDataFactory.Key
+import com.feysh.corax.cache.*
 import com.github.benmanes.caffeine.cache.LoadingCache
 
-public object ClassSourceOfSCFactory : AnalysisDataFactory<ClassSourceInfo, ClassSourceOfSCKey> {
-    public open val cache: LoadingCache<ClassSourceOfSCKey, XOptional<ClassSourceInfo?>> =
-        AnalysisCacheKt.buildX(AnalysisDataFactory.Companion.getDefaultBuilder(), TODO("FIXME — unrepresentable instance"))
+/**
+ * AnalysisCache 工厂：<br/>
+ *   `ClassSourceOfSCKey` ➜ `ClassSourceInfo?`
+ */
+object ClassSourceOfSCFactory :
+    AnalysisDataFactory<ClassSourceInfo?, ClassSourceOfSCKey> {
 
-    public open val key: Key<ClassSourceInfo?> = object : Key<ClassSourceInfo>() {} as Key<ClassSourceInfo?>
+    // 缓存：className → ClassSourceInfo(或 null)
+    override val cache: LoadingCache<ClassSourceOfSCKey, XOptional<ClassSourceInfo?>> =
+        AnalysisCache.defaultBuilder()
+            .buildX { key -> XOptional.empty() }     // 默认找不到
 
-    @JvmStatic
-    fun init() {
-        AnalysisCache.G.INSTANCE.registerFactory(INSTANCE)
+    // 注册到全局 AnalysisCache
+    override val key: AnalysisDataFactory.Key<ClassSourceInfo?> =
+        object : AnalysisDataFactory.Key<ClassSourceInfo?>() {}
+
+    init {
+        AnalysisCache.registerFactory(this)
     }
 }

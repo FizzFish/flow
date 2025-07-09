@@ -11,127 +11,174 @@ import cn.sast.common.IResFile
 import cn.sast.common.ResourceKt
 import cn.sast.framework.report.coverage.JacocoCompoundCoverage
 import cn.sast.idfa.progressbar.ProgressBarExt
-import com.feysh.corax.config.api.rules.ProcessRule
-import com.github.ajalt.mordant.rendering.Theme
-import java.io.Closeable
-import java.io.OutputStreamWriter
-import java.nio.charset.Charset
-import java.nio.file.Files
-import java.nio.file.OpenOption
-import java.nio.file.Path
-import java.util.ArrayList
-import java.util.Arrays
-import java.util.LinkedHashMap
-import java.util.LinkedHashSet
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.intrinsics.IntrinsicsKt
-import kotlin.coroutines.jvm.internal.ContinuationImpl
-import kotlin.jvm.functions.Function2
-import kotlin.jvm.internal.SourceDebugExtension
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineScopeKt
-import mu.KLogger
-import org.jetbrains.annotations.NotNull
-import org.jetbrains.annotations.Nullable
+import kotlinx.coroutines.*
+import mu.KotlinLogging
 import soot.Scene
 import soot.SootClass
-import soot.util.Chain
+import java.io.OutputStreamWriter
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import kotlin.io.path.exists
 
-@SourceDebugExtension(["SMAP\nReportConverter.kt\nKotlin\n*S Kotlin\n*F\n+ 1 ReportConverter.kt\ncn/sast/framework/report/ReportConverter\n+ 2 _Collections.kt\nkotlin/collections/CollectionsKt___CollectionsKt\n*L\n1#1,391:1\n774#2:392\n865#2,2:393\n774#2:395\n865#2,2:396\n1279#2,2:398\n1293#2,4:400\n1053#2:404\n*S KotlinDebug\n*F\n+ 1 ReportConverter.kt\ncn/sast/framework/report/ReportConverter\n*L\n53#1:392\n53#1:393,2\n83#1:395\n83#1:396,2\n84#1:398,2\n84#1:400,4\n96#1:404\n*E\n"])
-class ReportConverter(mainConfig: MainConfig, progressBarExt: ProgressBarExt = ProgressBarExt(0, 0, 3, null)) {
-    val mainConfig: MainConfig
-    private val progressBarExt: ProgressBarExt
+/**
+ * 将内存中的 [Report] 列表写出到多个 [IReportConsumer]，
+ * 同时产出“缺少类定义的源码文件”辅助清单。
+ */
+class ReportConverter(
+    private val mainConfig: MainConfig,
+    private val progressBarExt: ProgressBarExt = ProgressBarExt(0, 0, 3)
+) {
+    private val logger = KotlinLogging.logger {}
 
-    init {
-        this.mainConfig = mainConfig
-        this.progressBarExt = progressBarExt
-    }
+    /* -------------------------------------------------------------------- */
+    /*  收集源文件                                                           */
+    /* -------------------------------------------------------------------- */
 
-    private fun filterSourceFiles(sources: Collection<IResFile?>): Set<IResFile> {
-        val destination = ArrayList<IResFile>()
+    /** 过滤掉 Gradle/KTS、package-info 等无需统计的源码 */
+    private fun filterSourceFiles(sources: Collection<IResFile?>): Set<IResFile> =
+        sources.filterNotNull()
+            .filter { f ->
+                val name = f.name
+                when {
+                    // *.kts 并且文件名含 gradle -> 跳过
+                    f.extension == "kts" && name.contains("gradle", ignoreCase = true) -> false
+                    // package-info.java / package-info.kt -> 跳过
+                    name.contains("package-info", ignoreCase = true)                    -> false
+                    // ScanFilter 显式跳过
+                    ScanFilter.getActionOf(
+                        mainConfig.scanFilter,
+                        filePath = f.path
+                    ) == ScanFilter.ScanAction.Skip                                           -> false
+                    else -> true
+                }
+            }
+            .toSet()
 
-        for (element in sources) {
-            val it = element as IResFile
-            if (element != null &&
-                (!(it.extension == "kts") || !it.name.contains("gradle", true)) &&
-                !it.name.contains("package-info", true) &&
-                mainConfig.scanFilter.getActionOf(path = it.path) != ProcessRule.ScanAction.Skip
-            ) {
-                destination.add(it)
+    /**
+     * 遍历所有 **Java/Kotlin** 扩展，异步收集项目源码。
+     * `IProjectFileLocator` 已对文件系统做了索引缓存，调用代价很小。
+     */
+    private suspend fun findAllSourceFiles(
+        locator: IProjectFileLocator
+    ): Set<IResFile> = coroutineScope {
+        val tasks = ResourceKt.javaExtensions.map { ext ->
+            async {
+                locator.getByFileExtension(ext)
+                    .filter { mainConfig.autoAppSrcInZipScheme || it.isFileScheme() }
+                    .toSet()
             }
         }
-
-        return destination.filterNotNullTo(LinkedHashSet())
+        tasks.awaitAll().flatten().toSet()
     }
 
-    private suspend fun findAllSourceFiles(locator: IProjectFileLocator): Set<IResFile> {
-        val allSourceFiles = LinkedHashSet<IResFile>()
-        
-        for (javaExtension in ResourceKt.getJavaExtensions()) {
-            val files = locator.getByFileExtension(javaExtension)
-            allSourceFiles.addAll(files.filter { 
-                mainConfig.autoAppSrcInZipScheme || it.isFileScheme() 
-            })
-        }
-        
-        return allSourceFiles
-    }
+    /* -------------------------------------------------------------------- */
+    /*  源码 ↔ SootClass 匹配                                               */
+    /* -------------------------------------------------------------------- */
 
+    /**
+     * 统计哪些源码文件 **未能** 在 Soot Scene 中找到对应类。
+     *
+     * @return Pair(first = 已匹配类的源码, second = 未匹配源码)
+     */
     private fun reportSourceFileWhichClassNotFound(
         allSourceFiles: Set<IResFile>,
         outputDir: IResDirectory,
         locator: IProjectFileLocator
-    ): Pair<MutableSet<IResFile>, Set<IResFile>> {
-        mainConfig.monitor?.projectMetrics?.totalSourceFileNum = allSourceFiles.size.toLong()
+    ): Pair<Set<IResFile>, Set<IResFile>> {
 
-        val foundClasses = Scene.v().applicationClasses + Scene.v().libraryClasses
-        val nonPhantomClasses = foundClasses.filter { !(it as SootClass).isPhantom }
-        
-        val classToFileMap = LinkedHashMap<SootClass, IResFile>(
-            kotlin.math.max(kotlin.collections.mapCapacity(nonPhantomClasses.size), 16)
-        
-        for (sootClass in nonPhantomClasses) {
-            classToFileMap[sootClass] = locator.get(ClassResInfo(sootClass), NullWrapperFileGenerator.INSTANCE)
-        }
+        /* ---- 1) 更新项目指标 ---- */
+        (mainConfig.monitor ?: IMonitor.EMPTY).projectMetrics
+            ?.totalSourceFileNum = allSourceFiles.size.toLong()
 
-        val foundSourceFiles = classToFileMap.values.filterNotNullTo(LinkedHashSet())
-        val classNotFoundSourceFiles = allSourceFiles - foundSourceFiles
+        /* ---- 2) 收集 _非 phantom_ 的类对应源码 ---- */
+        val sootClasses = buildList {
+            addAll(Scene.v().applicationClasses)
+            addAll(Scene.v().libraryClasses)
+        }.filterNot(SootClass::isPhantom)
 
-        val outputFile = outputDir.resolve("source_files_which_class_not_found.txt").toFile()
-        if (classNotFoundSourceFiles.isNotEmpty()) {
-            logger.warn { 
-                "Incomplete analysis! The num of ${classNotFoundSourceFiles.size} source files not found any class!!! check: ${outputFile.absolutePath.normalize()}" 
+        val foundSourceCodes = sootClasses
+            .mapNotNull { locator.get(ClassResInfo(it), NullWrapperFileGenerator) }
+            .toSet()
+
+        /* ---- 3) 计算缺失集合 ---- */
+        val missing = allSourceFiles - foundSourceCodes
+        val reportFile = outputDir.resolve("source_files_which_class_not_found.txt").toFile()
+
+        if (missing.isNotEmpty()) {
+            logger.warn {
+                "Incomplete analysis! ${missing.size} source files not matched with any class. " +
+                        "See: ${reportFile.absoluteNormalize}"
             }
-            
-            outputFile.parentFile.mkdirs()
-            OutputStreamWriter(Files.newOutputStream(outputFile.toPath()), Charsets.UTF_8).use { writer ->
-                classNotFoundSourceFiles.sortedBy { it.path }.forEach { file ->
-                    writer.write("${file.path}\n")
-                }
-                writer.flush()
+
+            reportFile.parentFile.mkdirs()
+            OutputStreamWriter(
+                Files.newOutputStream(reportFile.toPath()),
+                StandardCharsets.UTF_8
+            ).use { writer ->
+                missing.sortedBy { it.absoluteNormalize.path }
+                    .forEach { writer.write(it.absoluteNormalize.path + "\n") }
             }
         } else {
-            Files.deleteIfExists(outputFile.toPath())
+            Files.deleteIfExists(reportFile.toPath())
         }
 
-        return foundSourceFiles to classNotFoundSourceFiles
+        return foundSourceCodes to missing
     }
 
-    public suspend fun flush(
-        mainConfig: MainConfig,
-        locator: IProjectFileLocator,
-        coverage: JacocoCompoundCoverage,
-        consumers: List<IReportConsumer>,
-        reports: Collection<Report>,
-        outputDir: IResDirectory
-    ) {
-        coroutineScope {
-            // TODO("FIXME — Original decompilation failed, preserve original behavior")
-            throw NotImplementedError("Original decompilation failed for flush implementation")
+    /* -------------------------------------------------------------------- */
+    /*  顶层协程——协调各消费端                                               */
+    /* -------------------------------------------------------------------- */
+
+    suspend fun flush(
+        locator:    IProjectFileLocator,
+        coverage:   JacocoCompoundCoverage,
+        consumers:  List<IReportConsumer>,
+        reports:    Collection<Report>,
+        outputDir:  IResDirectory
+    ) = coroutineScope {
+
+        /* 1) 源码收集 + 匹配 */
+        val allSourceFiles = findAllSourceFiles(locator)
+        val filteredSource = filterSourceFiles(allSourceFiles)
+        val (matched, unmatched) = reportSourceFileWhichClassNotFound(
+            filteredSource, outputDir, locator
+        )
+
+        progressBarExt.total = reports.size.toLong()
+
+        /* 2) 初始化所有输出器 */
+        consumers.forEach { it.init() }
+
+        /* 3) 并行执行各输出器 */
+        consumers.map { consumer ->
+            launch {
+                when (consumer) {
+                    is IFileReportConsumer -> consumer.flush(reports.toList(), "diagnostics", locator)
+                    else                   -> consumer.run(locator)
+                }
+            }
+        }.joinAll()
+
+        /* 4) 打印简单统计 */
+        logger.info {
+            "Report converted. matched=${matched.size}, unmatched=${unmatched.size}, totalConsumer=${consumers.size}"
         }
-    }
-
-    companion object {
-        val logger: KLogger = TODO("Initialize logger properly")
     }
 }
+
+/**
+ * **Kotlin 反射小工具**：
+ * 通过字段名读取私有属性；若不存在返回 `null`。
+ *
+ * 用法：
+ * ```kotlin
+ * val counter: Int? = someObj.getField("counter")
+ * ```
+ */
+@Suppress("UNCHECKED_CAST")
+@JvmSynthetic
+inline fun <reified T> Any.getField(name: String): T? =
+    runCatching {
+        val field = javaClass.getDeclaredField(name).apply { isAccessible = true }
+        field.get(this) as? T
+    }.getOrNull()

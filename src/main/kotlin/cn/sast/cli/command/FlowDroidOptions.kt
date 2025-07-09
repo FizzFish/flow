@@ -1,289 +1,219 @@
+@file:Suppress("unused")   // 选项字段可能由反射读取
+
 package cn.sast.cli.command
 
 import cn.sast.api.config.MainConfig
 import cn.sast.dataflow.infoflow.InfoflowConfigurationExt
-import com.github.ajalt.clikt.completion.CompletionCandidates
-import com.github.ajalt.clikt.core.ParameterHolder
 import com.github.ajalt.clikt.parameters.groups.OptionGroup
-import com.github.ajalt.clikt.parameters.options.FlagOptionKt
-import com.github.ajalt.clikt.parameters.options.OptionWithValues
-import com.github.ajalt.clikt.parameters.options.OptionWithValuesKt
-import com.github.ajalt.clikt.parameters.options.OptionWithValues.DefaultImpls
-import com.github.ajalt.clikt.parameters.types.ChoiceKt
-import com.github.ajalt.clikt.parameters.types.IntKt
-import com.github.ajalt.clikt.parameters.types.LongKt
-import com.github.ajalt.clikt.parameters.types.RangeKt
-import java.util.LinkedHashMap
-import kotlin.jvm.functions.Function1
-import kotlin.jvm.functions.Function2
-import kotlin.jvm.internal.SourceDebugExtension
+import com.github.ajalt.clikt.parameters.options.*
 import soot.jimple.infoflow.InfoflowConfiguration
-import soot.jimple.infoflow.InfoflowConfiguration.AccessPathConfiguration
-import soot.jimple.infoflow.InfoflowConfiguration.AliasingAlgorithm
-import soot.jimple.infoflow.InfoflowConfiguration.CallgraphAlgorithm
-import soot.jimple.infoflow.InfoflowConfiguration.CodeEliminationMode
-import soot.jimple.infoflow.InfoflowConfiguration.DataFlowDirection
-import soot.jimple.infoflow.InfoflowConfiguration.DataFlowSolver
-import soot.jimple.infoflow.InfoflowConfiguration.ImplicitFlowMode
-import soot.jimple.infoflow.InfoflowConfiguration.PathBuildingAlgorithm
-import soot.jimple.infoflow.InfoflowConfiguration.PathConfiguration
-import soot.jimple.infoflow.InfoflowConfiguration.PathReconstructionMode
-import soot.jimple.infoflow.InfoflowConfiguration.SolverConfiguration
-import soot.jimple.infoflow.InfoflowConfiguration.SootIntegrationMode
+import soot.jimple.infoflow.InfoflowConfiguration.*
+import java.io.File
 
-@SourceDebugExtension(["SMAP\nFlowDroidOptions.kt\nKotlin\n*S Kotlin\n*F\n+ 1 FlowDroidOptions.kt\ncn/sast/cli/command/FlowDroidOptions\n+ 2 Convert.kt\ncom/github/ajalt/clikt/parameters/options/OptionWithValuesKt__ConvertKt\n+ 3 enum.kt\ncom/github/ajalt/clikt/parameters/types/EnumKt\n+ 4 _Arrays.kt\nkotlin/collections/ArraysKt___ArraysKt\n+ 5 enum.kt\ncom/github/ajalt/clikt/parameters/types/EnumKt$enum$3\n*L\n1#1,152:1\n35#2,6:153\n70#2:159\n82#2,4:160\n45#3,5:164\n45#3,5:175\n45#3,5:186\n45#3,5:197\n45#3,5:208\n45#3,5:219\n45#3,5:230\n45#3,5:241\n45#3,5:252\n8541#4,2:169\n8801#4,2:171\n8804#4:174\n8541#4,2:180\n8801#4,2:182\n8804#4:185\n8541#4,2:191\n8801#4,2:193\n8804#4:196\n8541#4,2:202\n8801#4,2:204\n8804#4:207\n8541#4,2:213\n8801#4,2:215\n8804#4:218\n8541#4,2:224\n8801#4,2:226\n8804#4:229\n8541#4,2:235\n8801#4,2:237\n8804#4:240\n8541#4,2:246\n8801#4,2:248\n8804#4:251\n8541#4,2:257\n8801#4,2:259\n8804#4:262\n47#5:173\n47#5:184\n47#5:195\n47#5:206\n47#5:217\n47#5:228\n47#5:239\n47#5:250\n47#5:261\n*S KotlinDebug\n*F\n+ 1 FlowDroidOptions.kt\ncn/sast/cli/command/FlowDroidOptions\n*L\n17#1:153,6\n17#1:159\n17#1:160,4\n28#1:164,5\n30#1:175,5\n37#1:186,5\n39#1:197,5\n41#1:208,5\n44#1:219,5\n56#1:230,5\n58#1:241,5\n77#1:252,5\n28#1:169,2\n28#1:171,2\n28#1:174\n30#1:180,2\n30#1:182,2\n30#1:185\n37#1:191,2\n37#1:193,2\n37#1:196\n39#1:202,2\n39#1:204,2\n39#1:207\n41#1:213,2\n41#1:215,2\n41#1:218\n44#1:224,2\n44#1:226,2\n44#1:229\n56#1:235,2\n56#1:237,2\n56#1:240\n58#1:246,2\n58#1:248,2\n58#1:251\n77#1:257,2\n77#1:259,2\n77#1:262\n28#1:173\n30#1:184\n37#1:195\n39#1:206\n41#1:217\n44#1:228\n56#1:239\n58#1:250\n77#1:261\n*E\n"])
-class FlowDroidOptions(isHidden: Boolean = false) : OptionGroup("FlowDroid Options", null, 2) {
-    val isHidden: Boolean = isHidden
+/**
+ * FlowDroid 引擎相关 CLI 选项。
+ *
+ * > **注意**
+ * >   1. 只有在 `--flowdroid` 打开后，才会真正使用 FlowDroid 做污点分析；
+ * >   2. 本类同时负责把 CLI 参数同步到 [InfoflowConfiguration]。
+ */
+class FlowDroidOptions(
+    /** 是否在 CLI 帮助里隐藏本组选项 */
+    isHidden: Boolean = false
+) : OptionGroup("FlowDroid options") {
 
-    val enableFlowDroid: Boolean
-        get() = enableFlowDroid$delegate.getValue(this, $$delegatedProperties[0]) as Boolean
+    // -------------------------------------------------------------------------
+    // 基本开关
+    // -------------------------------------------------------------------------
 
-    private val baseDirectory: String
-        get() = baseDirectory$delegate.getValue(this, $$delegatedProperties[1]) as String
+    val enableFlowDroid by option("--flowdroid", help = "Enable FlowDroid engine")
+        .flag(default = false)
+        .takeIf { isHidden }?.hidden() ?: run { /* keep visible */ }
 
-    private val noPathAgnosticResults: Boolean
-        get() = noPathAgnosticResults$delegate.getValue(this, $$delegatedProperties[2]) as Boolean
+    val baseDirectory by option("--fd-base-dir",
+        help = "Base directory for FlowDroid temporary / output files"
+    ).default("")
 
-    private val oneResultPerAccessPath: Boolean
-        get() = oneResultPerAccessPath$delegate.getValue(this, $$delegatedProperties[3]) as Boolean
+    val noPathAgnosticResults     by option("--fd-no-path-agnostic").flag(default = false, hidden = isHidden)
+    val oneResultPerAccessPath    by option("--fd-one-result-per-ap").flag(default = false, hidden = isHidden)
+    val mergeNeighbors            by option("--fd-merge-neighbors").flag(default = false, hidden = isHidden)
+    val stopAfterFirstKFlows      by option("--fd-stop-after-k").int().default(0).hidden(isHidden)
+    val inspectSources            by option("--fd-inspect-sources").flag(default = false, hidden = isHidden)
+    val inspectSinks              by option("--fd-inspect-sinks").flag(default = false, hidden = isHidden)
 
-    private val mergeNeighbors: Boolean
-        get() = mergeNeighbors$delegate.getValue(this, $$delegatedProperties[4]) as Boolean
+    // -------------------------------------------------------------------------
+    // 引擎 / 枚举选项
+    // -------------------------------------------------------------------------
 
-    private val stopAfterFirstKFlows: Int
-        get() = (stopAfterFirstKFlows$delegate.getValue(this, $$delegatedProperties[5]) as Number).toInt()
+    private inline fun <reified T : Enum<T>> enumChoice() =
+        choice(*enumValues<T>().associateBy { it.name.lowercase() }.toList().toTypedArray(), ignoreCase = true)
 
-    private val inspectSources: Boolean
-        get() = inspectSources$delegate.getValue(this, $$delegatedProperties[6]) as Boolean
+    val implicitFlowMode          by option("--fd-implicit-flow").enumChoice<ImplicitFlowMode>()
+        .default(ImplicitFlowMode.ArrayAccesses).hidden(isHidden)
 
-    private val inspectSinks: Boolean
-        get() = inspectSinks$delegate.getValue(this, $$delegatedProperties[7]) as Boolean
+    val sootIntegrationMode       by option("--fd-soot-mode").enumChoice<SootIntegrationMode>()
+        .default(SootIntegrationMode.CreateNewInstance).hidden(isHidden)
 
-    private val implicitFlowMode: ImplicitFlowMode
-        get() = implicitFlowMode$delegate.getValue(this, $$delegatedProperties[8]) as ImplicitFlowMode
+    val callgraphAlgorithm        by option("--fd-cg-algorithm").enumChoice<CallgraphAlgorithm>()
+        .default(CallgraphAlgorithm.AutomaticSelection).hidden(isHidden)
 
-    private val sootIntegrationMode: SootIntegrationMode
-        get() = sootIntegrationMode$delegate.getValue(this, $$delegatedProperties[9]) as SootIntegrationMode
+    val aliasingAlgorithm         by option("--fd-aliasing").enumChoice<AliasingAlgorithm>()
+        .default(AliasingAlgorithm.FlowSensitive).hidden(isHidden)
 
-    private val disableFlowSensitiveAliasing: Boolean
-        get() = disableFlowSensitiveAliasing$delegate.getValue(this, $$delegatedProperties[10]) as Boolean
+    val dataFlowDirection         by option("--fd-direction").enumChoice<DataFlowDirection>()
+        .default(DataFlowDirection.Forwards).hidden(isHidden)
 
-    private val disableExceptionTracking: Boolean
-        get() = disableExceptionTracking$delegate.getValue(this, $$delegatedProperties[11]) as Boolean
+    val codeEliminationMode       by option("--fd-code-elim").enumChoice<CodeEliminationMode>()
+        .default(CodeEliminationMode.NoCodeElimination).hidden(isHidden)
 
-    private val disableArrayTracking: Boolean
-        get() = disableArrayTracking$delegate.getValue(this, $$delegatedProperties[12]) as Boolean
+    // -------------------------------------------------------------------------
+    // 各类布尔/数值细节选项
+    // -------------------------------------------------------------------------
 
-    private val disableArraySizeTainting: Boolean
-        get() = disableArraySizeTainting$delegate.getValue(this, $$delegatedProperties[13]) as Boolean
+    val disableFlowSensitiveAliasing by option("--fd-disable-fs-aliasing").flag(default = false, hidden = isHidden)
+    val disableExceptionTracking     by option("--fd-disable-exception-track").flag(default = false, hidden = isHidden)
+    val disableArrayTracking         by option("--fd-disable-array-track").flag(default = false, hidden = isHidden)
+    val disableArraySizeTainting     by option("--fd-disable-array-size").flag(default = false, hidden = isHidden)
+    val disableTypeChecking          by option("--fd-disable-type-check").flag(default = false, hidden = isHidden)
+    val ignoreFlowsInSystemPackages  by option("--fd-ignore-system").flag(default = false, hidden = isHidden)
+    val writeOutputFiles             by option("--fd-write-files").flag(default = false, hidden = isHidden)
+    val disableLogSourcesAndSinks    by option("--fd-disable-log-src-sink").flag(default = false, hidden = isHidden)
+    val enableReflection             by option("--fd-enable-reflection").flag(default = false, hidden = isHidden)
+    val disableLineNumbers           by option("--fd-disable-line-num").flag(default = false, hidden = isHidden)
+    val disableTaintAnalysis         by option("--fd-disable-taint").flag(default = false, hidden = isHidden)
+    val incrementalResultReporting   by option("--fd-incremental-report").flag(default = false, hidden = isHidden)
+    val dataFlowTimeout              by option("--fd-timeout").long().default(0L).hidden(isHidden)
+    val oneSourceAtATime             by option("--fd-one-source").flag(default = false, hidden = isHidden)
+    val sequentialPathProcessing     by option("--fd-seq-path").flag(default = false, hidden = isHidden)
 
-    private val disableTypeChecking: Boolean
-        get() = disableTypeChecking$delegate.getValue(this, $$delegatedProperties[14]) as Boolean
+    val pathReconstructionMode       by option("--fd-path-recon").enumChoice<PathReconstructionMode>()
+        .default(PathReconstructionMode.Precise).hidden(isHidden)
 
-    private val callgraphAlgorithm: CallgraphAlgorithm
-        get() = callgraphAlgorithm$delegate.getValue(this, $$delegatedProperties[15]) as CallgraphAlgorithm
+    val pathBuildingAlgorithm        by option("--fd-path-build").enumChoice<PathBuildingAlgorithm>()
+        .default(PathBuildingAlgorithm.ContextSensitive).hidden(isHidden)
 
-    private val aliasingAlgorithm: AliasingAlgorithm
-        get() = aliasingAlgorithm$delegate.getValue(this, $$delegatedProperties[16]) as AliasingAlgorithm
+    val maxCallStackSize             by option("--fd-max-stack").int().default(30).hidden(isHidden)
+    val maxPathLength                by option("--fd-max-path-length").int().default(75).hidden(isHidden)
+    val maxPathsPerAbstraction       by option("--fd-max-paths-per-abst").int().default(15).hidden(isHidden)
+    val pathReconstructionTimeout    by option("--fd-path-recon-timeout").long().default(0L).hidden(isHidden)
+    val pathReconstructionBatchSize  by option("--fd-path-recon-batch").int().default(5).hidden(isHidden)
 
-    private val dataFlowDirection: DataFlowDirection
-        get() = dataFlowDirection$delegate.getValue(this, $$delegatedProperties[17]) as DataFlowDirection
+    val accessPathLength             by option("--fd-ap-length").int().default(25).hidden(isHidden)
+    val useRecursiveAccessPaths      by option("--fd-ap-recursive").flag(default = false, hidden = isHidden)
+    val useThisChainReduction        by option("--fd-ap-this-chain").flag(default = false, hidden = isHidden)
+    val useSameFieldReduction        by option("--fd-ap-same-field").flag(default = false, hidden = isHidden)
 
-    private val ignoreFlowsInSystemPackages: Boolean
-        get() = ignoreFlowsInSystemPackages$delegate.getValue(this, $$delegatedProperties[18]) as Boolean
+    val disableSparseOpt             by option("--fd-disable-sparse-opt").flag(default = false, hidden = isHidden)
 
-    private val writeOutputFiles: Boolean
-        get() = writeOutputFiles$delegate.getValue(this, $$delegatedProperties[19]) as Boolean
+    val maxJoinPointAbstractions     by option("--fd-max-join-abst").int().default(-1).hidden(isHidden)
+    val maxAbstractionPathLength     by option("--fd-max-abst-path").int().default(-1).hidden(isHidden)
+    val maxCalleesPerCallSite        by option("--fd-max-callees").int().default(-1).hidden(isHidden)
 
-    private val codeEliminationMode: CodeEliminationMode
-        get() = codeEliminationMode$delegate.getValue(this, $$delegatedProperties[20]) as CodeEliminationMode
+    val dataFlowSolver               by option("--fd-solver").enumChoice<DataFlowSolver>()
+        .default(DataFlowSolver.ContextFlowSensitive).hidden(isHidden)
 
-    private val disableLogSourcesAndSinks: Boolean
-        get() = disableLogSourcesAndSinks$delegate.getValue(this, $$delegatedProperties[21]) as Boolean
+    init {
+        /* Clikt4: 可直接修改 OptionGroup.hidden */
+        hidden = isHidden
+    }
 
-    private val enableReflection: Boolean
-        get() = enableReflection$delegate.getValue(this, $$delegatedProperties[22]) as Boolean
+    // -------------------------------------------------------------------------
+    // 向 InfoflowConfiguration 映射
+    // -------------------------------------------------------------------------
 
-    private val disableLineNumbers: Boolean
-        get() = disableLineNumbers$delegate.getValue(this, $$delegatedProperties[23]) as Boolean
+    /**
+     * 把 CLI 选项应用到 [InfoflowConfiguration]。
+     */
+    fun applyTo(info: InfoflowConfiguration, mainCfg: MainConfig) {
+        setGlobalStaticOptions()
 
-    private val disableTaintAnalysis: Boolean
-        get() = disableTaintAnalysis$delegate.getValue(this, $$delegatedProperties[24]) as Boolean
+        /* 顶层参数 --------------------------------------------------------------------- */
+        info.apply {
+            oneSourceAtATime               = this@FlowDroidOptions.oneSourceAtATime
+            stopAfterFirstKFlows           = stopAfterFirstKFlows
+            inspectSources                 = inspectSources
+            inspectSinks                   = inspectSinks
+            implicitFlowMode               = implicitFlowMode
+            staticFieldTrackingMode        = mainCfg.staticFieldTrackingMode      // 与原 getCvt 效果等价
+            sootIntegrationMode            = sootIntegrationMode
+            isFlowSensitiveAliasing        = !disableFlowSensitiveAliasing
+            enableExceptionTracking        = !disableExceptionTracking
+            enableArrayTracking            = !disableArrayTracking
+            enableArraySizeTainting        = !disableArraySizeTainting
+            callgraphAlgorithm             = callgraphAlgorithm
+            aliasingAlgorithm              = aliasingAlgorithm
+            dataFlowDirection              = dataFlowDirection
+            enableTypeChecking             = !disableTypeChecking
+            ignoreFlowsInSystemPackages    = ignoreFlowsInSystemPackages
+            excludeSootLibraryClasses      = mainCfg.apponly
+            maxThreadNum                   = mainCfg.parallelsNum
+            writeOutputFiles               = writeOutputFiles
+            codeEliminationMode            = codeEliminationMode
+            logSourcesAndSinks             = !disableLogSourcesAndSinks
+            enableReflection               = enableReflection
+            enableLineNumbers              = !disableLineNumbers
+            enableOriginalNames            = true
+            taintAnalysisEnabled           = !disableTaintAnalysis
+            incrementalResultReporting     = incrementalResultReporting
+            dataFlowTimeout                = dataFlowTimeout
+            memoryThreshold                = mainCfg.memoryThreshold
+            isPathAgnosticResults          = !noPathAgnosticResults
+        }
 
-    private val incrementalResultReporting: Boolean
-        get() = incrementalResultReporting$delegate.getValue(this, $$delegatedProperties[25]) as Boolean
+        /* 路径相关参数 ------------------------------------------------------------------ */
+        info.pathConfiguration.apply {
+            sequentialPathProcessing       = this@FlowDroidOptions.sequentialPathProcessing
+            pathReconstructionMode         = pathReconstructionMode
+            pathBuildingAlgorithm          = pathBuildingAlgorithm
+            maxCallStackSize               = maxCallStackSize
+            maxPathLength                  = maxPathLength
+            maxPathsPerAbstraction         = maxPathsPerAbstraction
+            pathReconstructionTimeout      = this@FlowDroidOptions.pathReconstructionTimeout
+            pathReconstructionBatchSize    = pathReconstructionBatchSize
+        }
 
-    private val dataFlowTimeout: Long
-        get() = (dataFlowTimeout$delegate.getValue(this, $$delegatedProperties[26]) as Number).toLong()
+        /* 访问路径 (AccessPath) 参数 ------------------------------------------------------ */
+        info.accessPathConfiguration.apply {
+            accessPathLength               = this@FlowDroidOptions.accessPathLength
+            useRecursiveAccessPaths        = useRecursiveAccessPaths
+            useThisChainReduction          = useThisChainReduction
+            useSameFieldReduction          = useSameFieldReduction
+        }
 
-    private val oneSourceAtATime: Boolean
-        get() = oneSourceAtATime$delegate.getValue(this, $$delegatedProperties[27]) as Boolean
+        /* 求解器参数 -------------------------------------------------------------------- */
+        info.solverConfiguration.apply {
+            maxJoinPointAbstractions       = maxJoinPointAbstractions
+            maxAbstractionPathLength       = maxAbstractionPathLength
+            maxCalleesPerCallSite          = maxCalleesPerCallSite
+            dataFlowSolver                 = dataFlowSolver
+        }
+    }
 
-    private val sequentialPathProcessing: Boolean
-        get() = sequentialPathProcessing$delegate.getValue(this, $$delegatedProperties[28]) as Boolean
+    /**
+     * 生成 InfoflowConfiguration 扩展选项（非官方 FlowDroid 代码）。
+     */
+    fun buildExtConfig(): InfoflowConfigurationExt =
+        InfoflowConfigurationExt().apply { useSparseOpt = !disableSparseOpt }
 
-    private val pathReconstructionMode: PathReconstructionMode
-        get() = pathReconstructionMode$delegate.getValue(this, $$delegatedProperties[29]) as PathReconstructionMode
+    // -------------------------------------------------------------------------
+    // 内部工具
+    // -------------------------------------------------------------------------
 
-    private val pathBuildingAlgorithm: PathBuildingAlgorithm
-        get() = pathBuildingAlgorithm$delegate.getValue(this, $$delegatedProperties[30]) as PathBuildingAlgorithm
-
-    private val maxCallStackSize: Int
-        get() = (maxCallStackSize$delegate.getValue(this, $$delegatedProperties[31]) as Number).toInt()
-
-    private val maxPathLength: Int
-        get() = (maxPathLength$delegate.getValue(this, $$delegatedProperties[32]) as Number).toInt()
-
-    private val maxPathsPerAbstraction: Int
-        get() = (maxPathsPerAbstraction$delegate.getValue(this, $$delegatedProperties[33]) as Number).toInt()
-
-    private val pathReconstructionTimeout: Long
-        get() = (pathReconstructionTimeout$delegate.getValue(this, $$delegatedProperties[34]) as Number).toLong()
-
-    private val pathReconstructionBatchSize: Int
-        get() = (pathReconstructionBatchSize$delegate.getValue(this, $$delegatedProperties[35]) as Number).toInt()
-
-    private val accessPathLength: Int
-        get() = (accessPathLength$delegate.getValue(this, $$delegatedProperties[36]) as Number).toInt()
-
-    private val useRecursiveAccessPaths: Boolean
-        get() = useRecursiveAccessPaths$delegate.getValue(this, $$delegatedProperties[37]) as Boolean
-
-    private val useThisChainReduction: Boolean
-        get() = useThisChainReduction$delegate.getValue(this, $$delegatedProperties[38]) as Boolean
-
-    private val useSameFieldReduction: Boolean
-        get() = useSameFieldReduction$delegate.getValue(this, $$delegatedProperties[39]) as Boolean
-
-    private val disableSparseOpt: Boolean
-        get() = disableSparseOpt$delegate.getValue(this, $$delegatedProperties[40]) as Boolean
-
-    private val maxJoinPointAbstractions: Int
-        get() = (maxJoinPointAbstractions$delegate.getValue(this, $$delegatedProperties[41]) as Number).toInt()
-
-    private val maxAbstractionPathLength: Int
-        get() = (maxAbstractionPathLength$delegate.getValue(this, $$delegatedProperties[42]) as Number).toInt()
-
-    private val maxCalleesPerCallSite: Int
-        get() = (maxCalleesPerCallSite$delegate.getValue(this, $$delegatedProperties[43]) as Number).toInt()
-
-    private val dataFlowSolver: DataFlowSolver
-        get() = dataFlowSolver$delegate.getValue(this, $$delegatedProperties[44]) as DataFlowSolver
-
-    private val enableFlowDroid$delegate = OptionWithValuesKt.help(
-        OptionWithValuesKt.required(
-            DefaultImpls.copy$default(
-                OptionWithValuesKt.option$default(
-                    this as ParameterHolder, emptyArray(), null, null, false, null, null, null, null, false, 510, null
-                ),
-                { "BOOL" },
-                OptionWithValuesKt.defaultEachProcessor(),
-                OptionWithValuesKt.defaultAllProcessor(),
-                OptionWithValuesKt.defaultValidator(),
-                null,
-                { "BOOL" },
-                null,
-                null,
-                false,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                false,
-                false,
-                false,
-                253904,
-                null
-            )
-        ),
-        "Set if the FlowDroid engine shall be enabled"
-    ).provideDelegate(this as ParameterHolder, $$delegatedProperties[0])
-
-    private val baseDirectory$delegate = OptionWithValuesKt.default$default(
-        OptionWithValuesKt.option$default(
-            this as ParameterHolder, emptyArray(), null, null, isHidden, null, null, null, null, false, 502, null
-        ),
-        "",
-        null,
-        2,
-        null
-    ).provideDelegate(this as ParameterHolder, $$delegatedProperties[1])
-
-    // ... (rest of the delegate initializations follow the same pattern as above)
-
-    private fun initializeGlobalStaticCommandLineOptions() {
-        InfoflowConfiguration.setBaseDirectory(baseDirectory)
+    /** 设置 InfoflowConfiguration 的 _全局静态_ 选项 */
+    private fun setGlobalStaticOptions() {
+        InfoflowConfiguration.setBaseDirectory(File(baseDirectory).absolutePath)
         InfoflowConfiguration.setOneResultPerAccessPath(oneResultPerAccessPath)
         InfoflowConfiguration.setMergeNeighbors(mergeNeighbors)
     }
-
-    fun configureInfoFlowConfig(infoFlowConfig: InfoflowConfiguration, mainConfig: MainConfig) {
-        initializeGlobalStaticCommandLineOptions()
-        infoFlowConfig.apply {
-            setOneSourceAtATime(oneSourceAtATime)
-            setStopAfterFirstKFlows(stopAfterFirstKFlows)
-            setInspectSources(inspectSources)
-            setInspectSinks(inspectSinks)
-            setImplicitFlowMode(implicitFlowMode)
-            setStaticFieldTrackingMode(FlowDroidOptionsKt.getCvt(mainConfig.staticFieldTrackingMode))
-            setSootIntegrationMode(sootIntegrationMode)
-            setFlowSensitiveAliasing(!disableFlowSensitiveAliasing)
-            setEnableExceptionTracking(!disableExceptionTracking)
-            setEnableArrayTracking(!disableArrayTracking)
-            setEnableArraySizeTainting(!disableArraySizeTainting)
-            setCallgraphAlgorithm(callgraphAlgorithm)
-            setAliasingAlgorithm(aliasingAlgorithm)
-            setDataFlowDirection(dataFlowDirection)
-            setEnableTypeChecking(!disableTypeChecking)
-            setIgnoreFlowsInSystemPackages(ignoreFlowsInSystemPackages)
-            setExcludeSootLibraryClasses(mainConfig.apponly)
-            setMaxThreadNum(mainConfig.parallelsNum)
-            setWriteOutputFiles(writeOutputFiles)
-            setCodeEliminationMode(codeEliminationMode)
-            setLogSourcesAndSinks(!disableLogSourcesAndSinks)
-            setEnableReflection(enableReflection)
-            setEnableLineNumbers(!disableLineNumbers)
-            setEnableOriginalNames(true)
-            setTaintAnalysisEnabled(!disableTaintAnalysis)
-            setIncrementalResultReporting(incrementalResultReporting)
-            setDataFlowTimeout(dataFlowTimeout)
-            setMemoryThreshold(mainConfig.memoryThreshold)
-            setPathAgnosticResults(!noPathAgnosticResults)
-        }
-
-        infoFlowConfig.pathConfiguration.apply {
-            setSequentialPathProcessing(sequentialPathProcessing)
-            setPathReconstructionMode(pathReconstructionMode)
-            setPathBuildingAlgorithm(pathBuildingAlgorithm)
-            setMaxCallStackSize(maxCallStackSize)
-            setMaxPathLength(maxPathLength)
-            setMaxPathsPerAbstraction(maxPathsPerAbstraction)
-            setPathReconstructionTimeout(pathReconstructionTimeout)
-            setPathReconstructionBatchSize(pathReconstructionBatchSize)
-        }
-
-        infoFlowConfig.accessPathConfiguration.apply {
-            setAccessPathLength(accessPathLength)
-            setUseRecursiveAccessPaths(useRecursiveAccessPaths)
-            setUseThisChainReduction(useThisChainReduction)
-            setUseSameFieldReduction(useSameFieldReduction)
-        }
-
-        infoFlowConfig.solverConfiguration.apply {
-            setMaxJoinPointAbstractions(maxJoinPointAbstractions)
-            setMaxAbstractionPathLength(maxAbstractionPathLength)
-            setMaxCalleesPerCallSite(maxCalleesPerCallSite)
-            setDataFlowSolver(dataFlowSolver)
-        }
-    }
-
-    fun getExtInfoFlowConfig(): InfoflowConfigurationExt {
-        return InfoflowConfigurationExt(false, null, 3, null).apply {
-            setUseSparseOpt(!disableSparseOpt)
-        }
-    }
-
-    constructor() : this(false)
 }
+
+/**
+ * 将项目自定义的 [MyMode] 枚举映射到 FlowDroid 的
+ * [FDMode]，保持名称与语义一致。
+ */
+val cn.sast.api.config.StaticFieldTrackingMode.cvt: StaticFieldTrackingMode
+    get() = when (this) {
+        cn.sast.api.config.StaticFieldTrackingMode.ContextFlowSensitive   -> StaticFieldTrackingMode.ContextFlowSensitive
+        cn.sast.api.config.StaticFieldTrackingMode.ContextFlowInsensitive -> StaticFieldTrackingMode.ContextFlowInsensitive
+        cn.sast.api.config.StaticFieldTrackingMode.None                   -> StaticFieldTrackingMode.None
+    }

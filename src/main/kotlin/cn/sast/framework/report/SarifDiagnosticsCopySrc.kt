@@ -1,155 +1,103 @@
 package cn.sast.framework.report
 
 import cn.sast.api.report.Report
-import cn.sast.common.IResDirectory
-import cn.sast.common.IResFile
-import cn.sast.framework.report.ReportConsumer.MetaData
-import cn.sast.framework.report.SarifDiagnostics.SarifDiagnosticsImpl
-import cn.sast.framework.report.sarif.ArtifactLocation
-import cn.sast.framework.report.sarif.Description
-import cn.sast.framework.report.sarif.Run
-import cn.sast.framework.report.sarif.UriBase
+import cn.sast.common.*
+import cn.sast.framework.report.sarif.*
 import cn.sast.framework.result.OutputType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import mu.KotlinLogging
 import java.io.Closeable
 import java.nio.file.Files
-import java.nio.file.LinkOption
-import java.nio.file.Path
 import java.time.LocalDateTime
-import java.util.Arrays
-import java.util.Map.Entry
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.jvm.internal.SourceDebugExtension
-import kotlin.jvm.internal.Ref.IntRef
-import kotlin.jvm.internal.Ref.ObjectRef
-import mu.KLogger
-import org.utbot.common.LoggerWithLogMethod
-import org.utbot.common.LoggingKt
-import org.utbot.common.Maybe
 
-@SourceDebugExtension(["SMAP\nSarifDiagnosticsCopySrc.kt\nKotlin\n*S Kotlin\n*F\n+ 1 SarifDiagnosticsCopySrc.kt\ncn/sast/framework/report/SarifDiagnosticsCopySrc\n+ 2 Logging.kt\norg/utbot/common/LoggingKt\n+ 3 _Maps.kt\nkotlin/collections/MapsKt___MapsKt\n*L\n1#1,85:1\n49#2,13:86\n62#2,11:101\n216#3,2:99\n*S KotlinDebug\n*F\n+ 1 SarifDiagnosticsCopySrc.kt\ncn/sast/framework/report/SarifDiagnosticsCopySrc\n*L\n62#1:86,13\n62#1:101,11\n63#1:99,2\n*E\n"])
+/**
+ * SARIF + **复制源码树**：
+ * 将所有涉及的源码文件拷贝到 `src_root/` 目录，且在 SARIF
+ * 内把绝对路径映射到 `%SRCROOT%`。
+ */
 class SarifDiagnosticsCopySrc(
     outputDir: IResDirectory,
-    private val sourceJarRootMapKey: String = "SRCROOT",
-    sourceJarRootMapValue: String = "%SRCROOT%",
-    private val sourceJarFileName: String = "src_root",
-    type: OutputType = OutputType.SarifCopySrc
+    private val srcRootMapKey: String = "SRCROOT",
+    srcRootMapValue: String = "%SRCROOT%",
+    private val srcRootFolder: String = "src_root",
+    type: OutputType = OutputType.SARIF_COPY_SRC
 ) : SarifDiagnostics(outputDir, type), Closeable {
-    private val sourceRoot: IResDirectory
-    val originalUriBaseIds: Map<String, UriBase>
-    val entriesMap: ConcurrentHashMap<String, IResFile> = ConcurrentHashMap()
 
-    init {
-        sourceRoot = outputDir.resolve(sourceJarFileName).toDirectory()
-        originalUriBaseIds = mapOf(
-            sourceJarRootMapKey to UriBase(
-                sourceJarRootMapValue,
-                Description(
-                    "The path $sourceJarRootMapValue should be replaced with path where be mapped to the virtual path ${sourceRoot.path.toUri()}"
-                )
+    private val logger = KotlinLogging.logger {}
+
+    /** `<virtual-path, realFile>` */
+    val entries = ConcurrentHashMap<String, IResFile>()
+
+    /** 输出目录下的源码根 */
+    private val srcRoot: IResDirectory = outputDir.resolve(srcRootFolder).toDirectory()
+
+    /** SARIF run-level uriBaseIds */
+    private val uriBaseIds: Map<String, UriBase> = mapOf(
+        srcRootMapKey to UriBase(
+            id = srcRootMapValue,
+            description = Description(
+                "Replace $srcRootMapValue with path mapped to ${srcRoot.path.toUri()}"
             )
         )
-    }
+    )
 
-    override fun getSarifDiagnosticsImpl(metadata: MetaData, locator: IProjectFileLocator): SarifDiagnosticsImpl {
-        return SarifDiagnosticsPackImpl(metadata, locator)
-    }
+    /* ---------- Impl ---------- */
 
-    override fun close() {
-        val errorCnt = IntRef()
-        val loggerWithLogMethod = LoggingKt.info(logger)
-        val msg = "${type}: copying ..."
-        loggerWithLogMethod.logMethod.invoke(SarifDiagnosticsCopySrc$close$$inlined$bracket$default$1(msg))
-        val startTime = LocalDateTime.now()
-        var alreadyLogged = false
-        val res = ObjectRef<Maybe<Unit>>().apply { element = Maybe.empty() }
-
-        try {
-            try {
-                for (element in entriesMap.entries) {
-                    val entry = element.key
-                    val file = element.value
-                    val target = sourceRoot.resolve(entry).path
-
-                    try {
-                        val parent = target.parent
-                            ?: throw IllegalStateException("output not allow here: $target")
-
-                        if (!Files.exists(parent, *LinkOption.values())) {
-                            Files.createDirectories(parent)
-                        }
-
-                        Files.copy(file.path, target)
-                    } catch (e: Exception) {
-                        errorCnt.element++
-                        if (errorCnt.element < 5) {
-                            logger.warn(e) { "An error occurred" }
-                        }
-                    }
-                }
-
-                res.element = Maybe(Unit)
-                res.element.getOrThrow()
-            } catch (t: Throwable) {
-                loggerWithLogMethod.logMethod.invoke(SarifDiagnosticsCopySrc$close$$inlined$bracket$default$4(startTime, msg, t))
-                alreadyLogged = true
-                throw t
-            }
-        } catch (t: Throwable) {
-            if (!alreadyLogged) {
-                if (res.element.hasValue) {
-                    loggerWithLogMethod.logMethod.invoke(SarifDiagnosticsCopySrc$close$$inlined$bracket$default$5(startTime, msg, res))
-                } else {
-                    loggerWithLogMethod.logMethod.invoke(SarifDiagnosticsCopySrc$close$$inlined$bracket$default$6(startTime, msg))
-                }
-            }
-        }
-
-        if (res.element.hasValue) {
-            loggerWithLogMethod.logMethod.invoke(SarifDiagnosticsCopySrc$close$$inlined$bracket$default$2(startTime, msg, res))
-        } else {
-            loggerWithLogMethod.logMethod.invoke(SarifDiagnosticsCopySrc$close$$inlined$bracket$default$3(startTime, msg))
-        }
-
-        if (errorCnt.element > 0) {
-            logger.warn { "${type}: A total of ${errorCnt.element} errors were generated" }
-        }
-    }
-
-    companion object {
-        val logger: KLogger
-    }
-
-    inner class SarifDiagnosticsPackImpl(
+    override fun getSarifDiagnosticsImpl(
         metadata: MetaData,
         locator: IProjectFileLocator
-    ) : SarifDiagnosticsImpl(this@SarifDiagnosticsCopySrc, metadata, locator) {
-        val file2uri: String
-            get() {
-                val entry = getAbsPathMapToFolder(file2uri)
-                this@SarifDiagnosticsCopySrc.entriesMap.putIfAbsent(entry, file2uri)
-                return entry
+    ) = PackImpl(metadata, locator)
+
+    /** 拷贝源码并关闭 */
+    override fun close() {
+        if (entries.isEmpty()) return
+        logger.info { "$type: copying ${entries.size} files …" }
+        val started = LocalDateTime.now()
+        var err = 0
+
+        entries.forEach { (virtualPath, real) ->
+            val target = srcRoot.resolve(virtualPath).path
+            try {
+                Files.createDirectories(target.parent)
+                Files.copy(real.path, target)
+            } catch (e: Exception) {
+                if (++err <= 5) logger.warn(e) { "copy failed: $real → $target" }
             }
-
-        override fun getArtifactLocation(file: IResFile): ArtifactLocation {
-            return ArtifactLocation.copy$default(
-                super.getArtifactLocation(file),
-                null,
-                sourceJarRootMapKey,
-                1,
-                null
-            )
         }
 
-        override fun getRun(reports: List<Report>): Run {
-            return Run.copy$default(
+        if (err > 0) logger.warn { "$type: $err errors generated during copying" }
+        logger.info { "$type: done in ${java.time.Duration.between(started, LocalDateTime.now())}" }
+    }
+
+    /* =================================================================== */
+
+    inner class PackImpl(
+        metadata: MetaData,
+        locator: IProjectFileLocator
+    ) : SarifDiagnosticsImpl(metadata, locator) {
+
+        /** 把绝对路径映射成 `%SRCROOT%/…` 的虚拟路径 */
+        override fun getRun(reports: List<Report>): Run =
+            Run.copy(
                 super.getRun(reports),
-                null,
-                originalUriBaseIds,
-                null,
-                null,
-                13,
-                null
+                uriBaseIds = this@SarifDiagnosticsCopySrc.uriBaseIds
+            )
+
+        override fun ArtifactLocation(file: IResFile): ArtifactLocation {
+            val virtual = absPathMapToFolder(file)
+            entries.putIfAbsent(virtual, file)
+            return super.ArtifactLocation(file).copy(
+                uriBaseId = srcRootMapKey
             )
         }
+
+        /** 将绝对路径转化为 jar/dir 中的相对路径 */
+        private fun absPathMapToFolder(file: IResFile): String =
+            file.absoluteNormalize.path
+                .removePrefix("/")
+                .replace("\\", "/")
+                .replace(":", "")
     }
 }

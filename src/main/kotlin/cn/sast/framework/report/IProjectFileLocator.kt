@@ -5,21 +5,37 @@ import cn.sast.common.IResFile
 import cn.sast.common.IResource
 import cn.sast.framework.report.AbstractFileIndexer.CompareMode
 
-public interface IProjectFileLocator {
-    public var sourceDir: Set<IResource>
-        internal set
+/**
+ * 负责把报告里的 **逻辑文件** 映射到真实文件系统路径。
+ */
+interface IProjectFileLocator {
 
-    public abstract fun get(resInfo: IBugResInfo, fileWrapperIfNotEExists: IWrapperFileGenerator = TODO("FIXME — default parameter value")): IResFile?
+    /** 项目源码根目录集合（可运行时更新） */
+    var sourceDir: Set<IResource>
 
-    public abstract fun update()
+    /**
+     * 根据 [resInfo] 定位文件。若不存在且允许，可用
+     * [fileWrapperIfNotExists] 生成占位文件。
+     */
+    fun get(
+        resInfo: IBugResInfo,
+        fileWrapperIfNotExists: IWrapperFileGenerator = NullWrapperFileGenerator
+    ): IResFile?
 
-    public abstract suspend fun getByFileExtension(extension: String): Sequence<IResFile>
+    /** 刷新内部索引（源码目录改变后需调用） */
+    fun update()
 
-    public abstract suspend fun getByFileName(filename: String): Sequence<IResFile>
+    /** ---- 批量文件检索（可能较慢，均为 `suspend`） ---- */
 
-    public abstract suspend fun getAllFiles(): Sequence<IResFile>
+    suspend fun getByFileExtension(extension: String): Sequence<IResFile>
 
-    public abstract fun findFromFileIndexMap(parentSubPath: List<String>, mode: CompareMode): Sequence<IResFile>
+    suspend fun getByFileName(filename: String): Sequence<IResFile>
 
-    internal class DefaultImpls
+    suspend fun getAllFiles(): Sequence<IResFile>
+
+    /** 底层委托给 [AbstractFileIndexer.findFromFileIndexMap] */
+    fun findFromFileIndexMap(
+        parentSubPath: List<String>,
+        mode: CompareMode = CompareMode.Path
+    ): Sequence<IResFile>
 }

@@ -4,15 +4,14 @@ import cn.sast.api.report.IBugResInfo
 import cn.sast.common.IResDirectory
 import cn.sast.common.IResFile
 
+/**
+ * 空实现：**不** 生成占位文件。
+ */
 object NullWrapperFileGenerator : IWrapperFileGenerator {
-    override val name: String
-        get() = "null"
+    override val name: String = "null"
 
-    override fun makeWrapperFile(fileWrapperOutPutDir: IResDirectory, resInfo: IBugResInfo): IResFile? {
-        return null
-    }
-
-    override fun getInternalFileName(resInfo: IBugResInfo): String {
-        return IWrapperFileGenerator.DefaultImpls.getInternalFileName(this, resInfo)
-    }
+    override fun makeWrapperFile(
+        fileWrapperOutPutDir: IResDirectory,
+        resInfo: IBugResInfo
+    ): IResFile? = null
 }

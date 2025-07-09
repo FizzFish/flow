@@ -1,6 +1,7 @@
 package cn.sast.cli.command.tools
 
 import cn.sast.api.config.*
+import cn.sast.api.report.CheckType2StringKind
 import cn.sast.common.Resource
 import cn.sast.framework.plugin.ConfigPluginLoader
 import cn.sast.framework.plugin.PluginDefinitions
@@ -112,3 +113,6 @@ class CheckerInfoGenerator(
         }
     }
 }
+
+val CheckType.id: String
+    get() = CheckType2StringKind.getCheckType2StringKind().convert.invoke(this)

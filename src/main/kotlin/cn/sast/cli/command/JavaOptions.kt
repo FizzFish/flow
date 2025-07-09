@@ -10,120 +10,73 @@ import cn.sast.framework.entries.custom.HybridCustomThenComponent
 import cn.sast.framework.entries.java.UnReachableEntryProvider
 import cn.sast.framework.entries.javaee.JavaEeEntryProvider
 import cn.sast.framework.report.ProjectFileLocator
-import com.github.ajalt.clikt.core.ParameterHolder
-import com.github.ajalt.clikt.parameters.options.FlagOptionKt
-import com.github.ajalt.clikt.parameters.options.OptionWithValuesKt
-import kotlin.coroutines.Continuation
-import kotlin.jvm.functions.Function2
-import kotlinx.coroutines.BuildersKt
-import kotlinx.coroutines.CoroutineScope
-import mu.KLogger
+import com.github.ajalt.clikt.parameters.options.*
+import kotlinx.coroutines.runBlocking
+import mu.KotlinLogging
 import soot.jimple.infoflow.InfoflowConfiguration
 
-public class JavaOptions : TargetOptions("Java Target Options"), IClassAnalyzeOptionGroup {
-    private val customEntryPoint: List<String> by OptionWithValuesKt.help(
-        OptionWithValuesKt.multiple(
-            OptionWithValuesKt.option(
-                this as ParameterHolder, emptyArray(), null, "method signature, signature file", false, null, null, null, null, false, 506, null
-            ),
-            null,
-            false,
-            3,
-            null
-        ),
-        "Sets the entry point method(s) for analyze."
-    )
+/**
+ * 纯 Java / Java-EE 目标分析选项
+ */
+class JavaOptions : TargetOptions("Java target options"),
+    IClassAnalyzeOptionGroup {
 
-    public open val infoFlowConfig: InfoflowConfiguration by lazy { infoFlowConfig_delegate$lambda$0() }
+    /** 自定义入口点（方法签名或文件路径），可多次出现 */
+    val customEntryPoint: List<String> by option(
+        "--entry-point", "-e",
+        help = "Method signature(s) or a file containing signatures"
+    ).multiple()
 
-    private val makeComponentDummyMain: Boolean by FlagOptionKt.flag(
-        OptionWithValuesKt.option(
-            this as ParameterHolder,
-            emptyArray(),
-            "Simple entry point creator that builds a sequential list of method invocations. Each method is invoked only once.",
-            null,
-            false,
-            null,
-            null,
-            null,
-            null,
-            false,
-            508,
-            null
-        ),
-        emptyArray(),
-        false,
-        null,
-        6,
-        null
-    )
+    /** InfoFlow 配置（默认空配置即可） */
+    override val infoFlowConfig: InfoflowConfiguration by lazy { InfoflowConfiguration() }
 
-    private val disableJavaEEComponent: Boolean by FlagOptionKt.flag(
-        OptionWithValuesKt.option(
-            this as ParameterHolder,
-            arrayOf("--disable-javaee-component"),
-            "disable create the JavaEE lifecycle component methods",
-            null,
-            false,
-            null,
-            null,
-            null,
-            null,
-            false,
-            508,
-            null
-        ),
-        emptyArray(),
-        false,
-        null,
-        6,
-        null
-    )
+    /** 生成 Dummy Main：顺序调用组件生命周期方法 */
+    val makeComponentDummyMain: Boolean by option(
+        "--component-dummy-main",
+        help = "Generate dummy main method calling lifecycle methods"
+    ).flag(default = false)
 
-    public override fun getProvider(sootCtx: SootCtx, locator: ProjectFileLocator): IEntryPointProvider {
-        val entries = EntryPointCreatorFactory.INSTANCE.getEntryPointFromArgs(customEntryPoint).invoke() as Set<*>
-        return if (makeComponentDummyMain) {
-            if (entries.isNotEmpty()) HybridCustomThenComponent(sootCtx, entries) else HybridUnReachThenComponent(sootCtx)
-        } else {
-            if (entries.isNotEmpty()) {
-                CustomEntryProvider(entries)
-            } else {
-                if (disableJavaEEComponent) {
-                    UnReachableEntryProvider(sootCtx, null, 2, null)
-                } else {
-                    BuildersKt.runBlocking<JavaEeEntryProvider>(
-                        null,
-                        object : Function2<CoroutineScope, Continuation<in JavaEeEntryProvider>, Any?> {
-                            override fun invoke(p1: CoroutineScope, p2: Continuation<in JavaEeEntryProvider>): Any? {
-                                TODO("FIXME — Couldn't be decompiled")
-                            }
-                        },
-                        1,
-                        null
-                    ) as IEntryPointProvider
-                }
+    /** 禁用 Java-EE 组件发现 */
+    val disableJavaEEComponent: Boolean by option(
+        "--disable-javaee-component",
+        help = "Disable Java-EE lifecycle component creation"
+    ).flag(default = false)
+
+    /* ---------- TargetOptions 实现 ---------- */
+
+    override fun getProvider(
+        sootCtx: SootCtx,
+        locator: ProjectFileLocator
+    ): IEntryPointProvider {
+        val entries = EntryPointCreatorFactory
+            .getEntryPointFromArgs(customEntryPoint)
+            .invoke()
+
+        return when {
+            makeComponentDummyMain ->
+                if (entries.isNotEmpty())
+                    HybridCustomThenComponent(sootCtx, entries)
+                else
+                    HybridUnReachThenComponent(sootCtx)
+
+            entries.isNotEmpty() -> CustomEntryProvider(entries)
+
+            disableJavaEEComponent -> UnReachableEntryProvider(sootCtx)
+
+            else -> runBlocking {
+                JavaEeEntryProvider.buildAsync(sootCtx, locator)
             }
         }
     }
 
-    public override fun configureMainConfig(mainConfig: MainConfig) {
-    }
+    override fun configureMainConfig(mainConfig: MainConfig) { /* 无额外修改 */ }
 
-    public override fun initSoot(sootCtx: SootCtx, locator: ProjectFileLocator) {
+    override fun initSoot(sootCtx: SootCtx, locator: ProjectFileLocator) {
         sootCtx.configureSoot()
         sootCtx.constructSoot(locator)
     }
 
-    @JvmStatic
-    private fun infoFlowConfig_delegate$lambda$0(): InfoflowConfiguration {
-        return InfoflowConfiguration()
-    }
-
-    @JvmStatic
-    private fun logger$lambda$1() {
-    }
-
-    public companion object {
-        public val logger: KLogger = TODO("Initialize logger")
+    companion object {
+        private val logger = KotlinLogging.logger {}
     }
 }

@@ -1,57 +1,68 @@
 package cn.sast.cli.config
 
 import com.github.ajalt.clikt.core.CliktCommand
-import com.github.ajalt.clikt.core.ParameterHolder
-import com.github.ajalt.clikt.parameters.options.OptionWithValuesKt
-import java.io.File
+import com.github.ajalt.clikt.parameters.options.*
+import kotlin.io.path.exists
+import kotlin.io.path.extension
 import java.nio.file.Path
 import java.nio.file.Paths
-import kotlin.jvm.internal.SourceDebugExtension
-import mu.KLogger
+import java.io.File
+import mu.KotlinLogging
+import kotlin.system.exitProcess
 
-@SourceDebugExtension(["SMAP\nFlowDroidSourceSinkTranslate.kt\nKotlin\n*S Kotlin\n*F\n+ 1 FlowDroidSourceSinkTranslate.kt\ncn/sast/cli/config/FlowDroidSourceSinkTranslatorCli\n+ 2 fake.kt\nkotlin/jvm/internal/FakeKt\n*L\n1#1,143:1\n1#2:144\n*E\n"])
+/**
+ * 将 FlowDroid 的 Source/Sink 列表转换为其他格式或拷贝到目标位置。
+ *
+ * 目前仅做输入校验 —— 如需实际转换逻辑，可在 TODO 处补充。
+ */
 class FlowDroidSourceSinkTranslatorCli : CliktCommand(
-    name = "help",
-    invokeWithoutSubcommand = false,
-    printHelpOnEmptyArgs = false,
-    help = "Flow Droid Source Sink Translator"
+    name = "flowdroid-ss-translator",
+    help = "Translate FlowDroid Sources&Sinks definitions"
 ) {
-    val sourceSinkFile: String by OptionWithValuesKt.option(
-        ParameterHolder = this,
-        names = emptyArray(),
-        help = "sourceSinkFile"
+    /** 源文件：缺省使用 FlowDroid 自带 `SourcesAndSinks.txt` */
+    private val sourceSinkFile: String by option(
+        "--source-sink-file",
+        help = "Path to FlowDroid source-sink definition file"
     ).default("DEFAULT")
 
-    val out: String by OptionWithValuesKt.option(
-        ParameterHolder = this,
-        names = emptyArray(),
-        help = "sourceSinkFile"
+    /** 输出目录 */
+    private val outDir: String by option(
+        "--out",
+        help = "Output directory"
     ).default("out/flowdroid/Taint")
 
+    private val logger = KotlinLogging.logger {}
+
     override fun run() {
-        val path: Path = if (sourceSinkFile == "DEFAULT") {
-            logger.info { run$lambda$0() }
-            FlowDroidSourceSinkTranslateKt.getFlowDroidClass().resolve("SourcesAndSinks.txt")
+        // ------------------------------------------------------------------ //
+        // 1) 确定输入文件
+        // ------------------------------------------------------------------ //
+        val ssPath: Path = if (sourceSinkFile == "DEFAULT") {
+            val defaultFile = flowDroidClass.resolve("SourcesAndSinks.txt")
+            logger.info { "Use default source-sink file: $defaultFile" }
+            defaultFile
         } else {
             Paths.get(sourceSinkFile)
         }
 
-        val file = path.toFile()
-        when {
-            !file.exists() -> throw IllegalArgumentException("[$path] not exists")
-            !file.isFile -> throw IllegalArgumentException("[$path] not a file")
-            FlowDroidSourceSinkTranslateKt.getFlowDroidSourceSinkProvider(
-                file.extension,
-                file.canonicalPath
-            ) == null -> throw IllegalArgumentException("[$path] not a valid flowdroid source sink file")
+        // 校验存在性 / 文件属性
+        val ssFile: File = ssPath.toFile()
+        require(ssFile.exists()) { "[$ssPath] does not exist" }
+        require(ssFile.isFile)   { "[$ssPath] is not a file" }
+
+        // ------------------------------------------------------------------ //
+        // 2) 尝试解析，验证格式
+        // ------------------------------------------------------------------ //
+        val provider = getFlowDroidSourceSinkProvider(
+            ssPath.extension,
+            ssFile.canonicalPath
+        ) ?: error("[$ssPath] is not a recognised FlowDroid source-sink file")
+
+        // ------------------------------------------------------------------ //
+        // 3) TODO: 具体转换 / 输出逻辑
+        // ------------------------------------------------------------------ //
+        logger.info {
+            "Parsed ${provider.javaClass.simpleName} successfully; will output to '$outDir'"
         }
-    }
-
-    private fun run$lambda$0(): String {
-        return "use default source sink file: ${FlowDroidSourceSinkTranslateKt.getFlowDroidLoc()}"
-    }
-
-    companion object {
-        private val logger: KLogger
     }
 }

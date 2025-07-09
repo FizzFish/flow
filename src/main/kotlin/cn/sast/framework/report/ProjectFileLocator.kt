@@ -4,222 +4,162 @@ import cn.sast.api.report.ClassResInfo
 import cn.sast.api.report.FileResInfo
 import cn.sast.api.report.IBugResInfo
 import cn.sast.api.util.IMonitor
-import cn.sast.common.IResDirectory
-import cn.sast.common.IResFile
-import cn.sast.common.IResource
-import cn.sast.common.ResourceImplKt
-import cn.sast.common.ResourceKt
+import cn.sast.common.*
 import cn.sast.common.FileSystemLocator.TraverseMode
 import cn.sast.framework.report.AbstractFileIndexer.CompareMode
-import com.github.benmanes.caffeine.cache.CacheLoader
+import com.github.benmanes.caffeine.cache.AsyncCache
 import com.github.benmanes.caffeine.cache.Caffeine
-import com.github.benmanes.caffeine.cache.LoadingCache
+import kotlinx.coroutines.*
+import mu.KotlinLogging
 import java.io.IOException
 import java.net.URI
-import java.nio.file.FileSystem
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.ArrayList
-import java.util.Map.Entry
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
-import kotlin.jvm.functions.Function2
-import kotlinx.coroutines.*
-import mu.KLogger
-import mu.KotlinLogging
+import java.util.*
+import kotlin.io.path.exists
 
-public open class ProjectFileLocator(
-    monitor: IMonitor?,
-    sourceDir: Set<IResource>,
-    fileWrapperOutPutDir: IResDirectory?,
-    traverseMode: TraverseMode,
-    enableInfo: Boolean = true
+/**
+ * 根据逻辑路径查真实文件；内部用 [FileSystemCacheLocator] 做索引缓存。
+ */
+class ProjectFileLocator(
+    private val monitor: IMonitor? = null,
+    override var sourceDir: Set<IResource>,
+    private val fileWrapperOutputDir: IResDirectory?,
+    private var traverseMode: TraverseMode,
+    private val enableInfo: Boolean = true,
 ) : IProjectFileLocator {
-    private val monitor: IMonitor?
-    public open var sourceDir: Set<IResource>
-        internal set
-    private val fileWrapperOutPutDir: IResDirectory?
-    private var traverseMode: TraverseMode
-    private val enableInfo: Boolean
-    private var updateJob: Deferred<FileIndexer>? = null
-    private val loader: CacheLoader<Pair<IBugResInfo, IWrapperFileGenerator>, IResFile?>
-    private val cache: LoadingCache<Pair<IBugResInfo, IWrapperFileGenerator>, IResFile?>
 
-    init {
-        this.monitor = monitor
-        this.sourceDir = sourceDir
-        this.fileWrapperOutPutDir = fileWrapperOutPutDir
-        this.traverseMode = traverseMode
-        this.enableInfo = enableInfo
-        this.loader = object : CacheLoader<Pair<IBugResInfo, IWrapperFileGenerator>, IResFile?> {
-            override fun load(var1: Pair<IBugResInfo, IWrapperFileGenerator>): IResFile? {
-                val resInfo = var1.component1()
-                val fileWrapperIfNotEExists = var1.component2()
-                return when (resInfo) {
-                    is ClassResInfo -> this@ProjectFileLocator.get(resInfo, fileWrapperIfNotEExists)
-                    is FileResInfo -> this@ProjectFileLocator.get(resInfo, fileWrapperIfNotEExists)
-                    else -> throw NoWhenBranchMatchedException()
-                }
-            }
-        }
-        this.cache = Caffeine.newBuilder()
+    /* ----------------------------- cache ------------------------------ */
+
+    private val cache: AsyncCache<Pair<IBugResInfo, IWrapperFileGenerator>, IResFile?> =
+        Caffeine.newBuilder()
+            .maximumSize(8_000)
             .softValues()
-            .maximumSize(8000L)
-            .build(this.loader)
-    }
-
-    private suspend fun indexer(): FileIndexer {
-        if (this.updateJob == null) {
-            throw IllegalStateException("update at first!")
-        } else {
-            return this.updateJob!!.await()
-        }
-    }
-
-    private fun indexerBlock(): FileIndexer {
-        if (this.updateJob == null) {
-            throw IllegalStateException("update at first!")
-        } else {
-            val job = this.updateJob!!
-            return if (job.isCompleted) {
-                job.getCompleted() as FileIndexer
-            } else {
-                runBlocking {
-                    indexer()
+            .buildAsync { (info, wrapper), _ ->
+                when (info) {
+                    is ClassResInfo -> get(info, wrapper)
+                    is FileResInfo  -> get(info,  wrapper)
+                    else            -> null
                 }
             }
-        }
+
+    /* -------------------------- index 扫描 ---------------------------- */
+
+    /** 最新索引的异步任务 */
+    private var updateJob: Deferred<FileIndexer>? = null
+
+    /** 创建 / 更新索引 */
+    override fun update() {
+        if (updateJob != null) error("update() should be called once per locator lifetime")
+        updateJob = GlobalScope.async(Dispatchers.Default) {
+            FileSystemCacheLocator
+                .getIndexer(sourceDir, traverseMode)
+                .build()
+        }.also { it.start() }
     }
 
-    public override fun update() {
-        if (this.updateJob != null) {
-            throw IllegalStateException("Check failed.")
-        } else {
-            this.updateJob = GlobalScope.async {
-                TODO("FIXME — Original decompilation failed")
+    /** suspend 取索引 */
+    private suspend fun indexer(): FileIndexer =
+        updateJob?.await() ?: error("call update() first")
+
+    /** 阻塞取索引 */
+    private fun indexerBlocking(): FileIndexer =
+        runBlocking { indexer() }
+
+    /* ---------------------------- 查询接口 --------------------------- */
+
+    override fun findFromFileIndexMap(
+        parentSubPath: List<String>,
+        mode: CompareMode,
+    ): Sequence<IResFile> =
+        indexerBlocking().findFromFileIndexMap(parentSubPath, mode)
+
+    override suspend fun getByFileExtension(ext: String): Sequence<IResFile> =
+        indexer().getPathsByExtension(ext).asSequence()
+
+    override suspend fun getByFileName(filename: String): Sequence<IResFile> =
+        indexer().findFromFileIndexMap(filename.split('/'))
+
+    override suspend fun getAllFiles(): Sequence<IResFile> =
+        indexer().run {
+            sequence {
+                extensionToPathMap.values.forEach { yieldAll(it) }
             }
-            this.updateJob?.start()
         }
-    }
 
-    public override fun findFromFileIndexMap(parentSubPath: List<String>, mode: CompareMode): Sequence<IResFile> {
-        return this.indexerBlock().findFromFileIndexMap(parentSubPath, mode)
-    }
+    /* -------------------- 单文件定位（带 wrapper） -------------------- */
 
-    public fun totalFiles(): Long {
-        var c = 0L
-        for (x in this.indexerBlock().getFileNameToPathMap$corax_framework().entries) {
-            c += (x.value as Set<*>).size
+    override fun get(
+        resInfo: IBugResInfo,
+        fileWrapperIfNotExists: IWrapperFileGenerator,
+    ): IResFile? =
+        cache.get(Tuples.pair(resInfo, fileWrapperIfNotExists)).get()
+
+    /* ------------------------- 统计信息 ------------------------------ */
+
+    fun totalFiles(): Long =
+        indexerBlocking().count
+
+    fun totalJavaSrcFiles(): Long =
+        ResourceKt.javaExtensions.sumOf { ext ->
+            indexerBlocking().getPathsByExtension(ext).size
+        }.toLong()
+
+    /* -------------------- 内部获取（无 cache） ------------------------ */
+
+    private fun get(
+        resInfo: ClassResInfo,
+        wrapper: IWrapperFileGenerator,
+    ): IResFile? =
+        indexerBlocking()
+            .findAnyFile(resInfo.sourceFile, AbstractFileIndexer.defaultClassCompareMode)
+            ?: makeWrapperFile(resInfo, wrapper)
+
+    private fun get(
+        resInfo: FileResInfo,
+        wrapper: IWrapperFileGenerator,
+    ): IResFile? =
+        when {
+            resInfo.sourcePath.exists() -> resInfo.sourcePath
+            else                        -> makeWrapperFile(resInfo, wrapper)
         }
-        return c
-    }
 
-    public fun totalJavaSrcFiles(): Long {
-        val extensionToPathMap = this.indexerBlock().getExtensionToPathMap$corax_framework()
-        var count = 0L
-        for (ext in ResourceKt.getJavaExtensions()) {
-            val set = extensionToPathMap[ext] as? Set<*>
-            count += set?.size ?: 0
-        }
-        return count
-    }
+    private fun makeWrapperFile(
+        resInfo: IBugResInfo,
+        wrapper: IWrapperFileGenerator,
+    ): IResFile? =
+        fileWrapperOutputDir?.let { wrapper.makeWrapperFile(it, resInfo) }
 
-    private fun makeWrapperFile(resInfo: IBugResInfo, fileWrapperIfNotEExists: IWrapperFileGenerator): IResFile? {
-        return fileWrapperOutPutDir?.let { fileWrapperIfNotEExists.makeWrapperFile(it, resInfo) }
-    }
+    /* ----------------------- static helpers -------------------------- */
 
-    private fun get(resInfo: ClassResInfo, fileWrapperIfNotEExists: IWrapperFileGenerator): IResFile? {
-        val found = this.indexerBlock().findAnyFile(
-            resInfo.getSourceFile(),
-            AbstractFileIndexer.Companion.getDefaultClassCompareMode()
-        )
-        return found ?: makeWrapperFile(resInfo, fileWrapperIfNotEExists)
-    }
-
-    private fun get(resInfo: FileResInfo, fileWrapperIfNotEExists: IWrapperFileGenerator): IResFile? {
-        return if (resInfo.getSourcePath().getExists()) resInfo.getSourcePath() else makeWrapperFile(resInfo, fileWrapperIfNotEExists)
-    }
-
-    public override fun get(resInfo: IBugResInfo, fileWrapperIfNotEExists: IWrapperFileGenerator): IResFile? {
-        return this.cache.get(resInfo to fileWrapperIfNotEExists)
-    }
-
-    public override suspend fun getByFileExtension(extension: String): Sequence<IResFile> {
-        return suspendCoroutineUninterceptedOrReturn { cont ->
-            TODO("FIXME — Implement getByFileExtension$suspendImpl")
-        }
-    }
-
-    public override suspend fun getByFileName(filename: String): Sequence<IResFile> {
-        return suspendCoroutineUninterceptedOrReturn { cont ->
-            TODO("FIXME — Implement getByFileName$suspendImpl")
-        }
-    }
-
-    public override suspend fun getAllFiles(): Sequence<IResFile> {
-        return suspendCoroutineUninterceptedOrReturn { cont ->
-            TODO("FIXME — Implement getAllFiles$suspendImpl")
-        }
-    }
-
-    public override fun toString(): String {
-        return "Source-Locator@${System.identityHashCode(this)}"
-    }
-
-    @JvmStatic
-    fun `getAllFiles$lambda$1`(it: Entry<*, *>): Iterable<*> {
-        return it.value as Iterable<*>
-    }
-
-    @JvmStatic
-    fun `logger$lambda$2`() {
-    }
-
-    public companion object {
+    companion object {
         private val logger = KotlinLogging.logger {}
 
-        public fun findJdkSources(home: IResFile): List<IResFile> {
-            val result = ArrayList<IResFile>()
-            var srcZip = home.resolve("lib").resolve("src.zip")
-            if (!Files.isReadable(srcZip.getPath())) {
-                srcZip = home.getParent()?.resolve("src.zip") ?: return result
-            }
+        /**
+         * Best-effort 查找 `src.zip` 或 `lib/src.zip`，验证内部是否含 `java/lang/Object.java`。
+         */
+        fun findJdkSources(jdkHome: IResFile): List<IResFile> {
+            val candidates = listOf(
+                jdkHome.resolve("lib").resolve("src.zip"),
+                jdkHome.parent.resolve("src.zip"),
+            )
+            val result = mutableListOf<IResFile>()
 
-            if (Files.isReadable(srcZip.getPath())) {
-                var zipFO: FileSystem? = null
-                try {
-                    try {
-                        val uri = URI.create("jar:${srcZip.getPath().toUri()}")
-                        zipFO = ResourceImplKt.createFileSystem(uri)
-                        val root = zipFO.rootDirectories.iterator().next()
-                        val separator = zipFO.separator
-                        if (Files.exists(root.resolve("java/lang/Object.java".replace("/", separator))) {
-                            result.add(srcZip.toFile())
-                        } else if (Files.exists(root.resolve("java.base/java/lang/Object.java".replace("/", separator)))) {
-                            result.add(srcZip.toFile())
-                        }
-                    } catch (e: IOException) {
-                        logger.debug { "$e, findSources()" }
-                    }
-                } finally {
-                    try {
-                        zipFO?.close()
-                    } catch (e: IOException) {
-                        logger.debug { "$e, findSources()" }
-                    }
+            for (srcZip in candidates) runCatching {
+                if (!Files.isReadable(srcZip.path)) return@runCatching
+                val uri = URI.create("jar:${srcZip.path.toUri()}")
+                FileSystems.newFileSystem(uri, emptyMap<String, Any>()).use { fs ->
+                    val root = fs.rootDirectories.first()
+                    val sep  = fs.separator
+                    fun has(file: String) = Files.exists(root.resolve(file.replace("/", sep)))
+                    if (has("java/lang/Object.java") || has("java.base/java/lang/Object.java"))
+                        result += srcZip.toFile()
                 }
+            }.onFailure { e ->
+                logger.debug(e) { "findJdkSources(): $e" }
             }
             return result
-        }
-
-        @JvmStatic
-        fun `findJdkSources$lambda$0`(`$ex`: IOException): Any {
-            return "$`$ex`, findSources()"
-        }
-
-        @JvmStatic
-        fun `findJdkSources$lambda$1`(`$ex`: IOException): Any {
-            return "$`$ex`, findSources()"
         }
     }
 }
