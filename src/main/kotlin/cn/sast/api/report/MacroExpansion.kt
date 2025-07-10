@@ -19,5 +19,5 @@ data class MacroExpansion(
             .takeIf { it != 0 } ?: classname.compareTo(other.classname)
             .takeIf { it != 0 } ?: line.compareTo(other.line)
             .takeIf { it != 0 } ?: column.compareTo(other.column)
-            .takeIf { it != 0 } ?: compareToNullable(range, other.range) ?: 0
+            .takeIf { it != 0 } ?: range.compareToNullable(other.range) ?: 0
 }

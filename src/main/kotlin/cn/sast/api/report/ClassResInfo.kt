@@ -1,6 +1,8 @@
 package cn.sast.api.report
 
 import cn.sast.api.util.numCode
+import cn.sast.api.util.sourcePath
+import cn.sast.api.util.possibleSourceFiles
 import soot.ClassMember
 import soot.SootClass
 import soot.SootMethod
@@ -13,9 +15,9 @@ import java.util.LinkedHashSet
  */
 data class ClassResInfo(val sc: SootClass) : IBugResInfo() {
 
-    val maxLine: Int by lazy { numCode }
-    val sourcePath: String? by lazy { SootUtils.sourcePath(sc) }
-    val sourceFile: LinkedHashSet<String> by lazy { SootUtils.possibleSourceFiles(sc) }
+    val maxLine: Int by lazy { sc.numCode }
+    val sourcePath: String? by lazy { sc.sourcePath}
+    val sourceFile: LinkedHashSet<String> by lazy { sc.possibleSourceFiles }
 
     override val path: String get() = sourceFile.firstOrNull() ?: sc.name
     override val reportFileName: String

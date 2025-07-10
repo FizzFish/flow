@@ -1,16 +1,8 @@
-@file:Suppress(
-    "NOTHING_TO_INLINE",
-    "FunctionName",
-    "MemberVisibilityCanBePrivate",
-    "unused"
-)
+@file:Suppress("NOTHING_TO_INLINE", "UNCHECKED_CAST", "UNUSED_PARAMETER")
 
 package cn.sast.api.util
 
-/* ────────────────────────────────────────────────────────────────────────────
- *  0. 依赖
- * ─────────────────────────────────────────────────────────────────────────── */
-import cn.sast.api.report.ProjectMetrics
+import cn.sast.common.javaExtensions
 import com.feysh.corax.cache.AnalysisCache
 import com.feysh.corax.cache.analysis.SootRangeKey
 import com.feysh.corax.config.api.IMethodMatch
@@ -21,43 +13,27 @@ import com.google.common.base.Optional
 import mu.KLogger
 import mu.KotlinLogging
 import org.objectweb.asm.ClassWriter
-import org.utbot.common.PathUtil
 import soot.*
 import soot.Type
 import soot.asm.AsmUtil
 import soot.jimple.*
+import soot.tagkit.SourceFileTag
+import sun.misc.Unsafe
+import java.io.InputStream
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodHandles.Lookup
 import java.lang.reflect.*
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.Paths
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import java.util.function.Predicate
-import kotlin.collections.LinkedHashSet
-import sun.misc.Unsafe
-import java.io.InputStream
-import kotlin.math.max
-import kotlin.reflect.KCallable
-import kotlin.reflect.KClass
+import kotlin.io.path.*
 import kotlin.jvm.internal.CallableReference
-import kotlin.reflect.jvm.ReflectJvmMapping
-
-
-/* ────────────────────────────────────────────────────────────────────────────
- *  1. IMonitor
- * ─────────────────────────────────────────────────────────────────────────── */
-interface IMonitor {
-    val projectMetrics: ProjectMetrics
-    fun timer(phase: String): Timer
-}
-
-// ── ✂ ──  若需拆文件，从此处剪断 ───────────────────────────────────────────────
-
-/* ────────────────────────────────────────────────────────────────────────────
- *  2. Kotlin 扩展工具
- * ─────────────────────────────────────────────────────────────────────────── */
+import kotlin.math.max
+import kotlin.reflect.*
+import kotlin.reflect.full.instanceParameter
+import kotlin.reflect.jvm.javaType;
+import kotlin.reflect.jvm.javaConstructor
+import kotlin.jvm.internal.ClassBasedDeclarationContainer
+import java.lang.reflect.Modifier
 
 /* ---------- 过滤掉 value 为 null 的 Map ---------- */
 fun <K, V : Any> Map<K, V?>.nonNullValue(): Map<K, V> =
@@ -74,65 +50,76 @@ fun <E> concurrentHashSetOf(vararg elements: E): MutableSet<E> =
 fun <E> concurrentHashSetOf(): MutableSet<E> =
     Collections.newSetFromMap(ConcurrentHashMap())
 
-// ── ✂ ──
-
 /* ────────────────────────────────────────────────────────────────────────────
  *  3. Soot 相关扩展
  * ─────────────────────────────────────────────────────────────────────────── */
 
 /* ---------- KCallable & KClass ↔ Soot 映射 ---------- */
 
-val KCallable<*>.declaringKClass: KClass<*>?
+/** Return declaring Kotlin class for any `KCallable`. */
+val KCallable<*>.kClass: KClass<*>
     get() = when (this) {
-        is CallableReference -> owner as? KClass<*>
-        else                 -> instanceParameter?.type?.classifier as? KClass<*>
+        is CallableReference -> owner as? KClass<*> ?: tryConstructor(this) ?: error("Can't get parent class for $this")
+        else -> this.instanceParameter?.type?.classifier as? KClass<*> ?: tryConstructor(this) ?: error("Can't get parent class for $this")
     }
 
-/** `foo(Int, String)` → `"java.lang.String,java.lang.Integer"` */
+/** List of parameter *simple* class names (no generics). */
 val KCallable<*>.paramStringList: List<String>
     get() = when (this) {
         is CallableReference -> {
-            val sig = AsmUtil.toJimpleDesc(signature.substringAfter("("), Optional.absent())
-            sig.dropLast(1).map { getTypename(it as Type) }
+            val desc = AsmUtil.toJimpleDesc(signature.substringAfter("("), Optional.absent())
+            // last element is return type → drop()
+            desc.dropLast(1).map { it.getTypename() ?: "" }
         }
-        else -> parameters.drop(if (instanceParameter != null) 1 else 0)
-            .map { ReflectJvmMapping.getJavaType(it.type).typeName.substringBefore('<') }
+        else -> parameters
+            .drop(if (this.instanceParameter != null) 1 else 0)
+            .map { it.type.javaType.typeName.substringBefore('<') }
     }
 
-val KCallable<*>.paramSignature: String get() = paramStringList.joinToString(",")
+/** Comma‑joined param list. */
+val KCallable<*>.paramSignature: String get() = paramStringList.joinToString()
 
-val KCallable<*>.returnSootType: Type
-    get() {
-        val typeName = when (this) {
-            is CallableReference -> {
-                val sig = AsmUtil.toJimpleDesc(signature.substringAfter("("), Optional.absent())
-                (sig.last() as Type).toString()
-            }
-            else -> ReflectJvmMapping.getJavaType(returnType).typeName
-        }
-        return Scene.v().getTypeUnsafe(typeName, true)
-    }
-
-val KCallable<*>.sootClassName: String
-    get() = declaringKClass?.let {
-        (it as? KClassImpl<*>)?.jClass?.name ?: it.qualifiedName!!
-    } ?: throw IllegalStateException("Can't locate declaring class for $this")
-
+/** Sub‑signature in Soot grammar. */
 val KCallable<*>.subSignature: String
     get() = when (this) {
         is CallableReference -> {
-            val sig = AsmUtil.toJimpleDesc(signature.substringAfter("("), Optional.absent())
-            val ret = sig.last() as Type; sig.dropLast(1)
-            "$ret $name(${sig.joinToString(",") { getTypename(it as Type) }})"
+            val sigTypes = AsmUtil.toJimpleDesc(signature.substringAfter("("), Optional.absent()).toMutableList()
+            val ret = sigTypes.removeLast()     // return type
+            val params = sigTypes.joinToString(",") { it.getTypename() ?: "" }
+            "$ret $name($params)"
         }
-        else -> "${ReflectJvmMapping.getJavaType(returnType).typeName} $name($paramSignature)"
+        else -> "${returnType.javaType.typeName} $name($paramSignature)"
     }
 
-val KCallable<*>.sootSignature: String
-    get() = "<$sootClassName: $subSignature>"
+/** Soot [Type] matching the callable's *return* type. */
+val KCallable<*>.returnSootType: Type
+    get() {
+        val tName = when (this) {
+            is CallableReference -> AsmUtil.toJimpleDesc(signature.substringAfter("("), Optional.absent()).last().toString()
+            else -> returnType.javaType.typeName
+        }
+        return Scene.v().getTypeUnsafe(tName, true)
+    }
 
-val KCallable<*>.sootMethod: SootMethod get() = Scene.v().getMethod(sootSignature)
+val KCallable<*>.sootClassName: String
+    get() = kClass.qualifiedName ?: (kClass as? ClassBasedDeclarationContainer)?.jClass?.name ?: error("Unnamed class")
+
+val KCallable<*>.sootSignature: String get() = "<${sootClassName}: ${subSignature}>"
+
 val KCallable<*>.grabSootMethod: SootMethod? get() = Scene.v().grabMethod(sootSignature)
+val KCallable<*>.sootMethod: SootMethod get() = Scene.v().getMethod(sootSignature)
+val KCallable<*>.sootClass: SootClass get() = Scene.v().getSootClass(sootClassName)
+val KCallable<*>.sootClassUnsafe: SootClass? get() = Scene.v().getSootClassUnsafe(sootClassName, false)
+val KCallable<*>.className: String get() = sootClassName
+
+//private fun <R> tryConstructor(function: KCallable<R>): KClass<out Any>? =
+//    (function as? KFunction<*>)?.javaConstructor?.declaringClass?.kotlin
+private fun <R> tryConstructor(function: KCallable<R>): KClass<out Any>? {
+    val kFun = function as? KFunction<*> ?: return null
+    val ctor = kFun.javaConstructor ?: return null
+    @Suppress("UNCHECKED_CAST")
+    return (ctor.declaringClass as Class<Any>).kotlin
+}
 
 /* ---------- SootClass / SootMethod 扩展 ---------- */
 
@@ -147,14 +134,65 @@ val SootClass.isSyntheticComponent: Boolean
 val SootClass.skipPathSensitive: Boolean
     get() = isDummy || isSyntheticComponent
 
+/** Highest line‑number seen across all active bodies of this class. */
 val SootClass.numCode: Int
-    get() = methods.filter { it.hasActiveBody() }.maxOfOrNull {
-        AnalysisCache.G.INSTANCE[SootRangeKey(it)]?.second ?: 0
-    } ?: 0
+    get() = methods
+        .filter { it.hasActiveBody() }
+        .mapNotNull { AnalysisCache.G.get(SootRangeKey(it)) }
+        .fold(0) { acc, (start, end) -> max(acc, max(start, end)) }
 
-val SootClass.sourcePath: String?
-    get() = getSourcePathFromAnnotation()
+/** `SourceFile` tag‑based original source path if any (JPMS‑aware). */
+val SootClass.sourcePath: String? get() = getSourcePathModule(this)
 
+/** All plausible source files for this class (kts, java, etc.). */
+val SootClass.possibleSourceFiles: LinkedHashSet<String>
+    get() {
+        val res = linkedSetOf<String>()
+        sourcePath?.let(res::add)
+
+        val prefixes = linkedSetOf(
+            SourceLocator.v().getSourceForClass(name.replace('.', '/'))
+        )
+        if ('$' in name) {
+            prefixes += name.split('.').joinToString("/")
+        }
+
+        prefixes.forEach { p ->
+            javaExtensions.forEach { ext -> res += "$p.$ext" }
+        }
+        return res as LinkedHashSet<String>
+    }
+
+val SootMethod.activeBodyOrNull: Body? get() = takeIf { hasActiveBody() }?.activeBody
+
+fun classSplit(sc: SootClass): Pair<String, String> = classSplit(sc.name)
+
+fun classSplit(cname: String): Pair<String, String> {
+    val pkg = cname.substringBeforeLast('.', "")
+    val cls = cname.substringAfterLast('.', cname)
+    return pkg to cls
+}
+
+/** Locate original source path from the `SourceFileTag` (if any). */
+fun SootClass.getSourcePathFromAnnotation(): String? {
+    // 1⃣  Extract tag
+    val tag = getTag("SourceFileTag") as? SourceFileTag ?: return null
+    val source = tag.sourceFile
+
+    // 2⃣  Heuristic clean‑ups identical to original byte‑code logic
+    val trimmed = source
+        .substringBeforeLast("..")
+        .substringBeforeLast("/")
+        .substringBeforeLast("\\")
+
+    // 3⃣  Validate extension against supported source types
+    val ext = trimmed.substringAfterLast('.', "")
+    if (!javaExtensions.contains(ext)) return null
+
+    // 4⃣  Prepend package directory if present
+    val pkgPath = classSplit(this).first.replace('.', '/')
+    return if (pkgPath.isEmpty()) trimmed else "$pkgPath/$trimmed"
+}
 /* ---------- findMethod 扩展 ---------- */
 
 fun SootClass.findMethodOrNull(subSig: String): Sequence<SootMethod> = sequence {
@@ -172,10 +210,74 @@ fun SootClass.findMethodOrNull(subSig: String): Sequence<SootMethod> = sequence 
             it.subSignature.substringAfter(" ") == subSig
 }
 
-/* ---------- 常量处理、计算工具（保留原逻辑） ---------- */
-/* …… 若需要全部 Jimple 计算逻辑，可继续保留此处原代码 …… */
+fun NumericConstant.castTo(toType: Type): Constant? {
+    fun Int.asInt() = IntConstant.v(this)
+    fun Long.asLong() = LongConstant.v(this)
+    fun Float.asFloat() = FloatConstant.v(this)
+    fun Double.asDouble() = DoubleConstant.v(this)
 
-// ── ✂ ──
+    return when (toType) {
+        is BooleanType -> when (this) {
+            is IntConstant    -> (if (value != 0) 1 else 0).asInt()
+            is LongConstant   -> (if (value.toInt() != 0) 1 else 0).asInt()
+            is FloatConstant  -> (if (value.toInt() != 0) 1 else 0).asInt()
+            is DoubleConstant -> (if (value.toInt() != 0) 1 else 0).asInt()
+            else              -> null
+        }
+        is ByteType -> when (this) {
+            is IntConstant    -> value.toByte().toInt().asInt()
+            is LongConstant   -> value.toInt().toByte().toInt().asInt()
+            is FloatConstant  -> value.toInt().toByte().toInt().asInt()
+            is DoubleConstant -> value.toInt().toByte().toInt().asInt()
+            else              -> null
+        }
+        is CharType -> when (this) {
+            is IntConstant    -> value.toChar().code.asInt()
+            is LongConstant   -> value.toInt().toChar().code.asInt()
+            is FloatConstant  -> value.toInt().toChar().code.asInt()
+            is DoubleConstant -> value.toInt().toChar().code.asInt()
+            else              -> null
+        }
+        is ShortType -> when (this) {
+            is IntConstant    -> value.toShort().toInt().asInt()
+            is LongConstant   -> value.toInt().toShort().toInt().asInt()
+            is FloatConstant  -> value.toInt().toShort().toInt().asInt()
+            is DoubleConstant -> value.toInt().toShort().toInt().asInt()
+            else              -> null
+        }
+        is IntType -> when (this) {
+            is IntConstant    -> this
+            is LongConstant   -> value.toInt().asInt()
+            is FloatConstant  -> value.toInt().asInt()
+            is DoubleConstant -> value.toInt().asInt()
+            else              -> null
+        }
+        is LongType -> when (this) {
+            is IntConstant    -> value.toLong().asLong()
+            is LongConstant   -> this
+            is FloatConstant  -> value.toLong().asLong()
+            is DoubleConstant -> value.toLong().asLong()
+            else              -> null
+        }
+        is FloatType -> when (this) {
+            is IntConstant    -> value.toFloat().asFloat()
+            is LongConstant   -> value.toFloat().asFloat()
+            is FloatConstant  -> this
+            is DoubleConstant -> value.toFloat().asFloat()
+            else              -> null
+        }
+        is DoubleType -> when (this) {
+            is IntConstant    -> value.toDouble().asDouble()
+            is LongConstant   -> value.toDouble().asDouble()
+            is FloatConstant  -> value.toDouble().asDouble()
+            is DoubleConstant -> this
+            else              -> null
+        }
+        else -> null
+    }
+}
+
+
 
 /* ────────────────────────────────────────────────────────────────────────────
  *  4. UnsafeProvider & UnsafeUtils
@@ -218,10 +320,12 @@ object UnsafeUtils {
         val bytes = cw.toByteArray()
 
         // JDK 15+ : MethodHandles.Lookup#defineHiddenClass
-        MethodHandles.lookup().runCatching {
+        return MethodHandles.lookup().runCatching {
+//            val arrayClass = java.lang.reflect.Array.newInstance(Class::class.java, 0).javaClass
+            val arrayClass: Class<*> = Class.forName("[Ljava.lang.Class;")
             val defineHidden = Lookup::class.java.getMethod(
                 "defineHiddenClass",
-                ByteArray::class.java, Boolean::class.javaPrimitiveType, Array<Class<*>>::class.java
+                ByteArray::class.java, Boolean::class.javaPrimitiveType, arrayClass
             )
             val classOption = Lookup::class.java.classes
                 .first { it.simpleName == "ClassOption" }
@@ -240,8 +344,6 @@ object UnsafeUtils {
     }
 }
 
-// ── ✂ ──
-
 /* ────────────────────────────────────────────────────────────────────────────
  *  5. 其他零散工具
  * ─────────────────────────────────────────────────────────────────────────── */
@@ -259,10 +361,3 @@ fun methodSignatureToMatcher(sig: String): IMethodMatch? = when {
     ':' in sig                               -> matchSimpleSig(sig)
     else -> null
 }
-
-/* ------------------------------------------------------------------------ */
-
-private val logger: KLogger = KotlinLogging.logger {}
-
-/* 本文件聚合了 util 包中多个反编译产生的 Kotlin 文件。若需精细拆分，请按
- * “// ── ✂ ──” 注释分段另存即可，代码逻辑完全保持一致。*/

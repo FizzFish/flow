@@ -7,7 +7,7 @@ import java.util.function.LongUnaryOperator
 /**
  * 将 [UsefulMetrics] 的监控数据封装为易读文本。
  */
-class ProcessInfoView(
+open class ProcessInfoView(
    val metrics: UsefulMetrics = UsefulMetrics.metrics,
 ) {
 

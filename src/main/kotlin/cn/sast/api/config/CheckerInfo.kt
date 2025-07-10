@@ -2,8 +2,14 @@ package cn.sast.api.config
 
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.EncodeDefault.Mode
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
+data class ChapterFlat(
+    val category: String,
+    val severity: String,
+    val ruleId: String
+)
 /**
  * 检查器元信息。
  *
@@ -12,7 +18,7 @@ import kotlinx.serialization.Serializable
  * * `@Serializable` 已自动在 `Companion` 中注入 `serializer()`，无需手写
  */
 @Serializable
-data class CheckerInfo(
+data class CheckerInfo @OptIn(ExperimentalSerializationApi::class) constructor(
     val type: String,
     val format_version: String,
     val analyzer: String,

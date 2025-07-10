@@ -18,6 +18,7 @@ import java.util.*
 import java.util.zip.ZipException
 import kotlin.io.path.*
 import java.text.SimpleDateFormat
+import java.util.regex.Pattern
 
 
 /**
@@ -154,7 +155,7 @@ object Resource {
 
    fun dirOf(directory: String): IResDirectory = of(directory).toDirectory()
    fun dirOf(directory: Path):   IResDirectory = of(directory).toDirectory()
-   fun fileOf(file: String):     IResFile      = of(file).toFile()
+                              fun fileOf(file: String):     IResFile      = of(file).toFile()
    fun fileOf(file: Path):       IResFile      = of(file).toFile()
 
    /** 批量解析 classpath / pathSep=“;” 的字符串集合 */
@@ -315,6 +316,18 @@ val sAstTempDirectory: Path
 
 /** 常见压缩扩展名 */
 val zipExtensions: List<String> = listOf("zip", "jar", "war", "apk", "aar")
+/** Recognised source-file extensions. */
+val javaExtensions: List<String> = listOf("java", "kt", "kts", "scala", "groovy", "jsp")
+
+/** URL‑escape map for URI helper. */
+private val escapes: Map<String, String> = mapOf(
+   "[" to "%5B", "]" to "%5D", "{" to "%7B", "}" to "%7D",
+   "<" to "%3C", ">" to "%3E", "#" to "%23", "?" to "%3F",
+   "@" to "%40", " " to "%20"
+)
+
+private val urlEscapePattern =
+   Pattern.compile("""([\[\]{}<>#?@ ])""")
 
 /**
  * 创建归档文件系统（支持多编码 fallback）

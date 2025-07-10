@@ -5,7 +5,7 @@ import soot.jimple.*
 import soot.toolkits.graph.DirectedGraph
 import soot.toolkits.graph.ExceptionalUnitGraphFactory
 import soot.toolkits.graph.UnitGraph
-
+import soot.Unit as SootUnit
 /**
  * 给 **无方法体** 的 phantom-method 动态生成最小可用的 CFG，
  * 结构固定为：`new Error -> <init> -> throw`.
@@ -15,7 +15,7 @@ import soot.toolkits.graph.UnitGraph
 class SummaryControlFlowUnitGraph(
    val method: SootMethod,
    private val icfg: InterproceduralCFG,
-) : DirectedGraph<Unit> {
+) : DirectedGraph<SootUnit> {
 
    private val j    = Jimple.v()
    private val body = j.newBody(method)
@@ -49,10 +49,11 @@ class SummaryControlFlowUnitGraph(
 
    /* ---------------- DirectedGraph 接口简单委托 ---------------- */
 
-   override fun iterator(): MutableIterator<Unit> = graph.iterator()
-   override fun getHeads(): List<Unit>          = graph.heads
-   override fun getTails(): List<Unit>          = graph.tails
-   override fun getPredsOf(s: Unit): List<Unit> = graph.getPredsOf(s)
-   override fun getSuccsOf(s: Unit): List<Unit> = graph.getSuccsOf(s)
-   override fun size(): Int                     = graph.size
+   override fun iterator(): MutableIterator<SootUnit> = graph.iterator()
+   override fun getHeads(): MutableList<SootUnit>? = graph.heads
+   override fun getTails(): List<SootUnit>          = graph.tails
+
+   override fun getPredsOf(s: SootUnit): MutableList<SootUnit> = graph.getPredsOf(s)
+   override fun getSuccsOf(s: SootUnit): MutableList<SootUnit> = graph.getSuccsOf(s)
+   override fun size(): Int                     = graph.size()
 }

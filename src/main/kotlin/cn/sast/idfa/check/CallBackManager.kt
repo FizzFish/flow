@@ -1,6 +1,7 @@
 package cn.sast.idfa.check
 
 import cn.sast.api.util.SootUtilsKt
+import cn.sast.api.util.findMethodOrNull
 import soot.SootClass
 import soot.SootMethod
 import soot.Unit
@@ -59,8 +60,7 @@ class CallBackManager {
    ): List<(T, Continuation<Unit>) -> Any?>? {
 
       val subSig = method.subSignature
-      val target: SootMethod? =
-         SootUtilsKt.findMethodOrNull(method.declaringClass, subSig)
+      val target: SootMethod? = method.declaringClass.findMethodOrNull(subSig)
             .firstOrNull { getRaw<T>(cbType, it) != null }
 
       if (target != null && (target == method || !target.isConcrete)) {
@@ -116,13 +116,19 @@ class CallBackManager {
     * 把 “真正缺少总结方法” 的列表交给 `reportMissingMethod`
     */
    fun reportMissSummaryMethod(reportMissingMethod: (SootMethod) -> Unit) {
-      val matched: Set<SootMethod> = hit.values
-         .flatMap { it }
-         .mapTo(LinkedHashSet()) { it.first }
+      // 所有命中的 SootMethod （Pair 的 first）
+      val hit: Set<SootMethod> = hit.values
+         .flatten()
+         .mapTo(LinkedHashSet()) { (it as Pair<*, *>).first as SootMethod }
 
-      val missed: Set<SootMethod> = miss.values
-         .flattenTo(LinkedHashSet())
+      // 所有未命中的 SootMethod
+      val miss: Set<SootMethod> = miss.values
+         .flatten()
+         .toSet()
 
-      (missed - matched).forEach(reportMissingMethod)
+      // 对 miss - hit 做差集，逐个调用回调
+      for (m in miss - hit) {
+         reportMissingMethod(m)
+      }
    }
 }

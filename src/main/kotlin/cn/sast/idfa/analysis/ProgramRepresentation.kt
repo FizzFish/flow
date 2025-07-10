@@ -2,29 +2,20 @@ package cn.sast.idfa.analysis
 
 import soot.toolkits.graph.DirectedGraph
 
-// 移除冗余的 public 修饰符，去掉未使用的类型参数 M 和 N
-interface ProgramRepresentation {
-   // 移除冗余的 public 和 abstract 修饰符，去掉函数体
-   fun getControlFlowGraph(method: Any): DirectedGraph<Any>?
+interface ProgramRepresentation<M, N> {
+   fun getControlFlowGraph(method: M): DirectedGraph<N>?
 
-   // 移除冗余的 public 和 abstract 修饰符，去掉函数体
-   fun getSummaryControlFlowGraph(method: Any): DirectedGraph<Any>?
+   fun getSummaryControlFlowGraph(method: M): DirectedGraph<N>?
 
-   // 移除冗余的 public 和 abstract 修饰符，去掉函数体
-   fun isCall(node: Any): Boolean
+   fun isCall(node: N): Boolean
 
-   // 移除冗余的 public 和 abstract 修饰符，去掉函数体
-   fun isAnalyzable(method: Any): Boolean
+   fun isAnalyzable(method: M): Boolean
 
-   // 移除冗余的 public 和 abstract 修饰符，去掉函数体
-   fun getCalleesOfCallAt(callerMethod: Any, callNode: Any): Set<Any>
+   fun getCalleesOfCallAt(callerMethod: M, callNode: N): Set<M>?
 
-   // 移除冗余的 public 和 abstract 修饰符，去掉函数体
-   fun isSkipCall(node: Any): Boolean
+   fun isSkipCall(node: N): Boolean
 
-   // 移除冗余的 public 和 abstract 修饰符，去掉函数体
-   fun setOwnerStatement(u: Any, owner: Any)
+   fun setOwnerStatement(unit: N, owner: M)
 
-   // 移除冗余的 public 和 abstract 修饰符，去掉函数体
-   fun setOwnerStatement(g: Iterable<Any>, owner: Any)
+   fun setOwnerStatement(iterable: Iterable<N>, method: M)
 }

@@ -1,17 +1,13 @@
 package cn.sast.api.report
 
 import cn.sast.common.IResFile
-import cn.sast.common.Resource
-import kotlin.io.path.absolute
-import kotlin.io.path.normalize
-
 /**
  * 以文件形式定位的资源信息。
  */
 class FileResInfo(private val sourcePath: IResFile) : IBugResInfo() {
 
     /** 绝对规范化路径（懒加载） */
-    private val abs by lazy { sourcePath.absolute().normalize() }
+    private val abs by lazy { sourcePath.absolute.normalize }
 
     override val reportFileName: String get() = abs.name
     override val path: String get() = abs.toString().replace(':', '-')

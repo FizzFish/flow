@@ -32,25 +32,11 @@ interface IReportHashCalculator {
     fun fromAbsPath(absolutePath: IResource): String
 
     open fun fromPath(path: IResource): String {
-        return DefaultImpls.fromPath(this, path)
+        return fromAbsPath(path.absolute.normalize)
     }
 
-    internal object DefaultImpls {
-        @JvmStatic
-        fun fromPath(`$this`: IReportHashCalculator, path: IResource): String {
-            return `$this`.fromAbsPath(path.getAbsolute().getNormalize())
-        }
-    }
 }
 
 interface IResultCollector {
-    open suspend fun flush() {
-    }
-
-    internal object DefaultImpls {
-        @JvmStatic
-        fun flush(`$this`: IResultCollector, `$completion`: Continuation<Unit>): Any? {
-            return Unit
-        }
-    }
+    open suspend fun flush()
 }

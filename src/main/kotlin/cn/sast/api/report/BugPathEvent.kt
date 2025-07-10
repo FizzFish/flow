@@ -17,7 +17,7 @@ data class BugPathEvent(
 ) : Comparable<BugPathEvent>, IReportHashAble {
 
     override fun compareTo(other: BugPathEvent): Int =
-        compareToMap(message, other.message)
+        message.compareToMap(other.message)
             .takeIf { it != 0 } ?: classname.compareTo(other.classname)
             .takeIf { it != 0 } ?: region.compareTo(other.region)
 
@@ -44,5 +44,5 @@ data class BugPathPosition(
 
     override fun compareTo(other: BugPathPosition): Int =
         classname.compareTo(other.classname)
-            .takeIf { it != 0 } ?: compareToNullable(region, other.region)
+            .takeIf { it != 0 } ?: region.compareToNullable(other.region)
 }

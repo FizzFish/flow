@@ -9,6 +9,7 @@ package cn.sast.api.util
 /* ────────────────────────────────────────────────────────────────────────────
  *  公共工具 —— 时间单位 & 四舍五入
  * ─────────────────────────────────────────────────────────────────────────── */
+import cn.sast.api.report.ProjectMetrics
 import java.math.BigDecimal
 import java.math.RoundingMode
 import mu.KLogger
@@ -27,6 +28,10 @@ import kotlin.io.path.name
 
 const val CONVERT_TO_SECONDS: Double = 1e9
 
+interface IMonitor {
+    val projectMetrics: ProjectMetrics
+    fun timer(phase: String): Timer
+}
 /** 保留 [scale] 位小数；`NaN/Inf` 直接返回原值 */
 fun retainDecimalPlaces(
     value: Double,

@@ -2,9 +2,14 @@ package cn.sast.api.config
 
 import cn.sast.common.IResDirectory
 import cn.sast.common.Resource
-import com.feysh.corax.config.api.rules.ProcessRule
+import com.feysh.corax.config.api.rules.ProcessRule.IMatchItem
+import com.feysh.corax.config.api.rules.ProcessRule.IMatchTarget
+import com.feysh.corax.config.api.rules.ProcessRule.ScanAction
+import com.feysh.corax.config.api.rules.ProcessRule.matches
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.encodeToStream
 import mu.KotlinLogging
 import soot.SootClass
 import soot.SootField
@@ -40,36 +45,35 @@ class ScanFilter(
     /* ─────────── 对外 API ─────────── */
 
     fun update(cfg: ProjectConfig) {
-        cfg.processRegex.rules.validate()
         processRegex = cfg.processRegex
     }
 
     /* ---------- 各类型资源 ---------- */
 
-    fun getActionOfClassPath(orig: String?, classpath: Path, prefix: String? = null): ProcessRule.ScanAction =
+    fun getActionOfClassPath(orig: String?, classpath: Path, prefix: String? = null): ScanAction =
         decide(processRegex.classpathRules, orig, getClassPath(classpath), prefix)
 
-    fun getActionOf(orig: String?, file: Path, prefix: String? = null): ProcessRule.ScanAction =
+    fun getActionOf(orig: String?, file: Path, prefix: String? = null): ScanAction =
         decide(processRegex.fileRules, orig, get(file), prefix)
 
-    fun getActionOf(orig: String?, sc: SootClass, prefix: String? = null): ProcessRule.ScanAction =
+    fun getActionOf(orig: String?, sc: SootClass, prefix: String? = null): ScanAction =
         decide(processRegex.clazzRules, orig, get(sc), prefix)
 
-    fun getActionOf(orig: String?, sm: SootMethod, prefix: String? = null): ProcessRule.ScanAction =
+    fun getActionOf(orig: String?, sm: SootMethod, prefix: String? = null): ScanAction =
         decide(processRegex.clazzRules, orig, get(sm), prefix)
 
-    fun getActionOf(orig: String?, sf: SootField, prefix: String? = null): ProcessRule.ScanAction =
+    fun getActionOf(orig: String?, sf: SootField, prefix: String? = null): ScanAction =
         decide(processRegex.clazzRules, orig, get(sf), prefix)
 
     /* ---------- 决策核心 ---------- */
 
     private fun decide(
-        rule: List<ProcessRule.IMatchItem>,
+        rule: List<IMatchItem>,
         origAction: String?,
-        target: ProcessRule.IMatchTarget,
+        target: IMatchTarget,
         prefix: String? = null
-    ): ProcessRule.ScanAction {
-        val (matchedRule, finalAction) = ProcessRule.matches(rule, target)
+    ): ScanAction {
+        val (matchedRule, finalAction) = rule.matches(target)
 
         if (origAction != null) {
             val op = matchedRule?.op ?: "Keep"
@@ -82,11 +86,12 @@ class ScanFilter(
 
     /* ---------- 诊断信息输出 ---------- */
 
+    @OptIn(ExperimentalSerializationApi::class)
     fun dump(outDir: IResDirectory) {
         outDir.mkdirs()
         val record = ClassFilterRecord(TreeMap(filterDiagnostics))
         Files.newOutputStream(outDir.resolve("scan-classifier-info.json").path).use {
-            jsonFormat.encodeToStream(ClassFilterRecord.serializer(), record, it)
+//            jsonFormat.encodeToStream(ClassFilterRecord.serializer(), record, it)
         }
     }
 

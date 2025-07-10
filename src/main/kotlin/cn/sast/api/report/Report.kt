@@ -77,23 +77,23 @@ data class Report(
     /* ---------- Comparable ---------- */
 
     override fun compareTo(other: Report): Int =
-        compareToNullable(analyzerName, other.analyzerName) ?: 0
+        analyzerName.compareToNullable(other.analyzerName)
             .takeIf { it != 0 } ?: bugResFile.compareTo(other.bugResFile)
             .takeIf { it != 0 } ?: region.startLine.compareTo(other.region.startLine)
-            .takeIf { it != 0 } ?: compareToMap(message, other.message)
+            .takeIf { it != 0 } ?: message.compareToMap(other.message)
             .takeIf { it != 0 } ?: checkName.compareTo(other.checkName)
             .takeIf { it != 0 } ?: detectorName.compareTo(other.detectorName)
             .takeIf { it != 0 } ?: type.compareTo(other.type)
-            .takeIf { it != 0 } ?: checkType.compareTo(other.checkType)
-            .takeIf { it != 0 } ?: compareToSet(standard, other.standard)
+//            .takeIf { it != 0 } ?: checkType.compare(other.checkType)
+//            .takeIf { it != 0 } ?: standard.compareToSet(other.standard)
             .takeIf { it != 0 } ?: region.startColumn.compareTo(other.region.startColumn)
-            .takeIf { it != 0 } ?: compareToNullable(severity, other.severity) ?: 0
-            .takeIf { it != 0 } ?: compareToNullable(category, other.category) ?: 0
-            .takeIf { it != 0 } ?: compareToNullable(analyzerResultFile, other.analyzerResultFile) ?: 0
-            .takeIf { it != 0 } ?: compareToCollection(pathEvents, other.pathEvents)
-            .takeIf { it != 0 } ?: compareToCollection(bugPathPositions, other.bugPathPositions)
-            .takeIf { it != 0 } ?: compareToCollection(notes, other.notes)
-            .takeIf { it != 0 } ?: compareToCollection(macroExpansions, other.macroExpansions)
+            .takeIf { it != 0 } ?: severity.compareToNullable(other.severity)
+            .takeIf { it != 0 } ?: category.compareToNullable(other.category)
+            .takeIf { it != 0 } ?: analyzerResultFile.compareToNullable(other.analyzerResultFile)
+            .takeIf { it != 0 } ?: pathEvents.compareToCollection(other.pathEvents)
+            .takeIf { it != 0 } ?: bugPathPositions.compareToCollection(other.bugPathPositions)
+            .takeIf { it != 0 } ?: notes.compareToCollection(other.notes)
+            .takeIf { it != 0 } ?: macroExpansions.compareToCollection(other.macroExpansions)
 
     /* ---------- Companion / Factory ---------- */
 
@@ -157,7 +157,7 @@ fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 /* ---------- CheckType helpers ---------- */
 
 fun CheckType.bugMessage(lang: Language, env: BugMessage.Env): String =
-    bugMessage()[lang]?.msg?.invoke(env) ?: "$lang missing for $this"
+    bugMessage[lang]?.msg?.invoke(env) ?: "$lang missing for $this"
 
 fun CheckType.bugMessage(env: BugMessage.Env): Map<Language, String> =
     Language.entries.associateWith { bugMessage(it, env) }

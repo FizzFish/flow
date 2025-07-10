@@ -63,7 +63,7 @@ class ProgressBarExt(
 
       /** 组合 JVM 内存 / 系统内存 / CPU 使用率文案 */
       open val extraMessage: String
-         get() = " ${getJvmMemoryUsageText()} ${getFreeMemoryText()} ${getCpuLoadText()}"
+         get() = " ${jvmMemoryUsageText} ${freeMemoryText} ${cpuLoadText}"
 
       override fun render(progressState: ProgressState, maxLength: Int): String =
          synchronized(progressBar) {

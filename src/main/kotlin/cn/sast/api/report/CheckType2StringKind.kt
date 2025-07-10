@@ -14,7 +14,7 @@ enum class CheckType2StringKind(val convert: (CheckType) -> String) {
 
     /** 同上但把类名转小写 */
     RuleDotTYName2({
-        "${it.report.realName}.${it::class.simpleName.lowercase(Locale.getDefault())}"
+        "${it.report.realName}.${it::class.simpleName?.lowercase(Locale.getDefault())}"
     }),
 
     /** 仅保留规则名 */

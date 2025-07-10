@@ -1,74 +1,63 @@
 package cn.sast.api.util
 
+import cn.sast.api.report.ClassResInfo
+import soot.ModuleUtil
+import soot.SootClass
 import java.io.File
 import java.util.StringTokenizer
 import java.util.regex.Pattern
-import soot.ModuleUtil
-import soot.SootClass
-import cn.sast.api.report.ClassResInfo
 
 /**
- * 提供对 `java.class.path` 的快捷访问与搜索。
- *
- * 语义与反编译版保持一致，只是改为更惯用的 Kotlin 写法：
- *
- * * `javaClassPath` 改成 `List<String>`，更方便调用者使用
- * * 统一使用 `File.pathSeparator`（Windows `;`、Linux `:`）
+ * Utility helpers around the current Java class‑path.
  */
 object ClassPathUtil {
 
-    /** 当前进程 `java.class.path` 拆分后的条目列表（顺序保持不变）。 */
-    val javaClassPath: List<String>
-        get() = System.getProperty("java.class.path")
-            .split(File.pathSeparatorChar)
+    /**
+     * JVM class‑path split into individual path elements.
+     */
+    val javaClassPath: Array<String>
+        get() = System.getProperty("java.class.path").split(File.pathSeparator).toTypedArray()
 
     /**
-     * 在给定 classPath 字符串里查找 *文件名精确匹配* 的条目。
-     *
-     * @param codeBaseName 目标文件名（不含路径）
-     * @param classPath    若为 `null` 则直接返回 `null`
-     * @return 命中的完整路径；未命中返回 `null`
+     * Locate a concrete file/jar in an *explicit* class‑path string.
+     * @param codeBaseName file name (no path) we are looking for
+     * @param classPath    optional “classpath”.  When `null` → *not found*.
+     * @return absolute path to the match or `null`.
      */
-    fun findCodeBaseInClassPath(
-        codeBaseName: String,
-        classPath: String? = System.getProperty("java.class.path")
-    ): String? =
-        classPath?.let { cp ->
-            StringTokenizer(cp, File.pathSeparator).asSequence()
-                .firstOrNull { File(it).name == codeBaseName }
+    fun findCodeBaseInClassPath(codeBaseName: String, classPath: String? = System.getProperty("java.class.path")): String? {
+        classPath ?: return null
+        val tok = StringTokenizer(classPath, File.pathSeparator)
+        while (tok.hasMoreTokens()) {
+            val t = tok.nextToken()
+            if (File(t).name == codeBaseName) return t
         }
+        return null
+    }
 
     /**
-     * 在 class-path 中查找 *文件名满足正则* 的条目。
+     * Regex variant of [findCodeBaseInClassPath].
      */
-    fun findCodeBaseInClassPath(
-        codeBaseNamePattern: Pattern,
-        classPath: String? = System.getProperty("java.class.path")
-    ): String? =
-        classPath?.let { cp ->
-            StringTokenizer(cp, File.pathSeparator).asSequence()
-                .firstOrNull { codeBaseNamePattern.matcher(File(it).name).matches() }
+    fun findCodeBaseInClassPath(codeBaseNamePattern: Pattern, classPath: String? = System.getProperty("java.class.path")): String? {
+        classPath ?: return null
+        val tok = StringTokenizer(classPath, File.pathSeparator)
+        while (tok.hasMoreTokens()) {
+            val t = tok.nextToken()
+            if (codeBaseNamePattern.matcher(File(t).name).matches()) return t
         }
-
-    /* 把 Java 的 Enumeration/StringTokenizer 转成 Kotlin Sequence */
-    private fun StringTokenizer.asSequence(): Sequence<String> = sequence {
-        while (hasMoreTokens()) yield(nextToken())
+        return null
     }
 }
 
 /**
- * 拆分 `cn.foo.Bar$Inner` → `cn.foo.Bar` to `Inner`
- * 这里仍然委托给现有 `SootUtilsKt.classSplit`，方便与项目其他代码保持一致。
+ * Split fully‑qualified “package.ClassName” → (package, ClassName)
  */
-fun classSplit(cp: ClassResInfo): Pair<String, String> =
-    SootUtils.classSplit(cp.sc)
+fun classSplit(cp: ClassResInfo): Pair<String, String> = classSplit(cp.sc)
 
 /**
- * 读取注解里的源码路径，并在存在 JPMS 模块时加上 `<module>/` 前缀，
- * 用于生成 SARIF / 报告中的文件路径。
+ * Resolve a *source* path for the given [SootClass] considering JPMS module name.
  */
-fun getSourcePathModule(c: SootClass): String? =
-    SootUtils.getSourcePathFromAnnotation(c)?.let { srcPath ->
-        val wrapper: ModuleClassNameWrapper = ModuleUtil.v().makeWrapper(c.name)
-        wrapper.moduleName?.let { "${it}/$srcPath" } ?: srcPath
-    }
+fun getSourcePathModule(c: SootClass): String? {
+    val path = c.getSourcePathFromAnnotation() ?: return null
+    val wrapper: ModuleUtil.ModuleClassNameWrapper = ModuleUtil.v().makeWrapper(c.name)
+    return if (wrapper.moduleName != null) "${wrapper.moduleName}/$path" else path
+}
