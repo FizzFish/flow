@@ -11,7 +11,7 @@ data class SaConfig(
     val sootConfig: ISootInitializeHandler,
     val enableCheckTypes: Set<CheckType>?
 ) {
-    public fun isEnable(checkType: CheckType): Boolean {
+    fun isEnable(checkType: CheckType): Boolean {
         return this.enableCheckTypes == null || this.enableCheckTypes.contains(checkType)
     }
 }

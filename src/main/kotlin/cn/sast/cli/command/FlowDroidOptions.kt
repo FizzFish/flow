@@ -6,6 +6,7 @@ import cn.sast.api.config.MainConfig
 import cn.sast.dataflow.infoflow.InfoflowConfigurationExt
 import com.github.ajalt.clikt.parameters.groups.OptionGroup
 import com.github.ajalt.clikt.parameters.options.*
+import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.long
 import soot.jimple.infoflow.InfoflowConfiguration

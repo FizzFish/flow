@@ -15,7 +15,7 @@ import soot.jimple.toolkits.callgraph.Sources
 import java.util.concurrent.atomic.AtomicInteger
 import soot.MethodOrMethodContext
 
-class UnReachableEntryProvider(
+open class UnReachableEntryProvider(
     private val ctx: SootCtx,
     val exclude: MutableSet<String> = mutableSetOf()
 ) : IEntryPointProvider {

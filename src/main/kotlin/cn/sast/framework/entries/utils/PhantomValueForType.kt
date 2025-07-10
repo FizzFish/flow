@@ -14,7 +14,7 @@ class PhantomValueForType(private val dummyClassName: String = "dummyMainClass")
     private val summaryClass: SootClass
         get() = Scene.v().getSootClassUnsafe(dummyClassName, false)
             ?: Scene.v().makeSootClass(dummyClassName).apply {
-                resolvingLevel = SootClass.BODIES
+                setResolvingLevel(SootClass.BODIES)
                 setApplicationClass()
             }
 
@@ -30,7 +30,7 @@ class PhantomValueForType(private val dummyClassName: String = "dummyMainClass")
         clazz.getMethodByNameUnsafe(base)?.let { found ->
             return if (found.returnType == tp) found else getOrMakeSootMethodForType(tp, base + idx, idx + 1)
         }
-        return Scene.v().makeSootMethod(base, emptyList(), tp, SootMethod.STATIC).also {
+        return Scene.v().makeSootMethod(base, emptyList(), tp, 8).also {
             clazz.addMethod(it)
             it.isPhantom = true
         }

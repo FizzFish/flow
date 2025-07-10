@@ -27,13 +27,10 @@ class ComponentEntryProvider(
     override val iterator: Flow<IEntryPointProvider.AnalyzeTask> = flow {
         emit(object : IEntryPointProvider.AnalyzeTask {
 
-            override fun getEntries(): Set<SootMethod> = methods
-            override fun getComponents(): Set<SootClass> = emptySet()
-            override fun getName(): String = "ComponentEntryProvider(entries=${methods.size})"
+            override val entries: Set<SootMethod> = methods
+            override val name: String = "ComponentEntryProvider(entries=${methods.size})"
 
             override fun needConstructCallGraph(sootCtx: SootCtx) = sootCtx.constructCallGraph()
-            override fun getMethodsMustAnalyze(): Set<SootMethod> = methods
-            override fun getAdditionalEntries(): Set<SootMethod> = emptySet()
         })
     }
 

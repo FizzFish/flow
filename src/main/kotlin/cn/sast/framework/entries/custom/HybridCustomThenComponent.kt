@@ -33,8 +33,8 @@ class HybridCustomThenComponent(
             componentProvider.iterator.map { baseTask ->
                 object : IEntryPointProvider.AnalyzeTask by baseTask {
 
-                    override fun getMethodsMustAnalyze(): Set<SootMethod> = customEntries
-                    override fun getName(): String =
+                    fun getMethodsMustAnalyze(): Set<SootMethod> = customEntries
+                    fun getName(): String =
                         "HybridCustomThenComponent(componentEntries=${customEntries.size})"
                 }
             }

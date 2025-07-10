@@ -1,6 +1,8 @@
 package cn.sast.framework.entries.javaee
 
 import analysis.Config
+import analysis.Config.linkMainAndController
+import analysis.Config.linkSpringCGLIB_CallEntrySyntheticAndRequestMappingMethods
 import analysis.CreateEdge
 import analysis.Implement
 import cn.sast.common.IResFile
@@ -13,13 +15,7 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import mu.KLogger
 import mu.KotlinLogging
-import org.utbot.common.Maybe
-import soot.Body
-import soot.Local
-import soot.SootClass
-import soot.SootMethod
-import soot.Type
-import soot.Value
+import soot.*
 import soot.jimple.JimpleBody
 import utils.BaseBodyGenerator
 import utils.BaseBodyGeneratorFactory
@@ -36,13 +32,13 @@ class JavaEeEntryProvider(
     override val iterator: Flow<IEntryPointProvider.AnalyzeTask> = flow {
         logger.info { "construct Java EE component" }
         val start = LocalDateTime.now()
-        val maybeDummyMain: Maybe<SootMethod> = Maybe.ofNullable(kotlin.runCatching {
-            val paths = beanXmls.map { it.normalize().expandRes(ctx.mainConfig.output_dir).toString() }.toSet()
+        val dummyMain: SootMethod? = runCatching {
+            val paths = beanXmls.map { it.normalize.expandRes(ctx.mainConfig.output_dir).toString() }.toSet()
             createDummyMain(paths)
-        }.getOrNull())
+        }.getOrNull()
 
         val unreachable = UnReachableEntryProvider(ctx).apply {
-            maybeDummyMain.ifPresent { exclude += it.signature }
+            dummyMain?.let { exclude += it.signature }
         }
         emitAll(unreachable.iterator)
         logger.info { "Java EE entry provider finished; elapsed = ${java.time.Duration.between(start, LocalDateTime.now()).toMillis()} ms" }
@@ -51,10 +47,10 @@ class JavaEeEntryProvider(
     /** Build a synthetic `main` that bootstraps Spring / JavaEE context so Soot can start from it. */
     private fun createDummyMain(beanXmlPaths: Set<String>): SootMethod? {
         val p = PhantomValueForType()
-        BaseBodyGeneratorFactory.instance = object : BaseBodyGeneratorFactory(p) {
+        BaseBodyGeneratorFactory.instance = object : BaseBodyGeneratorFactory() {
             override fun create(body: Body): BaseBodyGenerator = SummaryTypeValueBaseBodyGenerator(p, body)
         }
-        Implement.mockObject = object : mock.MockObjectImpl(p) {
+        Implement.mockObject = object : mock.MockObjectImpl() {
             override fun mockBean(
                 body: JimpleBody,
                 units: BaseBodyGenerator,

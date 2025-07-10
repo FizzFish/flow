@@ -16,16 +16,13 @@ object EmptyEntryProvider : IEntryPointProvider {
     override val iterator: Flow<IEntryPointProvider.AnalyzeTask> = flow {
         emit(object : IEntryPointProvider.AnalyzeTask {
 
-            override fun getEntries(): Set<SootMethod> = emptySet()
-            override fun getComponents(): Set<SootClass> = emptySet()
-            override fun getName(): String = "EmptyEntryProvider"
+            override val entries: Set<SootMethod> = emptySet()
+            override val name: String = "(empty entries provider)"
 
             override fun needConstructCallGraph(sootCtx: SootCtx) {
-                sootCtx.setCallGraph(CallGraph())
+                sootCtx.callGraph = CallGraph()
             }
 
-            override fun getMethodsMustAnalyze(): Set<SootMethod> = emptySet()
-            override fun getAdditionalEntries(): Set<SootMethod> = emptySet()
         })
     }
 

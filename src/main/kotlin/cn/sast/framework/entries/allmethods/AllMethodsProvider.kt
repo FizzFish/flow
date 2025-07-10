@@ -25,14 +25,10 @@ class AllMethodsProvider(
 
         emit(object : IEntryPointProvider.AnalyzeTask {
 
-            override fun getEntries(): Set<SootMethod> = entries
-            override fun getComponents(): Set<SootClass> = emptySet()
-            override fun getName(): String = "AllMethodsProvider(entries=${entries.size})"
+            override val entries: Set<SootMethod> = entries
+            override val name: String = "AllMethodsProvider(entries=${entries.size})"
 
             override fun needConstructCallGraph(sootCtx: SootCtx) = sootCtx.constructCallGraph()
-
-            override fun getMethodsMustAnalyze(): Set<SootMethod> = entries
-            override fun getAdditionalEntries(): Set<SootMethod> = emptySet()
         })
     }
 

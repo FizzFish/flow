@@ -21,7 +21,7 @@ import cn.sast.graph.HashMutableDirectedGraph
  * can quickly answer *shouldReAnalyse?* queries.
  */
 class DependsGraph(
-    private val factory: ModifyInfoFactory,
+    override val factory: ModifyInfoFactory,
 ) : IncrementalAnalyzeByChangeFiles.IDependsGraph {
 
     // -------------------------------------------------------------------------
@@ -116,5 +116,5 @@ class DependsGraph(
     //  Simple delegates
     // -------------------------------------------------------------------------
     override fun toDecl(target: Any): XDecl = factory.toDecl(target)
-    override fun getFactory(): ModifyInfoFactory = factory
+    fun getFactory(): ModifyInfoFactory = factory
 }

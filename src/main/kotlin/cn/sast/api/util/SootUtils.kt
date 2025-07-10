@@ -79,6 +79,30 @@ val KCallable<*>.paramStringList: List<String>
 /** Comma‑joined param list. */
 val KCallable<*>.paramSignature: String get() = paramStringList.joinToString()
 
+fun getSootTypeName(clazz: Class<*>): String {
+    // Fast path for non-arrays
+    if (!clazz.isArray) return clazz.name
+
+    return try {
+        var current = clazz
+        var dimension = 0
+
+        // Unwrap array dimensions
+        while (current.isArray) {
+            current = current.componentType
+            dimension++
+        }
+
+        buildString {
+            append(current.name)
+            repeat(dimension) { append("[]") }
+        }
+    } catch (t: Throwable) {
+        // Project–specific critical-error handling
+        throw t          // Re-throw so callers still see the exception
+    }
+}
+
 /** Sub‑signature in Soot grammar. */
 val KCallable<*>.subSignature: String
     get() = when (this) {

@@ -13,12 +13,13 @@ import java.net.URL
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
 import java.time.Duration
 import java.util.*
+import java.util.regex.Pattern
 import java.util.zip.ZipException
 import kotlin.io.path.*
-import java.text.SimpleDateFormat
-import java.util.regex.Pattern
+import org.utbot.common.toClassFilePath
 
 
 /**
@@ -163,7 +164,23 @@ object Resource {
       paths.flatMap { it.split(File.pathSeparator).filter(String::isNotBlank) }
          .mapTo(LinkedHashSet()) { of(it) }
 
-   /* ---------- Zip / Jar ---------- */
+    fun locateClass(cls: Class<*>): URL {
+        val path: String = cls.toClassFilePath()
+        val resource = cls.classLoader.getResource(path)
+        requireNotNull(resource) { ("No such file: $path").toString() }
+        return resource
+    }
+
+   fun IResFile.writeText(
+      text: String //, charset:  = Charsets.UTF_8
+   ) {
+      // Empty vararg keeps identical semantics to the original OpenOption[0]
+      Files.newOutputStream(path, *arrayOf<OpenOption>())
+         .bufferedWriter(charset)
+         .use { it.write(text) }
+   }
+
+    /* ---------- Zip / Jar ---------- */
 
    /** 取 zip 内部条目的虚拟 FileSystem（缓存复用） */
    fun getZipFileSystem(archive: Path): FileSystem = archiveSystemCache[archive]

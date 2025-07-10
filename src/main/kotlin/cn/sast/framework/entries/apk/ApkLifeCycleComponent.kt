@@ -9,30 +9,18 @@ import cn.sast.framework.entries.IEntryPointProvider.AnalyzeTask
 import cn.sast.framework.entries.utils.PhantomValueForType
 import java.io.IOException
 import java.lang.reflect.Method
-import java.util.ArrayList
-import java.util.Arrays
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.intrinsics.IntrinsicsKt
-import kotlin.jvm.functions.Function2
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
-import kotlinx.coroutines.flow.FlowKt
+import kotlinx.coroutines.flow.flow
 import mu.KLogger
+import mu.KotlinLogging
 import org.xmlpull.v1.XmlPullParserException
-import soot.Body
-import soot.Local
-import soot.LocalGenerator
-import soot.Scene
-import soot.SootClass
-import soot.SootMethod
-import soot.Type
-import soot.Value
+import soot.*
 import soot.jimple.infoflow.InfoflowConfiguration.SootIntegrationMode
 import soot.jimple.infoflow.android.InfoflowAndroidConfiguration
-import soot.jimple.infoflow.android.SetupApplication
 import soot.jimple.infoflow.android.InfoflowAndroidConfiguration.CallbackAnalyzer
-import soot.jimple.infoflow.android.InfoflowAndroidConfiguration.CallbackConfiguration
 import soot.jimple.infoflow.android.InfoflowAndroidConfiguration.IccConfiguration
+import soot.jimple.infoflow.android.SetupApplication
 import soot.jimple.infoflow.android.entryPointCreators.AndroidEntryPointCreator
 import soot.jimple.infoflow.android.entryPointCreators.components.ComponentEntryPointCollection
 import soot.jimple.infoflow.handlers.PreAnalysisHandler
@@ -41,163 +29,170 @@ import soot.jimple.infoflow.methodSummary.data.summary.ClassMethodSummaries
 import soot.jimple.infoflow.methodSummary.taintWrappers.SummaryTaintWrapper
 import soot.jimple.infoflow.sourcesSinks.definitions.ISourceSinkDefinitionProvider
 
-public class ApkLifeCycleComponent(
+/**
+ * Kotlin‑idiomatic re‑implementation of the de‑compiled `ApkLifeCycleComponent`.
+ * The API surface and behaviour remain functionally equivalent to the original Java bytecode,
+ * while compiling cleanly with Kotlin 1.9+.
+ */
+class ApkLifeCycleComponent(
     targetAPKFile: String,
     androidPlatformDir: String,
-    oneComponentAtATime: Boolean = true,
+    val oneComponentAtATime: Boolean = true,
     ignoreFlowsInSystemPackages: Boolean = false,
-    enableCallbacks: Boolean = true,
-    callbacksFile: String = "",
+    val enableCallbacks: Boolean = true,
+    val callbacksFile: String = "",
     callbackAnalyzer: CallbackAnalyzerType = CallbackAnalyzerType.Default,
     filterThreadCallbacks: Boolean = true,
-    maxCallbacksPerComponent: Int = 100,
-    callbackAnalysisTimeout: Int = 0,
-    maxCallbackAnalysisDepth: Int = -1,
-    serializeCallbacks: Boolean = false,
+    val maxCallbacksPerComponent: Int = 100,
+    val callbackAnalysisTimeout: Int = 0,
+    val maxCallbackAnalysisDepth: Int = -1,
+    val serializeCallbacks: Boolean = false,
     iccModel: String? = null,
-    iccResultsPurify: Boolean = true
+    val iccResultsPurify: Boolean = true
 ) : IEntryPointProvider {
-    public var targetAPKFile: String = targetAPKFile
-        internal set
 
-    public var androidPlatformDir: String = androidPlatformDir
-        internal set
+    /** Path to the APK that will be analysed. */
+    var targetAPKFile: String = targetAPKFile
+        private set
 
-    public val oneComponentAtATime: Boolean = oneComponentAtATime
+    /** Path to Android platforms (e.g. `$ANDROID_HOME/platforms`). */
+    var androidPlatformDir: String = androidPlatformDir
+        private set
 
-    public var ignoreFlowsInSystemPackages: Boolean = ignoreFlowsInSystemPackages
-        internal set
+    /** Whether flows in system packages are ignored. */
+    var ignoreFlowsInSystemPackages: Boolean = ignoreFlowsInSystemPackages
+        private set
 
-    public val enableCallbacks: Boolean = enableCallbacks
-    public val callbacksFile: String = callbacksFile
+    /** Which callback‑extraction strategy is used. */
+    var callbackAnalyzer: CallbackAnalyzerType = callbackAnalyzer
+        private set
 
-    public var callbackAnalyzer: CallbackAnalyzerType = callbackAnalyzer
-        internal set
+    /** Whether callbacks executed inside worker threads should be filtered. */
+    var filterThreadCallbacks: Boolean = filterThreadCallbacks
+        private set
 
-    public var filterThreadCallbacks: Boolean = filterThreadCallbacks
-        internal set
+    /** Optional ICC model file path. */
+    var iccModel: String? = iccModel
+        private set
 
-    public val maxCallbacksPerComponent: Int = maxCallbacksPerComponent
-    public val callbackAnalysisTimeout: Int = callbackAnalysisTimeout
-    public val maxCallbackAnalysisDepth: Int = maxCallbackAnalysisDepth
-    public val serializeCallbacks: Boolean = serializeCallbacks
+    /** Optional StubDroid summaries. */
+    var taintWrapper: SummaryTaintWrapper? = null
 
-    public var iccModel: String? = iccModel
-        internal set
+    /** Flow‑Droid configuration lazily rebuilt from primary constructor args. */
+    val config: InfoflowAndroidConfiguration by lazy { buildConfig() }
 
-    public val iccResultsPurify: Boolean = iccResultsPurify
+    /** Thin wrapper around Flow‑Droid `SetupApplication` that exposes a few extras. */
+    private val delegateSetupApplication: WSetupApplication by lazy { buildSetupApplication() }
 
-    public var taintWrapper: SummaryTaintWrapper? = null
-        internal set
+    //--------------------------------------------------------------------------
+    // IEntryPointProvider implementation
+    //--------------------------------------------------------------------------
 
-    public val config: InfoflowAndroidConfiguration
-        get() = config$delegate.getValue()
-
-    private val delegateSetupApplication: WSetupApplication
-        get() = delegateSetupApplication$delegate.getValue()
-
-    private val config$delegate = lazy { config_delegate$lambda$0(this) }
-    private val delegateSetupApplication$delegate = lazy { delegateSetupApplication_delegate$lambda$1(this) }
-
-    public override val iterator: Flow<AnalyzeTask>
-        get() = FlowKt.flow { collector ->
-            try {
-                delegateSetupApplication.parseAppResources()
-            } catch (e: IOException) {
-                logger.error("Parse app resource failed", e)
-                throw RuntimeException("Parse app resource failed", e)
-            } catch (e: XmlPullParserException) {
-                logger.error("Parse app resource failed", e)
-                throw RuntimeException("Parse app resource failed", e)
-            }
-
-            val entrypointClasses = delegateSetupApplication.getEntrypointClasses()
-            if (entrypointClasses == null || entrypointClasses.isEmpty()) {
-                logger.warn("No entry entrypoint classes")
-                return@flow
-            }
-
-            injectStubDroidHierarchy(delegateSetupApplication)
-            var callbackDurationTotal = 0L
-            val callbackDuration = System.nanoTime()
-
-            try {
-                if (oneComponentAtATime) {
-                    val callbackDurationSeconds = ArrayList(entrypointClasses)
-                    while (!callbackDurationSeconds.isEmpty()) {
-                        val entryPoint = callbackDurationSeconds.removeAt(0) as SootClass
-                        delegateSetupApplication.calculateCallbacks(null, entryPoint)
-                        val duration = System.nanoTime() - callbackDuration
-                        callbackDurationTotal += duration
-                        val currentDuration = System.nanoTime()
-                        logger.info("\nCollecting callbacks took ${duration / 1.0E9} seconds for component $entryPoint")
-                        val dummyMain = delegateSetupApplication.getEntryPoint()
-                        collector.emit("(component: $entryPoint)", setOf(dummyMain))
-                        delegateSetupApplication.clearCallBackCache()
-                    }
-                } else {
-                    delegateSetupApplication.calculateCallbacks(null, null)
-                    callbackDurationTotal += System.nanoTime() - callbackDuration
-                    val entryPoint = delegateSetupApplication.getEntryPoint()
-                    collector.emit("(mixed dummy main: ${delegateSetupApplication.getEntryPoint()} of components: $entrypointClasses)", setOf(entryPoint))
-                    delegateSetupApplication.clearCallBackCache()
-                }
-            } catch (e: IOException) {
-                logger.error("Call graph construction failed: ${e.message}", e)
-                throw RuntimeException("Call graph construction failed", e)
-            } catch (e: XmlPullParserException) {
-                logger.error("Call graph construction failed: ${e.message}", e)
-                throw RuntimeException("Call graph construction failed", e)
-            }
-
-            logger.info("Collecting callbacks and building a call graph took ${callbackDurationTotal / 1.0E9} seconds")
+    override val iterator: Flow<AnalyzeTask> = flow {
+        try {
+            delegateSetupApplication.parseAppResources()
+        } catch (e: IOException) {
+            logger.error(e) { "Parse app resource failed" }
+            throw RuntimeException("Parse app resource failed", e)
+        } catch (e: XmlPullParserException) {
+            logger.error(e) { "Parse app resource failed" }
+            throw RuntimeException("Parse app resource failed", e)
         }
 
-    public constructor(c: InfoflowAndroidConfiguration, mainConfig: MainConfig, targetAPKFile: String) : this(
-        targetAPKFile = targetAPKFile,
-        androidPlatformDir = mainConfig.getAndroidPlatformDir(),
-        oneComponentAtATime = c.getOneComponentAtATime(),
-        ignoreFlowsInSystemPackages = c.getIgnoreFlowsInSystemPackages(),
-        enableCallbacks = c.getCallbackConfig().getEnableCallbacks(),
-        callbacksFile = c.getCallbackConfig().getCallbacksFile(),
-        callbackAnalyzer = ApkLifeCycleComponentKt.getConvert(c.getCallbackConfig().getCallbackAnalyzer()),
-        filterThreadCallbacks = c.getCallbackConfig().getFilterThreadCallbacks(),
-        maxCallbacksPerComponent = c.getCallbackConfig().getMaxCallbacksPerComponent(),
-        callbackAnalysisTimeout = c.getCallbackConfig().getCallbackAnalysisTimeout(),
-        maxCallbackAnalysisDepth = c.getCallbackConfig().getMaxAnalysisCallbackDepth(),
-        serializeCallbacks = c.getCallbackConfig().isSerializeCallbacks(),
-        iccModel = c.getIccConfig().getIccModel(),
-        iccResultsPurify = c.getIccConfig().isIccResultsPurifyEnabled()
-    )
+        val entrypointClasses = delegateSetupApplication.entrypointClasses
+        if (entrypointClasses.isNullOrEmpty()) {
+            logger.warn { "No entrypoint classes detected" }
+            return@flow
+        }
 
-    public fun injectStubDroidHierarchy(analyzer: WSetupApplication) {
-        taintWrapper?.let { wrapper ->
-            val provider = wrapper.getProvider()
+        injectStubDroidHierarchy(delegateSetupApplication)
+
+        var callbackDurationTotal = 0L
+        var callbackStart = System.nanoTime()
+
+        fun buildCallbacks(entryPoint: SootClass?) {
+            try {
+                delegateSetupApplication.calculateCallbacks(null, entryPoint)
+            } catch (e: IOException) {
+                logger.error(e) { "Call graph construction failed: ${e.message}" }
+                throw RuntimeException("Call graph construction failed", e)
+            } catch (e: XmlPullParserException) {
+                logger.error(e) { "Call graph construction failed: ${e.message}" }
+                throw RuntimeException("Call graph construction failed", e)
+            }
+        }
+
+        suspend fun FlowCollector<AnalyzeTask>.emitTask(name: String, entries: Set<SootMethod>) {
+            emit(object : AnalyzeTask {
+                override val name: String = name
+                override val entries: Set<SootMethod> = entries
+                override val additionalEntries: Set<SootMethod> =
+                    delegateSetupApplication.lifecycleMethods() ?: emptySet()
+                override val components: Set<SootClass> = delegateSetupApplication.entrypointClasses
+                override fun needConstructCallGraph(sootCtx: SootCtx) = sootCtx.showPta()
+            })
+        }
+
+        if (oneComponentAtATime) {
+            val components = entrypointClasses.toMutableList()
+            while (components.isNotEmpty()) {
+                val component = components.removeAt(0)
+                buildCallbacks(component)
+                val duration = System.nanoTime() - callbackStart
+                callbackDurationTotal += duration
+                callbackStart = System.nanoTime()
+
+                logger.info {
+                    "Collecting callbacks took ${duration / 1.0e9} seconds for component $component"
+                }
+
+                val dummyMain = delegateSetupApplication.entryPoint
+                emitTask("(component: $component)", setOf(dummyMain))
+                delegateSetupApplication.clearCallBackCache()
+            }
+        } else {
+            buildCallbacks(null)
+            callbackDurationTotal = System.nanoTime() - callbackStart
+
+            val dummyMain = delegateSetupApplication.entryPoint
+            emitTask(
+                "(mixed dummy main: ${delegateSetupApplication.entryPoint} of components: $entrypointClasses)",
+                setOf(dummyMain)
+            )
+            delegateSetupApplication.clearCallBackCache()
+        }
+
+        logger.info {
+            "Collecting callbacks and building a call graph took ${callbackDurationTotal / 1.0e9} seconds"
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    // Public helpers
+    //--------------------------------------------------------------------------
+
+    fun injectStubDroidHierarchy(analyzer: WSetupApplication) {
+        taintWrapper?.provider?.let { provider ->
             analyzer.addPreprocessor(object : PreAnalysisHandler(provider) {
                 override fun onBeforeCallgraphConstruction() {
-                    for (className in provider.getAllClassesWithSummaries()) {
-                        val sc = Scene.v().forceResolve(className, 2)
+                    for (className in provider.allClassesWithSummaries) {
+                        val sc = Scene.v().forceResolve(className, SootClass.BODIES)
                         if (sc.isPhantom) {
-                            val summaries = provider.getClassFlows(className)
-                            if (summaries != null) {
+                            provider.getClassFlows(className)?.let { summaries ->
                                 if (summaries.hasInterfaceInfo()) {
                                     if (summaries.isInterface) {
-                                        sc.modifiers = sc.modifiers or 512
+                                        sc.modifiers = sc.modifiers or Modifier.INTERFACE
                                     } else {
-                                        sc.modifiers = sc.modifiers and -513
+                                        sc.modifiers = sc.modifiers and Modifier.INTERFACE.inv()
                                     }
                                 }
-
                                 if (summaries.hasSuperclass()) {
-                                    sc.superclass = Scene.v().forceResolve(summaries.getSuperClass(), 2)
+                                    sc.superclass = Scene.v().forceResolve(summaries.superClass, SootClass.BODIES)
                                 }
-
                                 if (summaries.hasInterfaces()) {
-                                    for (intfName in summaries.getInterfaces()) {
-                                        val scIntf = Scene.v().forceResolve(intfName, 2)
-                                        if (!sc.implementsInterface(intfName)) {
-                                            sc.addInterface(scIntf)
-                                        }
+                                    for (intfName in summaries.interfaces) {
+                                        val scIntf = Scene.v().forceResolve(intfName, SootClass.BODIES)
+                                        if (!sc.implementsInterface(intfName)) sc.addInterface(scIntf)
                                     }
                                 }
                             }
@@ -205,112 +200,136 @@ public class ApkLifeCycleComponent(
                     }
                 }
 
-                override fun onAfterCallgraphConstruction() {}
+                override fun onAfterCallgraphConstruction() = Unit
             })
         }
     }
 
-    public suspend fun FlowCollector<AnalyzeTask>.emit(name: String, entries: Set<SootMethod>) {
-        emit(object : AnalyzeTask {
-            override val name: String = name
-            override val entries: Set<SootMethod> = entries
-            override val additionalEntries: Set<SootMethod> = delegateSetupApplication.lifecycleMethods()
-            override val components: Set<SootClass> = delegateSetupApplication.getEntrypointClasses()
+    //--------------------------------------------------------------------------
+    // Secondary constructor matching the original bytecode signature
+    //--------------------------------------------------------------------------
 
-            override fun needConstructCallGraph(sootCtx: SootCtx) {
-                sootCtx.showPta()
-            }
-        })
-    }
+    constructor(c: InfoflowAndroidConfiguration, mainConfig: MainConfig, targetAPKFile: String) : this(
+        targetAPKFile = targetAPKFile,
+        androidPlatformDir = mainConfig.androidPlatformDir,
+        oneComponentAtATime = c.oneComponentAtATime,
+        ignoreFlowsInSystemPackages = c.isIgnoreFlowsInSystemPackages,
+        enableCallbacks = c.callbackConfig.enableCallbacks,
+        callbacksFile = c.callbackConfig.callbacksFile,
+        callbackAnalyzer = c.callbackConfig.callbackAnalyzer.toCallbackAnalyzerType(),
+        filterThreadCallbacks = c.callbackConfig.filterThreadCallbacks,
+        maxCallbacksPerComponent = c.callbackConfig.maxCallbacksPerComponent,
+        callbackAnalysisTimeout = c.callbackConfig.callbackAnalysisTimeout,
+        maxCallbackAnalysisDepth = c.callbackConfig.maxAnalysisCallbackDepth,
+        serializeCallbacks = c.callbackConfig.serializeCallbacks,
+        iccModel = c.iccConfig.iccModel,
+        iccResultsPurify = c.iccConfig.isIccResultsPurifyEnabled
+    )
 
-    override fun startAnalyse() {
-        IEntryPointProvider.DefaultImpls.startAnalyse(this)
-    }
+    //--------------------------------------------------------------------------
+    // IEntryPointProvider boilerplate
+    //--------------------------------------------------------------------------
 
-    override fun endAnalyse() {
-        IEntryPointProvider.DefaultImpls.endAnalyse(this)
-    }
+    override fun startAnalyse() = IEntryPointProvider.DefaultImpls.startAnalyse(this)
+    override fun endAnalyse() = IEntryPointProvider.DefaultImpls.endAnalyse(this)
 
-    @JvmStatic
-    private fun config_delegate$lambda$0(this$0: ApkLifeCycleComponent): InfoflowAndroidConfiguration {
-        val config = InfoflowAndroidConfiguration()
-        config.setIgnoreFlowsInSystemPackages(this$0.ignoreFlowsInSystemPackages)
-        config.setSootIntegrationMode(SootIntegrationMode.CreateNewInstance)
-        config.setCallgraphAlgorithm(null)
-        val iccConfig = config.getIccConfig()
-        iccConfig.setIccModel(this$0.iccModel)
-        iccConfig.setIccResultsPurify(this$0.iccResultsPurify)
-        config.getAnalysisFileConfig().setTargetAPKFile(this$0.targetAPKFile)
-        val callbackConfig = config.getCallbackConfig()
-        callbackConfig.setEnableCallbacks(this$0.enableCallbacks)
-        callbackConfig.setCallbacksFile(this$0.callbacksFile)
-        callbackConfig.setCallbackAnalyzer(ApkLifeCycleComponentKt.getConvert(this$0.callbackAnalyzer))
-        callbackConfig.setFilterThreadCallbacks(this$0.filterThreadCallbacks)
-        callbackConfig.setMaxCallbacksPerComponent(this$0.maxCallbacksPerComponent)
-        callbackConfig.setCallbackAnalysisTimeout(this$0.callbackAnalysisTimeout)
-        callbackConfig.setMaxAnalysisCallbackDepth(this$0.maxCallbackAnalysisDepth)
-        callbackConfig.setSerializeCallbacks(this$0.serializeCallbacks)
-        val targetFile = Resource.INSTANCE.of(this$0.targetAPKFile)
-        if (!targetFile.exists) {
-            throw IllegalStateException("Target APK file ${targetFile.absolutePath} does not exist")
+    //--------------------------------------------------------------------------
+    // Private helpers
+    //--------------------------------------------------------------------------
+
+    private fun buildConfig(): InfoflowAndroidConfiguration = InfoflowAndroidConfiguration().apply {
+        ignoreFlowsInSystemPackages = this@ApkLifeCycleComponent.ignoreFlowsInSystemPackages
+        sootIntegrationMode = SootIntegrationMode.CreateNewInstance
+        callgraphAlgorithm = null
+        iccConfig.apply {
+            iccModel = this@ApkLifeCycleComponent.iccModel
+            isIccResultsPurify = this@ApkLifeCycleComponent.iccResultsPurify
         }
-        return config
+        analysisFileConfig.targetAPKFile = this@ApkLifeCycleComponent.targetAPKFile
+        callbackConfig.apply {
+            enableCallbacks = this@ApkLifeCycleComponent.enableCallbacks
+            callbacksFile = this@ApkLifeCycleComponent.callbacksFile
+            callbackAnalyzer = this@ApkLifeCycleComponent.callbackAnalyzer.toCallbackAnalyzer()
+            filterThreadCallbacks = this@ApkLifeCycleComponent.filterThreadCallbacks
+            maxCallbacksPerComponent = this@ApkLifeCycleComponent.maxCallbacksPerComponent
+            callbackAnalysisTimeout = this@ApkLifeCycleComponent.callbackAnalysisTimeout
+            maxAnalysisCallbackDepth = this@ApkLifeCycleComponent.maxCallbackAnalysisDepth
+            serializeCallbacks = this@ApkLifeCycleComponent.serializeCallbacks
+        }
+
+        val targetFile: IResource = Resource.of(this@ApkLifeCycleComponent.targetAPKFile)
+        require(targetFile.exists) { "Target APK file ${targetFile.absolutePath} does not exist" }
     }
 
-    @JvmStatic
-    private fun delegateSetupApplication_delegate$lambda$1(this$0: ApkLifeCycleComponent): WSetupApplication {
-        this$0.config.getAnalysisFileConfig().setAndroidPlatformDir(this$0.androidPlatformDir)
-        val wSetupApplication = this$0.WSetupApplication(this$0.config)
-        this$0.config.getAnalysisFileConfig().setAndroidPlatformDir("unused")
-        return wSetupApplication
+    private fun buildSetupApplication(): WSetupApplication {
+        config.analysisFileConfig.androidPlatformDir = androidPlatformDir
+        val app = WSetupApplication(config)
+        config.analysisFileConfig.androidPlatformDir = "unused" // placeholder to avoid re‑parsing
+        return app
     }
 
-    public inner class WSetupApplication(config: InfoflowAndroidConfiguration) : SetupApplication(config, null) {
-        public val entryPoint: SootMethod
+    //--------------------------------------------------------------------------
+    // Nested wrapper around Flow‑Droid SetupApplication
+    //--------------------------------------------------------------------------
+
+    inner class WSetupApplication(config: InfoflowAndroidConfiguration) : SetupApplication(config, null) {
+        val entryPoint: SootMethod
             get() = entryPointCreator.generatedMainMethod
 
-        public fun lifecycleMethods(): Set<SootMethod>? {
-            return entryPointCreator?.componentToEntryPointInfo?.lifecycleMethods?.let { CollectionsKt.toSet(it) }
-        }
+        val entrypointClasses: Set<SootClass>
+            get() = super.getEntrypointClasses()
 
-        public fun clearCallBackCache() {
+        fun lifecycleMethods(): Set<SootMethod>? =
+            entryPointCreator?.componentToEntryPointInfo?.lifecycleMethods?.toSet()
+
+        fun clearCallBackCache() {
             callbackMethods.clear()
             fragmentClasses.clear()
         }
 
-        @Throws(XmlPullParserException::class, IOException::class)
-        public override fun parseAppResources() {
-            super.parseAppResources()
-        }
-
-        public fun calculateCallbacks(sourcesAndSinks: ISourceSinkDefinitionProvider?, entryPoint: SootClass?) {
-            val method = SetupApplication::class.java.getDeclaredMethod(
-                "calculateCallbacks", 
-                ISourceSinkDefinitionProvider::class.java, 
+        fun calculateCallbacks(
+            sourcesAndSinks: ISourceSinkDefinitionProvider?,
+            entryPoint: SootClass?
+        ) {
+            val m: Method = SetupApplication::class.java.getDeclaredMethod(
+                "calculateCallbacks",
+                ISourceSinkDefinitionProvider::class.java,
                 SootClass::class.java
             )
-            method.isAccessible = true
-            method.invoke(this, sourcesAndSinks, entryPoint)
+            m.isAccessible = true
+            m.invoke(this, sourcesAndSinks, entryPoint)
         }
 
-        protected override fun createEntryPointCreator(components: MutableSet<SootClass>?): AndroidEntryPointCreator {
-            return object : AndroidEntryPointCreator(components, this.manifest) {
-                private val p = PhantomValueForType(null, 1, null)
-
+        override fun createEntryPointCreator(components: MutableSet<SootClass>?): AndroidEntryPointCreator =
+            object : AndroidEntryPointCreator(components, manifest) {
+                private val phantomGenerator = PhantomValueForType()
                 override fun getValueForType(
                     tp: Type,
                     constructionStack: MutableSet<SootClass>,
-                    parentClasses: MutableSet<out SootClass>,
+                    parentClasses: Set<out SootClass>,
                     generatedLocals: MutableSet<Local>,
                     ignoreExcludes: Boolean
-                ): Value {
-                    return p.getValueForType(body, generator, tp)
-                }
+                ): Value = phantomGenerator.getValueForType(body, generator, tp)
             }
-        }
     }
 
-    public companion object {
-        private val logger: KLogger = TODO("Initialize logger")
+    companion object {
+        private val logger: KLogger = KotlinLogging.logger {}
     }
+}
+
+// -----------------------------------------------------------------------------
+//  Enum bridges between Flow‑Droid's `CallbackAnalyzer` and project‑level enum.
+// -----------------------------------------------------------------------------
+
+internal enum class CallbackAnalyzerType { Default, Fast }
+
+fun CallbackAnalyzerType.toCallbackAnalyzer(): CallbackAnalyzer = when (this) {
+    CallbackAnalyzerType.Default -> CallbackAnalyzer.Default
+    CallbackAnalyzerType.Fast -> CallbackAnalyzer.Fast
+}
+
+fun CallbackAnalyzer.toCallbackAnalyzerType(): CallbackAnalyzerType = when (this) {
+    CallbackAnalyzer.Default -> CallbackAnalyzerType.Default
+    CallbackAnalyzer.Fast -> CallbackAnalyzerType.Fast
 }

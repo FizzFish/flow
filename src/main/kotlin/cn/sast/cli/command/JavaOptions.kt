@@ -1,5 +1,6 @@
 package cn.sast.cli.command
 
+import HybridUnReachThenComponent
 import cn.sast.api.config.MainConfig
 import cn.sast.framework.EntryPointCreatorFactory
 import cn.sast.framework.SootCtx

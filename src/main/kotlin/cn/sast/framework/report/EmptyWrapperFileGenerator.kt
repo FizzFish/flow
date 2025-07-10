@@ -5,7 +5,7 @@ import cn.sast.api.report.IBugResInfo
 import cn.sast.common.IResDirectory
 import cn.sast.common.IResFile
 import mu.KotlinLogging
-import org.mockito.internal.util.io.IOUtil.writeText
+import cn.sast.common.writeText
 
 /**
  * 当源码缺失/无法读取时，用空文件占位，避免下游处理 NPE。
@@ -32,7 +32,7 @@ object EmptyWrapperFileGenerator : IWrapperFileGenerator {
             .resolve(getInternalFileName(resInfo))
             .toFile()
 
-        if (outFile.exists()) {
+        if (outFile.exists) {
             return if (outFile.isFile) {
                 outFile
             } else {
@@ -42,7 +42,7 @@ object EmptyWrapperFileGenerator : IWrapperFileGenerator {
         }
 
         return try {
-            outFile.parentFile?.mkdirs()
+            outFile.parent?.mkdirs()
             writeText(outFile, makeWrapperFileContent(resInfo))
             outFile
         } catch (e: Exception) {

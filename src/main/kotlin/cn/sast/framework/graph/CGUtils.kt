@@ -3,21 +3,15 @@ package cn.sast.framework.graph
 import cn.sast.api.config.ExtSettings
 import cn.sast.api.report.Counter
 import cn.sast.common.IResDirectory
-import cn.sast.common.IResFile
 import kotlinx.coroutines.*
 import mu.KotlinLogging
 import soot.*
-import soot.jimple.DynamicInvokeExpr
-import soot.jimple.InvokeExpr
 import soot.jimple.Jimple
 import soot.jimple.JimpleBody
 import soot.jimple.Stmt
-import soot.jimple.toolkits.callgraph.CallGraph
 import soot.jimple.toolkits.callgraph.Edge
-import soot.jimple.toolkits.callgraph.ReachableMethods
 import soot.util.queue.QueueReader
 import java.nio.file.Files
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Collection of *utility* methods used after Soot call‑graph generation to
@@ -74,7 +68,7 @@ object CGUtils {
         val scene = Scene.v()
         val cg = scene.callGraph
         val reachable = scene.reachableMethods.apply { update() }
-        val listener: QueueReader = reachable.listener()
+        val listener: QueueReader<MethodOrMethodContext> = reachable.listener()
         while (listener.hasNext()) {
             val src = listener.next().method()
             if (!src.hasActiveBody()) continue
@@ -87,7 +81,7 @@ object CGUtils {
                     if (tgtClass.isPhantom && !Scene.v().isExcluded(tgtClass) && !tgtClass.name.startsWith("soot.dummy")) {
                         missClasses.count(tgtClass)
                     }
-                    cg.addEdge(Edge(src, stmt, ie.method()))
+                    cg.addEdge(Edge(src, stmt, ie.method))
                 }
             }
         }
@@ -99,7 +93,7 @@ object CGUtils {
     fun flushMissedClasses(outputDir: IResDirectory) {
         val outFile = outputDir.resolve("phantom_dependence_classes.txt").toFile()
         if (missClasses.isNotEmpty()) {
-            logger.warn { "Incomplete analysis! ${missClasses.size()} phantom classes collected. See: ${outFile.absolute.normalize()}" }
+            logger.warn { "Incomplete analysis! ${missClasses.size()} phantom classes collected. See: ${outFile.absolute.normalize}" }
             missClasses.writeResults(outFile)
         } else {
             Files.deleteIfExists(outFile.path)
@@ -108,8 +102,8 @@ object CGUtils {
 
     fun removeInvalidMethodBody(scene: Scene) {
         scene.classes.forEach { sc ->
-            sc.methods.filter { it.hasActiveBody() && it.activeBody.units.isEmpty }.forEach { sm ->
-                sm.setActiveBody(null)
+            sc.methods.filter { it.hasActiveBody() && it.activeBody.units.isEmpty() }.forEach { sm ->
+                sm.activeBody = null
                 sm.isPhantom = true
             }
         }
@@ -129,8 +123,8 @@ object CGUtils {
     }
 
     fun removeLargeClasses(scene: Scene) {
-        val maxMethods = ExtSettings.INSTANCE.skip_large_class_by_maximum_methods
-        val maxFields  = ExtSettings.INSTANCE.skip_large_class_by_maximum_fields
+        val maxMethods = ExtSettings.skip_large_class_by_maximum_methods
+        val maxFields  = ExtSettings.skip_large_class_by_maximum_fields
         if (maxMethods <= 0 && maxFields <= 0) return
         scene.classes.snapshotIterator().forEachRemaining { sc ->
             var remove = false
@@ -166,7 +160,7 @@ object CGUtils {
 
     fun getOrCreateClass(scene: Scene, className: String): SootClass =
         scene.getSootClassUnsafe(className, false) ?: scene.makeSootClass(className).apply {
-            resolvingLevel = SootClass.BODIES
+            setResolvingLevel(SootClass.BODIES)
             scene.addClass(this)
         }
 

@@ -60,6 +60,7 @@ class MainConfig(
 
     /* ─────────────── 延迟派生字段 ─────────────── */
 
+    val output_dir: IResDirectory = Resource.dirOf("out/test-out")
     val useDefaultJavaClassPath: Boolean = false
     val sqliteReportDb: IResFile
         get() = outputDir

@@ -1,11 +1,28 @@
 package cn.sast.framework.plugin
 
+import cn.sast.api.util.getSootTypeName
 import com.feysh.corax.config.api.CheckType
 import com.feysh.corax.config.api.IChecker
-import com.feysh.corax.config.api.utils.UtilsKt
+import com.feysh.corax.config.api.SAOptions
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import java.util.LinkedHashSet
+
+
+@Serializable
+sealed class ConfigSerializable : IConfig, Comparable<ConfigSerializable> {
+
+    /** Human‑readable unique identifier (enforced by concrete subclasses). */
+    abstract val name: String
+
+    @Transient
+    private val className: String = javaClass.name
+
+    /** Class‑then‑name ordering so we get deterministic output when serialising. */
+    final override fun compareTo(other: ConfigSerializable): Int =
+        (className compareTo other.className).takeIf { it != 0 } ?: name.compareTo(other.name)
+}
 
 @Serializable
 @SerialName("CheckerTypeConfig")
@@ -18,7 +35,7 @@ data class CheckersConfig(
 
     /** Convenience constructor – build from a concrete [IChecker] implementation. */
     constructor(checker: IChecker) : this(
-        UtilsKt.getSootTypeName(checker.javaClass),
+        getSootTypeName(checker.javaClass),
         checker.desc,
         enable = true,
     )
@@ -27,14 +44,6 @@ data class CheckersConfig(
     fun sort(): CheckersConfig {
         checkTypes = checkTypes.sorted().toCollection(LinkedHashSet())
         return this
-    }
-
-    override fun compareTo(other: ConfigSerializable): Int = when (other) {
-        !is CheckersConfig -> super.compareTo(other)
-        else -> super.compareTo(other).takeIf { it != 0 } ?: when {
-            enable != other.enable -> if (enable) -1 else 1
-            else -> 0
-        }
     }
 
     // ---------------------------------------------------------------------
@@ -49,7 +58,7 @@ data class CheckersConfig(
 
         constructor(type: CheckType) : this(type.toIdentifier(), true)
 
-        override val name: String get() = checkType
+        val name: String get() = checkType
 
         override fun compareTo(other: CheckTypeConfig): Int =
             checkType.compareTo(other.checkType).takeIf { it != 0 } ?: when {
@@ -58,3 +67,19 @@ data class CheckersConfig(
             }
     }
 }
+
+@Serializable
+@SerialName("CheckerUnitOptionalConfig")
+data class CheckerUnitOptionalConfig(
+    override val name: String,
+    override val enable: Boolean = true,
+    override val options: SAOptions? = null,
+) : ConfigSerializable(), IOptional, IFieldOptions
+
+@Serializable
+@SerialName("SootOptionsConfig")
+data class SootOptionsConfig(
+    override val name: String,
+    override val enable: Boolean = true,
+    override val options: SAOptions? = null,
+) : ConfigSerializable(), IOptional, IFieldOptions
