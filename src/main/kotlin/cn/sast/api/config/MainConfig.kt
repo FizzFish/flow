@@ -3,25 +3,31 @@ package cn.sast.api.config
 /* ────────────────────────────────────────────────────────────────────────────
  * Imports（保留原依赖，若无此库请在 build.gradle(.kts) 添加）
  * ─────────────────────────────────────────────────────────────────────────── */
-import cn.sast.api.incremental.IncrementalAnalyze
 import cn.sast.api.incremental.IncrementalAnalyzeByChangeFiles
 import cn.sast.api.util.IMonitor
 import cn.sast.common.*
 import cn.sast.common.FileSystemLocator.TraverseMode
-import com.charleskorn.kaml.*
+import com.charleskorn.kaml.PolymorphismStyle
+import com.charleskorn.kaml.SequenceStyle
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlConfiguration
 import com.feysh.corax.config.api.*
 import com.feysh.corax.config.api.rules.ProcessRule
-import kotlinx.collections.immutable.*
+import kotlinx.collections.immutable.PersistentSet
+import kotlinx.collections.immutable.persistentSetOf
+import kotlinx.collections.immutable.toPersistentSet
 import kotlinx.serialization.modules.SerializersModule
 import mu.KLogger
-import org.utbot.common.PathUtil
 import soot.Scene
 import java.io.File
 import java.nio.charset.Charset
-import java.nio.file.*
-import java.util.*
-import kotlin.io.path.*
+import java.nio.file.FileSystem
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.Path
 import kotlin.math.max
+import kotlin.reflect.jvm.internal.impl.utils.CollectionsKt
+
 
 /* ────────────────────────────────────────────────────────────────────────────
  * 1. Kotlin 数据类/配置类
@@ -31,39 +37,52 @@ class MainConfig(
     val sourceEncoding:         Charset                  = Charsets.UTF_8,
     var monitor:                IMonitor?                = null,
     var saConfig:               SaConfig?                = null,
-
-    /* —— 路径相关 —— */
-    var outputDir:              IResDirectory            = Resource.dirOf("out/test-out"),
+    var output_dir:              IResDirectory            = Resource.dirOf("out/test-out"),
+    val dumpSootScene: Boolean = false,
+    val use_wrapper: Boolean = true,
+    val hideNoSource: Boolean = false,
     var traverseMode:           TraverseMode             = TraverseMode.RecursivelyIndexArchive,
     var processDir:             PersistentSet<IResource> = persistentSetOf(),
     var classpath:              PersistentSet<String>    = persistentSetOf(),
     var sourcePath:             PersistentSet<IResource> = persistentSetOf(),
     var projectRoot:            PersistentSet<IResource> = persistentSetOf(),
-
-    /* —— 代码分析选项 —— */
+    val autoAppClasses: PersistentSet<IResource> = persistentSetOf(),
+    val autoAppTraverseMode: TraverseMode = TraverseMode.RecursivelyIndexArchive,
+    val autoAppSrcInZipScheme: Boolean = true,
     var skipClass:      Boolean = true,
     var incrementAnalyze:      Boolean = false,
     var enableLineNumbers:      Boolean = true,
     var enableOriginalNames:    Boolean = true,
-    var wholeProgram:           Boolean = true,
     var allowPhantomRefs:       Boolean = true,
-
-    /* —— Android 相关 —— */
+    val output_format: Int = 14,
+    val throw_analysis: Int = 3,
+    val process_multiple_dex: Boolean = true,
+    val appClasses: Set<String> = emptySet(),
+    val src_precedence: SrcPrecedence = SrcPrecedence.prec_apk_class_jimple,
+    val ecj_options: List<String> = emptyList(),
+    val sunBootClassPath: String? = System.getProperty("sun.boot.class.path"),
+    val javaExtDirs: String? = System.getProperty("java.ext.dirs"),
+    val hashAbspathInPlist: Boolean = false,
+    val deCompileIfNotExists: Boolean = true,
+    val enableCodeMetrics: Boolean = true,
+    val prepend_classpath: Boolean = false,
+    val whole_program: Boolean = true,
+    val no_bodies_for_excluded: Boolean = true,
+    val allow_phantom_refs: Boolean = true,
+    val enableReflection: Boolean = true,
+    val staticFieldTrackingMode: StaticFieldTrackingMode = StaticFieldTrackingMode.ContextFlowSensitive,
+    val callGraphAlgorithm: String = "insens",
+    val callGraphAlgorithmBuiltIn: String = "cha",
+    val memoryThreshold: Double = 0.9,
     var androidPlatformDir:     String?  = null,
-    var processMultipleDex:     Boolean  = true,
-
-    /* —— 其它 —— */
-    var memoryThreshold:        Double   = 0.9,
-
-
+    var appOnly: Boolean,
+    var isAndroidScene: Boolean
 ) {
 
     /* ─────────────── 延迟派生字段 ─────────────── */
-
-    val output_dir: IResDirectory = Resource.dirOf("out/test-out")
     val useDefaultJavaClassPath: Boolean = false
     val sqliteReportDb: IResFile
-        get() = outputDir
+        get() = output_dir
             .resolve("sqlite")
             .resolve("sqlite_report_coraxjava.db")
             .toFile()
@@ -88,7 +107,7 @@ class MainConfig(
         val cp = buildSet {
             if (processDir.isNotEmpty()) addAll(
                 processDir.flatMap { globPaths(it.toString()) ?: emptyList() }
-                    .map { it.expandRes(outputDir).absolutePath }
+                    .map { it.expandRes(output_dir).absolutePath }
             )
             if (classpath.isNotEmpty()) addAll(classpath)
             if (useDefaultJavaClassPath) {
@@ -139,7 +158,15 @@ class MainConfig(
 
     /* —— 相对路径转换工具 —— */
 
-    fun tryGetRelativePath(abs: String): RelativePath =
+    fun tryGetRelativePath(p: IResource): RelativePath {
+        return tryGetRelativePathFromAbsolutePath(p.absolute.normalize.toString())
+    }
+
+    fun tryGetRelativePath(p: Path): RelativePath {
+        return tryGetRelativePath(Resource.of(p))
+    }
+
+    fun tryGetRelativePathFromAbsolutePath(abs: String): RelativePath =
         allResourcePathNormalized
             .firstOrNull { abs.startsWith(it) }
             ?.let { src -> RelativePath(src, buildRelative(src, abs)) }
@@ -189,6 +216,15 @@ class MainConfig(
         require(processDir.none { it.toString().isEmpty() }) { "processDir 有空字符串" }
         require(sourcePath.none { it.toString().isEmpty() }) { "sourcePath 有空字符串" }
     }
+
+    fun getSoot_process_dir(): Set<String> {
+        val ret: MutableSet<String> = HashSet()
+        for(res in this.processDir + this.autoAppClasses) {
+            ret.add(res.expandRes(this.output_dir).absolutePath)
+        }
+        return ret
+    }
+
 
     /* ======================== 嵌套数据类 ======================== */
 

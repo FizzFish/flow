@@ -37,7 +37,7 @@ public class LibraryClassPatcher {
          sc.setLibraryClass();
          SootMethod smMessageConstructor = Scene.v().grabMethod("<android.os.Message: void <init>()>");
          if (smMessageConstructor != null) {
-            final SootField tmp = sc.getFieldUnsafe("int what");
+            SootField tmp = sc.getFieldUnsafe("int what");
             if (tmp == null) {
                tmp = Scene.v().makeSootField("what", IntType.v());
                sc.addField(tmp);
@@ -63,11 +63,12 @@ public class LibraryClassPatcher {
 
             SystemClassHandler systemClassHandler = SystemClassHandler.v();
             SootMethod smObtain1 = sc.getMethodUnsafe("android.os.Message obtain(android.os.Handler,int)");
+            SootFieldRef tmpRef = tmp.makeRef();
             if (smObtain1 != null && (!smObtain1.hasActiveBody() || systemClassHandler.isStubImplementation(smObtain1.getActiveBody()))) {
                this.generateMessageObtainMethod(smObtain1, new LibraryClassPatcher.IMessageObtainCodeInjector() {
                   @Override
                   public void injectCode(Body body, Local messageLocal) {
-                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmp.makeRef()), body.getParameterLocal(1)));
+                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmpRef), body.getParameterLocal(1)));
                   }
                });
             }
@@ -77,10 +78,10 @@ public class LibraryClassPatcher {
                this.generateMessageObtainMethod(smObtain2, new LibraryClassPatcher.IMessageObtainCodeInjector() {
                   @Override
                   public void injectCode(Body body, Local messageLocal) {
-                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmp.makeRef()), body.getParameterLocal(1)));
-                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmp.makeRef()), body.getParameterLocal(2)));
-                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmp.makeRef()), body.getParameterLocal(3)));
-                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmp.makeRef()), body.getParameterLocal(4)));
+                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmpRef), body.getParameterLocal(1)));
+                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmpRef), body.getParameterLocal(2)));
+                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmpRef), body.getParameterLocal(3)));
+                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmpRef), body.getParameterLocal(4)));
                   }
                });
             }
@@ -90,9 +91,9 @@ public class LibraryClassPatcher {
                this.generateMessageObtainMethod(smObtain3, new LibraryClassPatcher.IMessageObtainCodeInjector() {
                   @Override
                   public void injectCode(Body body, Local messageLocal) {
-                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmp.makeRef()), body.getParameterLocal(1)));
-                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmp.makeRef()), body.getParameterLocal(2)));
-                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmp.makeRef()), body.getParameterLocal(3)));
+                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmpRef), body.getParameterLocal(1)));
+                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmpRef), body.getParameterLocal(2)));
+                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmpRef), body.getParameterLocal(3)));
                   }
                });
             }
@@ -102,8 +103,8 @@ public class LibraryClassPatcher {
                this.generateMessageObtainMethod(smObtain4, new LibraryClassPatcher.IMessageObtainCodeInjector() {
                   @Override
                   public void injectCode(Body body, Local messageLocal) {
-                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmp.makeRef()), body.getParameterLocal(1)));
-                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmp.makeRef()), body.getParameterLocal(2)));
+                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmpRef), body.getParameterLocal(1)));
+                     body.getUnits().add(Jimple.v().newAssignStmt(Jimple.v().newInstanceFieldRef(messageLocal, tmpRef), body.getParameterLocal(2)));
                   }
                });
             }

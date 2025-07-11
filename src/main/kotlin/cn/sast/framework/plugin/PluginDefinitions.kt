@@ -11,10 +11,12 @@ import com.feysh.corax.config.builtin.soot.DefaultSootConfiguration
 import com.feysh.corax.config.builtin.soot.EmptySootConfiguration
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.modules.*
+import kotlinx.serialization.serializerOrNull
 import mu.KLogger
 import mu.KotlinLogging
 import org.pf4j.PluginWrapper
 import kotlin.reflect.KClass
+import org.utbot.common.isAbstract
 
 /**
  * Kotlin reconstruction of the original `PluginDefinitions` (de‑compiled Java).
@@ -74,7 +76,7 @@ class PluginDefinitions {
             .filterTo(LinkedHashSet()) { it.type == clz }
 
     /** Convenience – returns the *default* config for every definition. */
-    fun getDefaultConfigs(): Map<Definition<*>, IConfig> = buildMap {
+    val defaultConfigs: Map<Definition<*>, IConfig> = buildMap {
         for (def in definitions) put(def, def.defaultConfig)
     }
 
@@ -172,16 +174,16 @@ class PluginDefinitions {
             /** Conveniences – instantiate the correct concrete wrapper. */
             fun invoke(prefix: String, type: Class<*>, singleton: Any): Definition<*> = when (type) {
                 PreAnalysisUnit::class.java, AIAnalysisUnit::class.java -> {
-                    val name = "$prefix:${UtilsKt.getSootTypeName(singleton.javaClass)}"
+                    val name = "$prefix:${getSootTypeName(singleton.javaClass)}"
                     @Suppress("UNCHECKED_CAST")
                     CheckerUnitDefinition(name, type, singleton as CheckerUnit)
                 }
                 ISootInitializeHandler::class.java -> {
-                    val name = "$prefix:${UtilsKt.getSootTypeName(singleton.javaClass)}"
+                    val name = "$prefix:${getSootTypeName(singleton.javaClass)}"
                     ISootInitializeHandlerDefinition(name, type, singleton as ISootInitializeHandler)
                 }
                 CheckType::class.java -> {
-                    val name = "$prefix:${UtilsKt.getSootTypeName(singleton.javaClass)}"
+                    val name = "$prefix:${getSootTypeName(singleton.javaClass)}"
                     CheckTypeDefinition(name, type, singleton as CheckType)
                 }
                 else -> error("Unsupported definition base‑type: $type")
@@ -210,7 +212,7 @@ class PluginDefinitions {
         type: Class<*>,
         singleton: ISootInitializeHandler,
     ) : Definition<ISootInitializeHandler>(name, type, singleton) {
-        override val defaultConfig: SootOptionsConfig = SootOptionsConfig(name, singleton === DefaultSootConfiguration.INSTANCE, option)
+        override val defaultConfig: SootOptionsConfig = SootOptionsConfig(name, singleton === DefaultSootConfiguration, option)
     }
 
     class CheckTypeDefinition(
@@ -235,7 +237,7 @@ class PluginDefinitions {
         /** Resolve the Kotlin `object` instance (if any) – returns `null` for regular classes. */
         fun <T : Any> singleton(clz: Class<T>): T? = try {
             // Track license usage statistics.
-            if (checkCommercial(clz.name)) AnalyzerEnv.Bvs1n3ss.getAndAdd(1)
+            if (checkCommercial(clz.name)) AnalyzerEnv.bvs1n3ss.getAndAdd(1)
             clz.getField("INSTANCE").get(null) as? T
         } catch (e: NoSuchFieldException) {
             logger.debug(e) { "$clz is not a singleton" }; null
@@ -247,7 +249,7 @@ class PluginDefinitions {
         fun serializersModule(pluginManager: ConfigPluginLoader.PluginManager): SerializersModule =
             SerializersModule {
                 // --- CheckerUnitOptionalConfig ------------------------------------------------
-                polymorphicDefault(Object::class) { CheckerUnitOptionalConfig.serializer() }
+//                polymorphicDefault(Object::class) { CheckerUnitOptionalConfig.serializer() }
 
                 // -- SAOptions hierarchy -------------------------------------------------------
                 polymorphic(SAOptions::class) {
@@ -276,10 +278,12 @@ class PluginDefinitions {
                 }
             }
             for (sub in subs) {
-                if (!ReflectionUtilKt.isAbstract(sub)) {
-                    val ser = SerializersKt.serializerOrNull(sub) as? KSerializer<Any>
+                if (!sub.isAbstract) {
+                    val ser = serializerOrNull(sub) as? KSerializer<Any>
+
                     if (ser != null) {
-                        subclass(sub.kotlin as KClass<out T>, ser)
+                        @Suppress("UNCHECKED_CAST")
+                        subclass(sub.kotlin as KClass<T>, ser as KSerializer<T>)
                     } else {
                         logger.error { "The class $sub does not have the @Serializable annotation." }
                     }

@@ -27,8 +27,30 @@ class BugTypeProvider(
 ) {
    private val methodToCheckType: MutableMap<SootMethod, MutableSet<CheckType>> = LinkedHashMap()
    private val aiCheckerImpl: AIAnalysisBaseImpl = object : AIAnalysisBaseImpl() {
-      private val error = ConfigInfoLogger()
-      private val preAnalysis = this@BugTypeProvider.preAnalysisImpl
+      override val error = ConfigInfoLogger()
+      override val fastCache: FastCache
+         get() = TODO("Not yet implemented")
+      override val preAnalysis = this@BugTypeProvider.preAnalysisImpl
+      override val scope: CoroutineScope
+         get() = TODO("Not yet implemented")
+
+      override fun addStmt(decl: IJDecl, config: MethodConfigBlockType, stmt: IStmt) {
+         TODO("Not yet implemented")
+      }
+
+      override fun check(
+         decl: IJDecl,
+         config: MethodConfigBlockType,
+         expr: IBoolExpr,
+         checkType: CheckType,
+         env: BugMessage.Env.() -> Unit
+      ) {
+         TODO("Not yet implemented")
+      }
+
+      override fun eval(decl: IJDecl, config: MethodConfigBlockType, expr: IExpr, accept: (value: Any) -> Unit) {
+         TODO("Not yet implemented")
+      }
 
       fun getFastCache(): FastCache = FastCacheImpl.INSTANCE
 
@@ -87,7 +109,7 @@ class BugTypeProvider(
    }
 
    fun init() = runBlocking {
-      PreAnalysisCoroutineScopeKt.processAIAnalysisUnits(aiCheckerImpl, preAnalysisImpl)
+      processAIAnalysisUnits(aiCheckerImpl, preAnalysisImpl)
    }
 
    fun lookUpChecker(method: SootMethod): Set<IChecker> {

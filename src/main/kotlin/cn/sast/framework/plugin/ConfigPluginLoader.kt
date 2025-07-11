@@ -1,10 +1,17 @@
+@file:Suppress("UnstableApiUsage")
+
 package cn.sast.framework.plugin
 
 import cn.sast.api.AnalyzerEnv
+import cn.sast.api.config.BuiltinAnalysisConfig
+import cn.sast.api.config.PreAnalysisConfig
 import cn.sast.api.config.SaConfig
 import cn.sast.common.*
 import cn.sast.framework.AnalyzeTaskRunner
+import cn.sast.framework.plugin.CheckersConfig.CheckerFilterByName
+import cn.sast.framework.plugin.PluginDefinitions.Definition
 import com.feysh.corax.config.api.IConfigPluginExtension
+import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.serialization.modules.SerializersModule
 import mu.KLogger
 import mu.KotlinLogging
@@ -16,215 +23,205 @@ import java.net.URLClassLoader
 import java.nio.file.Path
 import java.util.*
 import java.util.function.BooleanSupplier
-import kotlin.LazyThreadSafetyMode.NONE
-import kotlin.text.Charsets.UTF_8
 
 /**
- * Load *Corax* configuration‑plugins (PF4J jars) and expose helper APIs to resolve
- * [SaConfig] instances.
+ * 加载并解析 *SA-Config 插件* 与 *SA-Configuration YAML* 的统一入口。
  *
- * The logic is a 1‑to‑1 rewrite from the original Java bytecode with purely
- * syntactic/idiomatic Kotlin fixes; behaviour is preserved.
+ * @param configDirs  存放 `sa-configuration.yml`（或其衍生文件）的目录集合
+ * @param pluginsDirs PF4J 插件根目录集合
  */
 class ConfigPluginLoader(
-    /** Directories that contain built‑in YAML configs shipped with the framework. */
-    val configDirs: List<IResource>,
-    /** Directories where PF4J will look for *config‑plugins* (jars). */
+    private val configDirs: List<IResource>,
     private val pluginsDirs: List<IResDirectory>,
 ) {
 
-    // ---------------------------------------------------------------------
-    //  Fields & delegates
-    // ---------------------------------------------------------------------
+    /** 按需延迟初始化的插件管理器 */
+    private val pluginManager: PluginManager by lazy(::loadPlugin)
 
-    private val pluginManager: PluginManager by lazy(NONE) { loadPlugin() }
-    private val serializersModule: SerializersModule by lazy(NONE) {
-        PluginDefinitions.getSerializersModule(pluginManager)
+    /** 聚合所有插件自定义序列化器的模块 */
+    private val serializersModule: SerializersModule by lazy {
+        PluginDefinitions.serializersModule(pluginManager)
+    }
+
+    /* ---------- 对外 API ---------- */
+
+    /**
+     * 根据 *插件 ID*（可选）与 *配置名称*（可选）选出唯一的 [IConfigPluginExtension]，生成 [SaConfig]。
+     *
+     * - 若 `pluginId == null` 则在 *所有已加载插件* 里搜索；
+     * - 若 `name == null` 但命中多个扩展，则会抛出异常提示你手动指定。
+     */
+    fun loadFromName(pluginId: String? = null, name: String? = null): SaConfig {
+        val extensions = getConfigExtensions(pluginId)
+        require(extensions.isNotEmpty()) {
+            "No IConfigPluginExtension found in pluginsDir(s)=$pluginsDirs"
+        }
+
+        val chosen = when {
+            name == null && extensions.size == 1 -> extensions.first()
+            name == null ->
+                error(
+                    "Multiple configs detected, please specify one of: ${
+                        extensions.joinToString { it.name }
+                    }"
+                )
+
+            else -> {
+                val matched = extensions.filter { it.name == name }
+                require(matched.size == 1) {
+                    "Config name “$name” not found or duplicated in pluginsDir(s)=$pluginsDirs"
+                }
+                matched.first()
+            }
+        }
+
+        logger.info { "Using config extension: ${chosen.name}" }
+
+        return SaConfig(
+            checkers = chosen.units.toImmutableSet(),
+            sootConfig = chosen.sootConfig,
+            builtinAnalysisConfig = null,
+            preAnalysisConfig = null,
+            enableCheckTypes = null
+        )
+    }
+
+    /**
+     * 读取 *YAML* 并合并插件默认定义，返回最终 [SaConfig]。
+     * 若 YAML 文件需要 *规范化* 或 *已补全默认值*，则在同目录写出 `*.normalize.yml`。
+     */
+    fun searchCheckerUnits(
+        ymlConfig: IResFile,
+        checkerFilter: CheckerFilterByName? = null,
+    ): SaConfig {
+        val config = SAConfiguration.deserialize(serializersModule, ymlConfig)
+
+        val needNormalize = config.sort()
+        val defs = PluginDefinitions.load(pluginManager)
+        val hasChange = config.supplementAndMerge(defs, ymlConfig.toString())
+
+        if ((needNormalize || hasChange) && ymlConfig.parent != null) {
+            val normalized = ymlConfig.parent.resolve(
+                ymlConfig.nameWithoutExtension + ".normalize.yml"
+            ).toFile()
+            config.sort()
+            config.serialize(serializersModule, normalized)
+            logger.info { "Serialized normalized SA-Configuration: $normalized" }
+        }
+
+        return config.filter(defs, checkerFilter)
+    }
+
+    /** 生成一份空模板并写出至 [tempFile]。 */
+    fun makeTemplateYml(tempFile: IResFile) {
+        val defs = PluginDefinitions.load(pluginManager)
+        SAConfiguration()
+            .apply {
+                supplementAndMerge(defs, null)
+                sort()
+                serialize(serializersModule, tempFile)
+            }
+        logger.info { "Serialized template SA-Configuration: $tempFile" }
+    }
+
+    /* ---------- 私有实现 ---------- */
+
+    private fun getConfigExtensions(
+        pluginId: String? = null,
+    ): List<IConfigPluginExtension> = when (pluginId) {
+        null -> pluginManager.getExtensions(IConfigPluginExtension::class.java)
+        else -> pluginManager.getExtensions(IConfigPluginExtension::class.java, pluginId)
+    }.also {
+        logger.info { "Found ${it.size} IConfigPluginExtension(s)" }
+    }
+
+    /** 执行 PF4J 插件加载与启动。 */
+    private fun loadPlugin(): PluginManager {
+        logger.info { "Plugin directories: $pluginsDirs" }
+
+        val roots = pluginsDirs.map { it.path }
+        return PluginManager(roots).apply {
+            loadPlugins()
+            startPlugins()
+            require(plugins.isNotEmpty()) { "No config plugins found under $pluginsDirs" }
+        }
     }
 
     companion object {
         private val logger: KLogger = KotlinLogging.logger {}
     }
 
-    // ---------------------------------------------------------------------
-    //  Nested PF4J plugin‑manager with custom loader strategy
-    // ---------------------------------------------------------------------
+    /* ---------- 嵌套 PluginManager ---------- */
 
     /**
-     * Custom PF4J manager that uses [classLoadStrategy] so we can attach agents
-     * (JDK 17+ requires *ADP* or similar). Also provides a lazily computed map
-     * from loaded plugin to its own [Reflections] index (used by some analyses).
+     * 自定义 PF4J `PluginManager`，在启动插件时：
+     * 1. 将商业插件计数写入 [AnalyzerEnv];
+     * 2. 根据策略选择不同的 `ClassLoader` 实现；
+     * 3. 提供 `pluginToReflections` 以供插件元数据扫描。
      */
     class PluginManager(
         importPaths: List<Path>,
         private val classLoadStrategy: ClassLoadingStrategy = ClassLoadingStrategy.ADP,
     ) : DefaultPluginManager(importPaths) {
 
-        private val pluginToReflections: Map<PluginWrapper, Reflections> by lazy(NONE) {
-            plugins.associateWith { wrapper ->
+        /** plugin -> [Reflections] 映射，延迟创建 */
+        val pluginToReflections: Map<PluginWrapper, Reflections> by lazy {
+            plugins.values.associateWith { wrapper ->
                 val cl = wrapper.pluginClassLoader as URLClassLoader
-                Reflections(ConfigurationBuilder()
-                    .addUrls(cl.urLs.toList())
-                    .addClassLoaders(listOf(cl)))
+                Reflections(
+                    ConfigurationBuilder()
+                        .addUrls(*cl.urLs)
+                        .addClassLoaders(cl)
+                )
             }
         }
-
-        // -----------------------------------------------------------------
-        //  PF4J factory overrides
-        // -----------------------------------------------------------------
 
         override fun createPluginDescriptorFinder(): PluginDescriptorFinder =
             ManifestPluginDescriptorFinder()
 
-        override fun createPluginRepository(): PluginRepository? =
+        override fun createPluginRepository(): PluginRepository =
             CompoundPluginRepository()
-                .add(DefaultPluginRepository(pluginsRoots), BooleanSupplier { isNotDevelopment })
+                .add(DefaultPluginRepository(pluginsRoots)) { isNotDevelopment }
+                // 额外策略按需添加
+                .also { /* hook if needed */ }
 
-        override fun createPluginLoader(): PluginLoader? =
+        override fun createPluginLoader(): PluginLoader =
             CompoundPluginLoader()
-                .add(object : DefaultPluginLoader(this) {
-                    override fun createPluginClassLoader(
-                        pluginPath: Path,
-                        pluginDescriptor: PluginDescriptor,
-                    ): PluginClassLoader = PluginClassLoader(
-                        this@PluginManager,
-                        pluginDescriptor,
-                        javaClass.classLoader,
-                        classLoadStrategy,
-                    )
-                }, BooleanSupplier { isNotDevelopment })
+                .add(
+                    object : DefaultPluginLoader(this) {
+                        override fun createPluginClassLoader(
+                            pluginPath: Path,
+                            pluginDescriptor: PluginDescriptor,
+                        ): PluginClassLoader = PluginClassLoader(
+                            this@PluginManager,
+                            pluginDescriptor,
+                            javaClass.classLoader,
+                            classLoadStrategy,
+                        )
+                    }
+                ) { isNotDevelopment }
 
-        // -----------------------------------------------------------------
-        //  Life‑cycle hooks
-        // -----------------------------------------------------------------
+        /** 非开发环境（PF4J 内置实现）。 */
+        private val isNotDevelopment: Boolean
+            get() = DevelopmentMode.isDisabled
 
-        @Throws(ClassNotFoundException::class)
         override fun startPlugins() {
-            // Commercial guard + secret class loading shim
-            for (wrapper in plugins) {
+            // 1) 计商业插件
+            plugins.values.forEach { wrapper ->
                 try {
-                    val clazzName = String(Base64.getDecoder().decode("Y29tLmRpZm9jZC5WZXJpZnlKTkk="), UTF_8)
-                    val clz = wrapper.pluginClassLoader.loadClass(clazzName)
-                    AnalyzeTaskRunner.setV3r14yJn1Class(clz)
-                } catch (_: Exception) {
-                    // ignore
-                }
+                    val verifyCls = Base64.getDecoder().decode("Y29tLmRpZm9jZC5WZXJpZnlKTkk=")
+                        .decodeToString()
+                    AnalyzeTaskRunner.setV3r14yJn1Class(
+                        wrapper.pluginClassLoader.loadClass(verifyCls)
+                    )
+                } catch (_: Exception) { /** 忽略验证失败 **/ }
 
                 if (PluginDefinitions.checkCommercial(wrapper.pluginId)) {
-                    AnalyzerEnv.bvs1n3ss.getAndAdd(1)
+                    AnalyzerEnv.bvs1n3ss.incrementAndGet()
                 }
             }
+            // 2) 正常启动
             super.startPlugins()
         }
-
-        // Public accessor
-        fun pluginToReflections(): Map<PluginWrapper, Reflections> = pluginToReflections
-    }
-
-    // ---------------------------------------------------------------------
-    //  Public helpers
-    // ---------------------------------------------------------------------
-
-    fun getPluginManager(): PluginManager = pluginManager
-
-    /** Return all [IConfigPluginExtension]s, optionally limited to one `pluginId`. */
-    private fun getConfigExtensions(pluginId: String?): List<IConfigPluginExtension> =
-        if (pluginId != null)
-            pluginManager.getExtensions(IConfigPluginExtension::class.java, pluginId)
-        else
-            pluginManager.getExtensions(IConfigPluginExtension::class.java)
-                .also {
-                    logger.info { "Found ${it.size} extensions for extension point '${IConfigPluginExtension::class.java.name}'" }
-                }
-
-    /**
-     * Locate a single [SaConfig] either by **pluginId**/**name** or by auto‑discovery.
-    * Mirrors the exact guard logic of the Java original.
-    */
-    fun loadFromName(pluginId: String?, name: String?): SaConfig {
-        if (name == null) {
-            logger.info {
-                "Automatically search for the SA-Config under path '$pluginsDirs', with the requirement that there can only exist one config."
-            }
-        }
-
-        val configExtensions = getConfigExtensions(pluginId)
-        require(configExtensions.isNotEmpty()) { "not found IConfigPluginExtension in: $pluginsDirs" }
-
-        val searchPath = pluginsDirs.joinToString(File.pathSeparator)
-
-        val chosen: IConfigPluginExtension = if (name != null) {
-            val matches = configExtensions.filter { it.name == name }
-            when {
-                matches.isEmpty() -> error("your choose: $name not found in plugins dir: $searchPath")
-                matches.size > 1 -> error("dup choose: $name in plugins dir: $searchPath. choose: $matches")
-                else -> matches.first()
-            }
-        } else {
-            if (configExtensions.size != 1) {
-                val display = configExtensions.joinToString(",\n\t") { "${it.name}@$searchPath" }
-                error("you need choose which one of names: [ \n\t$display ]")
-            }
-            configExtensions.first()
-        }
-
-        logger.info {
-            "use config method for entry: ${chosen.name} in " +
-                    Resource.locateAllClass(chosen.javaClass)
-        }
-
-        return SaConfig(
-            null, // builtinAnalysisConfig
-            null, // preAnalysisConfig
-            ExtensionsKt.toImmutableSet(chosen.units),
-            chosen.sootConfig,
-            null, // extra
-        )
-    }
-
-    /**
-     * Parse, normalise, and post‑process an SA‑Configuration YAML (checker‑list).
-     */
-    fun searchCheckerUnits(ymlConfig: IResFile, checkerFilter: CheckerFilterByName?): SaConfig {
-        val configFromYml = SAConfiguration.deserialize(serializersModule, ymlConfig)
-        val needNormalize = configFromYml.sort()
-        val defs = PluginDefinitions.load(pluginManager)
-        val hasChange = configFromYml.supplementAndMerge(defs, ymlConfig.toString())
-
-        val dir: IResource? = ymlConfig.parent
-        if (dir != null && (needNormalize || hasChange)) {
-            val nameSansExt = ymlConfig.name.removeSuffix(".${ymlConfig.extension}").dropLast(1)
-            val normalizedFile = dir.resolve("$nameSansExt.normalize.yml").toFile()
-            configFromYml.sort()
-            configFromYml.serialize(serializersModule, normalizedFile)
-            logger.info { "Serialized a normalized SA-Configuration yml file: $normalizedFile" }
-        }
-
-        return configFromYml.filter(defs, checkerFilter)
-    }
-
-    /** Generate an *empty template* SA‑Configuration YAML. */
-    fun makeTemplateYml(tempFile: IResFile) {
-        val defs = PluginDefinitions.load(pluginManager)
-        val emptyYaml = SAConfiguration()
-        emptyYaml.supplementAndMerge(defs, null)
-        emptyYaml.sort()
-        emptyYaml.serialize(serializersModule, tempFile)
-        logger.info { "Serialized template SA-Configuration file: $tempFile" }
-    }
-
-    // ---------------------------------------------------------------------
-    //  Private helpers
-    // ---------------------------------------------------------------------
-
-    /** Discover and start PF4J plugins. */
-    @Throws(ClassNotFoundException::class)
-    private fun loadPlugin(): PluginManager {
-        logger.info { "Plugin directory: $pluginsDirs" }
-        val pm = PluginManager(pluginsDirs.map { it.path })
-        pm.loadPlugins()
-        pm.startPlugins()
-        check(pm.plugins.isNotEmpty()) { "no config plugin found" }
-        return pm
     }
 }

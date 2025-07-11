@@ -28,15 +28,20 @@ import cn.sast.framework.report.coverage.JacocoCompoundCoverage
 // external libs ---------------------------------------------------------------
 import com.feysh.corax.cache.analysis.SootInfoCache
 import com.feysh.corax.config.api.*
+import com.feysh.corax.config.api.report.Region;
 import kotlinx.coroutines.*
 import mu.KotlinLogging
 import soot.*
 import soot.jimple.Stmt
+import soot.jimple.infoflow.data.AccessPath;
 import soot.jimple.infoflow.InfoflowConfiguration
 import soot.jimple.infoflow.android.results.xml.InfoflowResultsSerializer
 import soot.jimple.infoflow.data.AbstractionAtSink
+import soot.jimple.infoflow.handlers.ResultsAvailableHandler
+import soot.jimple.infoflow.problems.TaintPropagationResults
 import soot.jimple.infoflow.results.*
 import soot.jimple.infoflow.solver.cfg.IInfoflowCFG
+import soot.jimple.infoflow.sourcesSinks.definitions.MethodSourceSinkDefinition
 import java.io.Closeable
 import java.io.IOException
 import java.nio.charset.Charset
@@ -115,10 +120,10 @@ interface IUTBotResultCollector : IResultCollector {
 /** Aggregates FlowDroid callbacks into a single mutable [InfoflowResults]. */
 class FlowDroidResultCollector : IFlowDroidResultCollector {
     val results: InfoflowResults = InfoflowResults()
-    fun onResultsAvailable(cfg: IInfoflowCFG?, results: InfoflowResults?) {
+    override fun onResultsAvailable(cfg: IInfoflowCFG?, results: InfoflowResults?) {
         results?.let { this.results.addAll(it) }
     }
-    fun onResultAvailable(cfg: IInfoflowCFG, abs: AbstractionAtSink?): Boolean = true
+    override fun onResultAvailable(cfg: IInfoflowCFG, abs: AbstractionAtSink?): Boolean = true
 }
 
 /** Serialises FlowDroid results into *infoflow‑result.txt*. */
@@ -140,8 +145,8 @@ class FlowDroidResultSerializer(
             logger.error(e) { "Could not write FlowDroid result" }
         }
     }
-    fun onResultsAvailable(cfg: IInfoflowCFG, results: InfoflowResults) = write(results, cfg)
-    fun onResultAvailable(icfg: IInfoflowCFG?, abs: AbstractionAtSink?): Boolean = true
+    override fun onResultsAvailable(cfg: IInfoflowCFG, results: InfoflowResults) = write(results, cfg)
+    override fun onResultAvailable(icfg: IInfoflowCFG?, abs: AbstractionAtSink?): Boolean = true
 }
 
 /** Writes phantom‑method hits into [outputFile] (if provided). */
@@ -169,10 +174,10 @@ class ResultCounter : IFlowDroidResultCollector,
     val preAnalysisResultCount = AtomicInteger()
 
     // FlowDroid -------------------------------------------------------------
-    fun onResultsAvailable(cfg: IInfoflowCFG, results: InfoflowResults) {
+    override fun onResultsAvailable(cfg: IInfoflowCFG, results: InfoflowResults) {
         infoflowResCount.addAndGet(results.size())
     }
-    fun onResultAvailable(icfg: IInfoflowCFG, abs: AbstractionAtSink): Boolean {
+    override fun onResultAvailable(icfg: IInfoflowCFG, abs: AbstractionAtSink): Boolean {
         infoflowAbsAtSinkCount.incrementAndGet(); return true
     }
 
@@ -364,8 +369,10 @@ class ResultCollector(
                 OutputType.SARIF       -> SarifDiagnostics(outputDir.resolve(it.displayName).toDirectory())
                 OutputType.SarifPackSrc-> SarifDiagnosticsPack(outputDir.resolve(it.displayName).toDirectory())
                 OutputType.SarifCopySrc-> SarifDiagnosticsCopySrc(outputDir.resolve(it.displayName).toDirectory())
-                OutputType.SQLITE      -> SqliteDiagnostics(mainConfig, outputDir.resolve(it.displayName).toDirectory(), monitor)
-                OutputType.Coverage    -> coverage
+//                OutputType.SQLITE      -> SqliteDiagnostics(mainConfig, outputDir.resolve(it.displayName).toDirectory(), monitor)
+//                OutputType.Coverage    -> coverage
+                OutputType.SQLITE -> TODO()
+                OutputType.Coverage -> TODO()
             }
         }
         ReportConverter(mainConfig).flush(mainConfig, locator, coverage, writers, reports, outputDir)
@@ -376,7 +383,7 @@ class ResultCollector(
         if (flushing) error("internal error: emit reports during flush phase")
         reportsColl.filter { mainConfig.isEnable(it.checkType) }.forEach { report ->
             // Basic deduplication: limit similar report per source line to 5 occurrences
-            val key = PurificationReportKey(report.bugResFile, report.region.startLine, report.check_name, report.pathEvents.firstOrNull() ?: return@forEach)
+            val key = PurificationReportKey(report.bugResFile, report.region.startLine, report.checkName, report.pathEvents.firstOrNull() ?: return@forEach)
             purificationCounts.computeIfAbsent(key) { AtomicInteger() } .let { counter ->
                 if (counter.get() < 5 && reports.add(report)) counter.incrementAndGet()
             }

@@ -2,91 +2,52 @@ package cn.sast.framework
 
 import cn.sast.api.config.ExtSettings
 import cn.sast.api.config.MainConfig
-import cn.sast.api.config.SaConfig
 import cn.sast.api.config.ScanFilter
 import cn.sast.api.config.SrcPrecedence
 import cn.sast.api.report.ClassResInfo
-import cn.sast.api.report.ProjectMetrics
 import cn.sast.api.util.IMonitor
-import cn.sast.api.util.Kotlin_extKt
-import cn.sast.api.util.OthersKt
-import cn.sast.api.util.PhaseIntervalTimer
 import cn.sast.api.util.Timer
-import cn.sast.common.IResDirectory
+import cn.sast.api.util.isSyntheticComponent
 import cn.sast.common.IResFile
 import cn.sast.common.Resource
 import cn.sast.framework.compiler.EcjCompiler
 import cn.sast.framework.graph.CGUtils
+import cn.sast.framework.incremental.IncrementalAnalyzeImplByChangeFiles
 import cn.sast.framework.report.NullWrapperFileGenerator
 import cn.sast.framework.report.ProjectFileLocator
+import cn.sast.framework.rewrite.LibraryClassPatcher
 import cn.sast.framework.rewrite.StringConcatRewriterTransform
 import cn.sast.idfa.analysis.ProcessInfoView
 import com.feysh.corax.config.api.ISootInitializeHandler
+import com.feysh.corax.config.api.rules.ProcessRule.ScanAction
 import com.github.ajalt.mordant.rendering.TextStyle
 import com.github.ajalt.mordant.rendering.Theme
 import driver.PTAFactory
 import driver.PTAPattern
-import java.io.File
-import java.lang.reflect.Field
-import java.nio.file.InvalidPathException
-import java.time.LocalDateTime
-import java.util.ArrayList
-import java.util.Arrays
-import java.util.LinkedHashSet
-import java.util.LinkedList
-import java.util.NoSuchElementException
-import java.util.SortedSet
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentMap
-import java.util.function.Function
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.intrinsics.IntrinsicsKt
-import kotlin.coroutines.jvm.internal.ContinuationImpl
-import java.util.Comparator
-import kotlin.comparisons.compareValues
-import kotlin.jvm.functions.Function1
-import kotlin.jvm.functions.Function2
-import kotlin.jvm.internal.SourceDebugExtension
-import kotlin.jvm.internal.Ref.ObjectRef
-import kotlinx.collections.immutable.ExtensionsKt
-import kotlinx.collections.immutable.PersistentSet
-import kotlinx.coroutines.BuildersKt
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineScopeKt
 import mu.KLogger
-import org.jetbrains.annotations.NotNull
-import org.jetbrains.annotations.Nullable
-import org.utbot.common.LoggerWithLogMethod
-import org.utbot.common.LoggingKt
 import org.utbot.common.Maybe
-import org.utbot.framework.plugin.services.JdkInfo
-import org.utbot.framework.plugin.services.JdkInfoService
+import org.utbot.common.elapsedSecFrom
 import qilin.CoreConfig
-import qilin.CoreConfig.CorePTAConfiguration
-import qilin.core.PTA
 import qilin.core.PTAScene
 import qilin.core.pag.ValNode
 import qilin.pta.PTAConfig
-import qilin.util.MemoryWatcher
 import qilin.util.PTAUtils
-import soot.G
-import soot.Main
-import soot.MethodOrMethodContext
-import soot.PackManager
-import soot.PointsToAnalysis
-import soot.PointsToAnalysis
-import soot.Scene
-import soot.Singletons
-import soot.SootClass
-import soot.SootMethod
-import soot.Transform
-import soot.Transformer
+import soot.*
 import soot.jimple.infoflow.AbstractInfoflow
 import soot.jimple.toolkits.callgraph.CallGraph
 import soot.jimple.toolkits.callgraph.Edge
 import soot.jimple.toolkits.pointer.DumbPointerAnalysis
 import soot.options.Options
 import soot.util.Chain
+import java.io.File
+import java.lang.reflect.Field
+import java.nio.file.InvalidPathException
+import java.time.LocalDateTime
+import java.util.*
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.jvm.internal.Ref.ObjectRef
+import kotlinx.collections.immutable.toPersistentSet
+
 
 open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
     val mainConfig: MainConfig
@@ -100,13 +61,11 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
 
     val autoAppClassesLocator: ProjectFileLocator by lazy {
         ProjectFileLocator(
-            mainConfig.getMonitor(),
-            mainConfig.getAutoAppClasses(),
+            mainConfig.monitor,
+            mainConfig.autoAppClasses,
             null,
-            mainConfig.getAutoAppTraverseMode(),
+            mainConfig.autoAppTraverseMode,
             false,
-            16,
-            null
         )
     }
 
@@ -133,8 +92,8 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
     private inner class JarRelativePathComparator(private val ctx: SootCtx) : Comparator<IResFile> {
         override fun compare(a: IResFile, b: IResFile): Int {
             return compareValues(
-                ctx.mainConfig.tryGetRelativePath(a).getRelativePath(),
-                ctx.mainConfig.tryGetRelativePath(b).getRelativePath()
+                ctx.mainConfig.tryGetRelativePath(a).relativePath,
+                ctx.mainConfig.tryGetRelativePath(b).relativePath
             )
         }
     }
@@ -145,7 +104,7 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
 
     init {
         this.mainConfig = mainConfig
-        this.monitor = mainConfig.getMonitor()
+        this.monitor = mainConfig.monitor
         this._loadClassesTimer = monitor?.timer("loadClasses")
         this._classesClassificationTimer = monitor?.timer("classes.classification")
         this._cgConstructTimer = monitor?.timer("callgraph.construct")
@@ -154,9 +113,9 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
     open fun configureCallGraph(options: Options) {
         cgAlgorithmProvider = configureCallGraph(
             options,
-            mainConfig.getCallGraphAlgorithm(),
-            mainConfig.getApponly(),
-            mainConfig.getEnableReflection()
+            mainConfig.callGraphAlgorithm,
+            mainConfig.appOnly,
+            mainConfig.enableReflection
         )
     }
 
@@ -230,9 +189,9 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
         releaseCallGraph()
         onBeforeCallGraphConstruction()
 
-        if (!mainConfig.getSkipClass()) {
+        if (!mainConfig.skipClass) {
             val applicationClasses = scene.applicationClasses
-            if (applicationClasses.isEmpty() || applicationClasses.none { !OthersKt.isSyntheticComponent(it) }) {
+            if (applicationClasses.isEmpty() || applicationClasses.none { !it.isSyntheticComponent }) {
                 throw IllegalStateException(
                     "application classes must not be empty. check your --auto-app-classes, --process, --source-path, --class-path options"
                 )
@@ -241,7 +200,7 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
 
         scene.getOrMakeFastHierarchy()
         val timerSnapshot = _cgConstructTimer?.start()
-        LoggingKt.info(logger).logMethod.invoke { "Constructing the call graph [$cgAlgorithm] ..." }
+//        logger.info { "Constructing the call graph [$cgAlgorithm] ..." }
 
         val startTime = LocalDateTime.now()
         var total = false
@@ -256,10 +215,10 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
                             CgAlgorithmProvider.QiLin -> {
                                 PTAUtils.setAppOnly(appOnly)
                                 CoreConfig.v().ptaConfig.apply {
-                                    printAliasInfo = ExtSettings.INSTANCE.getPrintAliasInfo()
-                                    castNeverFailsOfPhantomClass = ExtSettings.INSTANCE.getCastNeverFailsOfPhantomClass()
+                                    printAliasInfo = ExtSettings.printAliasInfo
+                                    castNeverFailsOfPhantomClass = ExtSettings.castNeverFailsOfPhantomClass
                                 }
-                                ValNode.UseRoaringPointsToSet = ExtSettings.INSTANCE.getUseRoaringPointsToSet()
+                                ValNode.UseRoaringPointsToSet = ExtSettings.useRoaringPointsToSet
                                 val pta = PTAFactory.createPTA(PTAConfig.v().ptaConfig.ptaPattern)
                                 pta.cgb.reachableMethods
                                 pta.run()
@@ -275,10 +234,10 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
                         CgAlgorithmProvider.QiLin -> {
                             PTAUtils.setAppOnly(appOnly)
                             CoreConfig.v().ptaConfig.apply {
-                                printAliasInfo = ExtSettings.INSTANCE.getPrintAliasInfo()
-                                castNeverFailsOfPhantomClass = ExtSettings.INSTANCE.getCastNeverFailsOfPhantomClass()
+                                printAliasInfo = ExtSettings.printAliasInfo
+                                castNeverFailsOfPhantomClass = ExtSettings.castNeverFailsOfPhantomClass
                             }
-                            ValNode.UseRoaringPointsToSet = ExtSettings.INSTANCE.getUseRoaringPointsToSet()
+                            ValNode.UseRoaringPointsToSet = ExtSettings.useRoaringPointsToSet
                             val pta = PTAFactory.createPTA(PTAConfig.v().ptaConfig.ptaPattern)
                             pta.cgb.reachableMethods
                             pta.run()
@@ -289,39 +248,41 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
                     }
                 }
             } finally {
-                logger.info { "After build CG: Process information: ${ProcessInfoView.Companion.getGlobalProcessInfo().getProcessInfoText()}" }
+                logger.info { "After build CG: Process information: ${ProcessInfoView.globalProcessInfo.processInfoText}" }
             }
         } catch (t: Throwable) {
-            LoggingKt.info(logger).logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}): Constructing the call graph [$cgAlgorithm] ... :: EXCEPTION :: " }
+            logger.info { "Finished (in ${elapsedSecFrom(startTime)}): Constructing the call graph [$cgAlgorithm] ... :: EXCEPTION :: " }
             total = true
             throw t
         } finally {
             if (!total) {
                 if (res.element.hasValue) {
-                    LoggingKt.info(logger).logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}): Constructing the call graph [$cgAlgorithm] ... " }
+                    logger.info { "Finished (in ${elapsedSecFrom(startTime)}): Constructing the call graph [$cgAlgorithm] ... " }
                 } else {
-                    LoggingKt.info(logger).logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}): Constructing the call graph [$cgAlgorithm] ... <Nothing>" }
+                    logger.info { "Finished (in ${elapsedSecFrom(startTime)}): Constructing the call graph [$cgAlgorithm] ... <Nothing>" }
                 }
             }
         }
 
-        _cgConstructTimer?.stop(timerSnapshot)
-        CGUtils.INSTANCE.addCallEdgeForPhantomMethods()
+        if (timerSnapshot != null) {
+            _cgConstructTimer?.stop(timerSnapshot)
+        }
+        CGUtils.addCallEdgeForPhantomMethods()
         showPta()
         scene.releaseReachableMethods()
-        CGUtils.INSTANCE.fixScene(scene)
+        CGUtils.fixScene(scene)
 
         if (record) {
-            val (appMethodsWithBody, appMethodsTotal) = activeBodyMethods(scene.applicationClasses)
+            val (appMethodsWithBody, appMethodsTotal) = scene.applicationClasses.activeBodyMethods()
             monitor?.projectMetrics?.apply {
-                setApplicationMethodsHaveBody(appMethodsWithBody)
-                setApplicationMethods(appMethodsTotal)
+                this.applicationMethodsHaveBody = appMethodsWithBody
+                this.applicationMethods = appMethodsTotal
             }
 
-            val (libMethodsWithBody, libMethodsTotal) = activeBodyMethods(scene.libraryClasses)
+            val (libMethodsWithBody, libMethodsTotal) = scene.applicationClasses.activeBodyMethods()
             monitor?.projectMetrics?.apply {
-                setLibraryMethodsHaveBody(libMethodsWithBody)
-                setLibraryMethods(libMethodsTotal)
+                this.libraryClasses = libMethodsWithBody
+                this. libraryMethods = libMethodsTotal
             }
         }
 
@@ -329,7 +290,7 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
     }
 
     open fun constructCallGraph() {
-        constructCallGraph(cgAlgorithmProvider, mainConfig.getApponly(), false)
+        constructCallGraph(cgAlgorithmProvider, mainConfig.appOnly, false)
     }
 
     fun showPta() {
@@ -341,7 +302,7 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
 
         logger.info { "PointsToAnalysis of scene is ${pta.javaClass.simpleName}" }
         logger.info { "Call Graph has been constructed with ${Scene.v().callGraph.size()} edges." }
-        showClasses(Scene.v(), "After PTA: ") { Theme.default.info(it) }
+        showClasses(Scene.v(), "After PTA: ") { Theme.Default.info(it) }
     }
 
     suspend fun findClassesInnerJar(locator: ProjectFileLocator): Map<String, MutableSet<IResFile>> {
@@ -350,11 +311,11 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
             val md5Group = ConcurrentHashMap<String, MutableSet<IResFile>>()
 
             locator.getByFileExtension("class").forEach { clz ->
-                if (clz.isJarScheme()) {
+                if (clz.isJarScheme) {
                     try {
-                        val jar = Resource.INSTANCE.fileOf(clz.schemePath)
+                        val jar = Resource.fileOf(clz.schemePath)
                         launch {
-                            val md5 = jar.getMd5()
+                            val md5 = jar.md5
                             md5Group.computeIfAbsent(md5) { ConcurrentHashMap.newKeySet() }.add(jar)
                         }
                     } catch (e: Exception) {
@@ -369,18 +330,18 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
     }
 
     suspend fun findClassesInnerJarUnderAutoAppClassPath(): Set<IResFile> {
-        require(mainConfig.getAutoAppClasses().isNotEmpty()) { "Check failed." }
+        require(mainConfig.autoAppClasses.isNotEmpty()) { "Check failed." }
 
         val result = findClassesInnerJar(autoAppClassesLocator)
         val jars = result.values.map { files ->
-            files.minByOrNull { mainConfig.tryGetRelativePath(it).getRelativePath() }!!
+            files.minByOrNull { mainConfig.tryGetRelativePath(it)) }!!
         }.sortedWith(JarRelativePathComparator(this))
 
         return jars.mapNotNull { jar ->
             when {
-                jar.isFileScheme() -> jar
-                jar.isJarScheme() -> try {
-                    jar.expandRes(mainConfig.getOutput_dir()).toFile()
+                jar.isFileScheme -> jar
+                jar.isJarScheme -> try {
+                    jar.expandRes(mainConfig.output_dir).toFile()
                 } catch (e: InvalidPathException) {
                     logger.error(e) { "Bad archive file: $jar" }
                     null
@@ -394,25 +355,18 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
     }
 
     override fun configure(options: Options) {
-        if (mainConfig.getSrc_precedence() == SrcPrecedence.prec_java && !mainConfig.isAndroidScene()) {
-            val autoAppClasses = mainConfig.getOutput_dir().resolve("gen-classes").toDirectory().apply {
+        if (mainConfig.src_precedence == SrcPrecedence.prec_java && !mainConfig.isAndroidScene) {
+            val autoAppClasses = mainConfig.output_dir.resolve("gen-classes").toDirectory().apply {
                 deleteDirectoryRecursively()
                 mkdirs()
             }
 
             val compiler = EcjCompiler(
-                mainConfig.getProcessDir().toPersistentSet(),
-                mainConfig.getClasspath(),
+                mainConfig.processDir,
+                mainConfig.classpath,
                 autoAppClasses,
-                mainConfig.getEcj_options(),
-                mainConfig.getUseDefaultJavaClassPath(),
-                null,
-                null,
-                false,
-                null,
-                null,
-                992,
-                null
+                mainConfig.ecj_options,
+                mainConfig.useDefaultJavaClassPath,
             )
 
             if (!compiler.compile()) {
@@ -423,57 +377,57 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
                 "\n\n!!! no class file found under $autoAppClasses !!!\n\n"
             }
 
-            mainConfig.setProcessDir(mainConfig.getProcessDir().add(autoAppClasses))
-            mainConfig.setClasspath(compiler.getCollectClassPath().toPersistentSet())
+            mainConfig.processDir.add(autoAppClasses)
+            mainConfig.classpath = (compiler.collectedClasspath).toPersistentSet()
         }
 
         autoAppClassesLocator.update()
-        if (mainConfig.getAutoAppClasses().isNotEmpty() && !mainConfig.isAndroidScene() && !mainConfig.getSkipClass()) {
+        if (mainConfig.autoAppClasses.isNotEmpty() && !mainConfig.isAndroidScene && !mainConfig.skipClass) {
             runBlocking {
-                mainConfig.setProcessDir(mainConfig.getProcessDir().addAll(findClassesInnerJarUnderAutoAppClassPath()))
+                mainConfig.processDir.addAll(findClassesInnerJarUnderAutoAppClassPath())
             }
         }
 
         options.apply {
             set_verbose(true)
             set_allow_phantom_elms(true)
-            set_whole_program(mainConfig.getWhole_program())
-            set_src_prec(mainConfig.getSrc_precedence().sootFlag)
-            set_prepend_classpath(mainConfig.getPrepend_classpath())
-            set_no_bodies_for_excluded(mainConfig.getNo_bodies_for_excluded())
+            set_whole_program(mainConfig.whole_program)
+            set_src_prec(mainConfig.src_precedence.sootFlag)
+            set_prepend_classpath(mainConfig.prepend_classpath)
+            set_no_bodies_for_excluded(mainConfig.no_bodies_for_excluded)
             set_include_all(true)
-            set_allow_phantom_refs(mainConfig.getAllow_phantom_refs())
+            set_allow_phantom_refs(mainConfig.allow_phantom_refs)
             set_ignore_classpath_errors(false)
-            set_throw_analysis(mainConfig.getThrow_analysis())
-            set_process_multiple_dex(mainConfig.getProcess_multiple_dex())
+            set_throw_analysis(mainConfig.throw_analysis)
+            set_process_multiple_dex(mainConfig.process_multiple_dex)
             set_field_type_mismatches(2)
             set_full_resolver(true)
-            classes().addAll(mainConfig.getAppClasses())
+            classes().addAll(mainConfig.appClasses)
             set_app(false)
             set_search_dex_in_archives(true)
             set_process_dir(mainConfig.getSoot_process_dir().toList())
-            set_output_format(mainConfig.getOutput_format())
-            mainConfig.getSoot_output_dir().apply {
+            set_output_format(mainConfig.output_format)
+            mainConfig.output_dir.apply {
                 deleteDirectoryRecursively()
                 mkdirs()
             }
-            set_output_dir(mainConfig.getSoot_output_dir().absolutePath)
+            set_output_dir(mainConfig.output_dir.absolutePath)
             set_keep_offset(false)
-            set_keep_line_number(mainConfig.getEnableLineNumbers())
+            set_keep_line_number(mainConfig.enableLineNumbers)
             set_ignore_resolution_errors(true)
 
-            if (mainConfig.getForceAndroidJar()) {
-                set_force_android_jar(mainConfig.getAndroidPlatformDir())
+            if (mainConfig.forceAndroidJar == true) {
+                set_force_android_jar(mainConfig.androidPlatformDir)
             } else {
-                set_android_jars(mainConfig.getAndroidPlatformDir())
+                set_android_jars(mainConfig.androidPlatformDir)
             }
-            logger.info { "android platform dir: ${mainConfig.getAndroidPlatformDir()}" }
+            logger.info { "android platform dir: ${mainConfig.androidPlatformDir}" }
 
-            if (mainConfig.isAndroidScene()) {
+            if (mainConfig.isAndroidScene) {
                 set_throw_analysis(3)
             }
 
-            if (mainConfig.getEnableOriginalNames()) {
+            if (mainConfig.enableOriginalNames) {
                 setPhaseOption("jb", "use-original-names:true")
             }
 
@@ -484,11 +438,11 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
 
         configureCallGraph(options)
         PackManager.v().getPack("jb").add(Transform("jb.rewriter", StringConcatRewriterTransform()))
-        mainConfig.getSaConfig()?.sootConfig?.configure(options)
+        mainConfig.saConfig?.sootConfig?.configure(options)
     }
 
     fun configureSootClassPath(options: Options) {
-        val cp = mainConfig.get_soot_classpath().toSortedSet()
+        val cp = mainConfig.sootClasspath().toSortedSet()
         Scene.v().sootClassPath = null
         options.set_soot_classpath(cp.joinToString(File.pathSeparator))
     }
@@ -504,28 +458,28 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
         scene.addBasicClass("java.util.Arrays", 3)
         scene.addBasicClass("java.lang.Math", 3)
         scene.addBasicClass("java.lang.StringCoding", 3)
-        mainConfig.getSaConfig()?.sootConfig?.configure(scene)
+        mainConfig.saConfig?.sootConfig?.configure(scene)
     }
 
     override fun configure(main: Main) {
         main.autoSetOptions()
-        mainConfig.getSaConfig()?.sootConfig?.configure(main)
+        mainConfig.saConfig?.sootConfig?.configure(main)
     }
 
     fun classesClassification(scene: Scene, locator: ProjectFileLocator?) {
         val timerSnapshot = _classesClassificationTimer?.start()
-        require(!mainConfig.getSkipClass()) { "Check failed." }
+        require(!mainConfig.skipClass) { "Check failed." }
 
         var findAny = false
-        val autoAppClasses = mainConfig.getAutoAppClasses()
+        val autoAppClasses = mainConfig.autoAppClasses
         showClasses(scene, "Before classes classification: ")
 
         scene.classes.forEach { sc ->
             if (!sc.isPhantom) {
-                val sourceFile = autoAppClassesLocator.get(ClassResInfo.of(sc), NullWrapperFileGenerator.INSTANCE)
+                val sourceFile = autoAppClassesLocator.get(ClassResInfo.of(sc), NullWrapperFileGenerator)
                 val origAction = when {
                     autoAppClasses.isNotEmpty() -> when {
-                        sourceFile == null || (!mainConfig.getAutoAppSrcInZipScheme() && !sourceFile.isFileScheme()) -> {
+                        sourceFile == null || (!mainConfig.autoAppSrcInZipScheme && !sourceFile.isFileScheme) -> {
                             if (sc.isApplicationClass) sc.setLibraryClass()
                             "library"
                         }
@@ -543,23 +497,23 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
                     sc.isLibraryClass -> "library"
                     else -> "phantom"
                 }
-
-                when (mainConfig.getScanFilter().getActionOf(
-                    if (locator?.get(ClassResInfo.of(sc), NullWrapperFileGenerator.INSTANCE) != null) {
-                        "(src exists) $action"
-                    } else {
-                        "(src not exists) $action"
-                    },
-                    sc
-                )) {
-                    ScanFilter.Action.APPLICATION -> sc.setApplicationClass()
-                    ScanFilter.Action.LIBRARY -> sc.setLibraryClass()
-                    ScanFilter.Action.PHANTOM -> {}
+                val origStr: String = if (locator?.get(ClassResInfo.of(sc), NullWrapperFileGenerator) != null) {
+                    "(src exists) $action"
+                } else {
+                    "(src not exists) $action"
+                }
+                val orig = mainConfig.scanFilter.getActionOf(origStr, sc, null)
+                when (orig){
+                    ScanAction.Process -> sc.setApplicationClass()
+                    ScanAction.Skip -> sc.setLibraryClass()
+                    ScanAction.Keep -> {}
                 }
             }
         }
 
-        _classesClassificationTimer?.stop(timerSnapshot)
+        if (timerSnapshot != null) {
+            _classesClassificationTimer?.stop(timerSnapshot)
+        }
         if (autoAppClasses.isNotEmpty() && !findAny) {
             logger.error {
                 "\n\n\nSince $autoAppClasses has no source files corresponding to the classes, " +
@@ -573,7 +527,7 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
     fun Chain<SootClass>.activeBodyMethods(): Pair<Int, Int> {
         val methods = flatMap { it.methods }
         val total = methods.filter { !it.isAbstract }
-        val active = total.filter { it.hasActiveBody }
+        val active = total.filter { it.hasActiveBody() }
         return active.size to total.size
     }
 
@@ -581,6 +535,12 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
         val (active, total) = activeBodyMethods()
         return if (total == 0) "empty" else "$size($total*${"%.2f".format(active.toFloat() / total)})"
     }
+
+    fun showClasses(
+        scene: Scene,
+        prefix: String = "",
+        style: TextStyle
+    ) = showClasses(scene, prefix) { msg -> style(msg) }
 
     fun showClasses(scene: Scene, prefix: String = "", fx: (String) -> String = { it }) {
         logger.info {
@@ -595,7 +555,7 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
     }
 
     open fun loadClasses(scene: Scene, locator: ProjectFileLocator?) {
-        G.v().sourceLocator = SourceLocatorPlus(mainConfig)
+        G.v().set_SourceLocator(SourceLocatorPlus(mainConfig))
 
         when (cgAlgorithmProvider) {
             CgAlgorithmProvider.QiLin -> {
@@ -603,86 +563,107 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
                 Scene.v().addBasicClass("java.lang.ref.Finalizer", 3)
                 PTAScene.v().addBasicClasses()
             }
+
+            CgAlgorithmProvider.Soot -> {}
         }
 
-        if (!mainConfig.getSkipClass()) {
-            logger.info { "\nsoot exclude ${getExcludedPackages(scene)}" }
-            logger.info { "\nsoot classpath:\n ${getClassPathInfo(scene)}" }
-            logger.info { "\nsoot process_dir:\n ${getProcessDirInfo()}" }
+        if (!this.mainConfig.skipClass) {
 
-            LoggingKt.info(logger).run {
-                val startTime = LocalDateTime.now()
-                var alreadyLogged = false
-                val res = ObjectRef<Maybe<*>>().apply { element = Maybe.empty() }
+            val msg = "Loading Necessary Classes..."
+            logger.info() { "Started: $msg" }
 
-                try {
-                    _loadClassesTimer?.start()?.use {
+            val startTime = LocalDateTime.now()
+            var result: Maybe<Unit> = Maybe.empty()
+
+            try {
+                _loadClassesTimer?.let { timer ->
+                    val snapshot = timer.start()
+                    try {
                         scene.loadNecessaryClasses(false)
-                    } ?: scene.loadNecessaryClasses(false)
-
-                    _classesClassificationTimer?.start()?.use {
-                        classesClassification(scene, locator)
-                    } ?: classesClassification(scene, locator)
-
-                    _loadClassesTimer?.start()?.use {
-                        scene.applicationClasses
-                            .filter { !it.isPhantom }
-                            .forEach { scene.loadClass(it.name, 3) }
-                    } ?: scene.applicationClasses
-                        .filter { !it.isPhantom }
-                        .forEach { scene.loadClass(it.name, 3) }
-
-                    res.element = Maybe(Unit)
-                    if (res.element.hasValue) {
-                        logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}: Loading Necessary Classes... " }
-                    } else {
-                        logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}): Loading Necessary Classes... <Nothing>" }
+                    } finally {
+                        timer.stop(snapshot)
                     }
-                } catch (t: Throwable) {
-                    logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}): Loading Necessary Classes... :: EXCEPTION :: " }
-                    alreadyLogged = true
-                    throw t
-                } finally {
-                    if (!alreadyLogged) {
-                        if (res.element.hasValue) {
-                            logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}): Loading Necessary Classes... " }
-                        } else {
-                            logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}): Loading Necessary Classes... <Nothing>" }
+                } ?: run {
+                    scene.loadNecessaryClasses(false)
+                }
+
+                monitor?.timer("classesClassification")?.let { timer ->
+                    val snapshot = timer.start()
+                    try {
+                        classesClassification(scene, locator)
+                    } finally {
+                        timer.stop(snapshot)
+                    }
+                } ?: run {
+                    classesClassification(scene, locator)
+                }
+
+                _loadClassesTimer?.let { timer ->
+                    val snapshot = timer.start()
+                    try {
+                        for (appClass in scene.applicationClasses) {
+                            if (!appClass.isPhantom) {
+                                scene.loadClass(appClass.name, 3)
+                            }
+                        }
+                    } finally {
+                        timer.stop(snapshot)
+                    }
+                } ?: run {
+                    for (appClass in scene.applicationClasses) {
+                        if (!appClass.isPhantom) {
+                            scene.loadClass(appClass.name, 3)
                         }
                     }
                 }
+
+                logger.info { "Classes loaded." }
+                result = Maybe(Unit)
+                result.getOrThrow()
+
+                logger.info() {
+                    val elapsed = elapsedSecFrom(startTime)
+                    "Finished (in $elapsed): $msg"
+                }
+
+                showClasses(scene, style = Theme.Default.warning)
+
+            } catch (t: Throwable) {
+                logger.info() {
+                    val elapsed = elapsedSecFrom(startTime)
+                    "Finished (in $elapsed): $msg :: EXCEPTION ::"
+                }
+                throw t
             }
 
-            logger.info { "Load classes done" }
-            showClasses(scene, "After Loading Classes: ", Theme.default.warning)
         } else {
             scene.loadBasicClasses()
             scene.loadDynamicClasses()
             scene.doneResolving()
-            CGUtils.INSTANCE.createDummyMain(scene)
+            CGUtils.createDummyMain(scene)
         }
 
-        logger.info { "After Loading Classes: ${ProcessInfoView.Companion.getGlobalProcessInfo().getProcessInfoText()}" }
-        CGUtils.INSTANCE.removeLargeClasses(scene)
-        CGUtils.INSTANCE.makeSpuriousMethodFromInvokeExpr()
+        logger.info { "After Loading Classes: ${ProcessInfoView.globalProcessInfo.processInfoText}" }
+        CGUtils.removeLargeClasses(scene)
+        CGUtils.makeSpuriousMethodFromInvokeExpr()
         PackManager.v().getPack("wjpp").apply()
         LibraryClassPatcher().patchLibraries()
 
         monitor?.projectMetrics?.apply {
-            setApplicationClasses(scene.applicationClasses.size)
-            setLibraryClasses(scene.libraryClasses.size)
-            setPhantomClasses(scene.phantomClasses.size)
+            applicationClasses = (scene.applicationClasses.size)
+            libraryClasses = (scene.libraryClasses.size)
+            phantomClasses = (scene.phantomClasses.size)
         }
 
-        (mainConfig.getIncrementAnalyze() as? IncrementalAnalyzeImplByChangeFiles)?.update(scene, locator)
-        logger.info { "After Rewrite Classes: ${ProcessInfoView.Companion.getGlobalProcessInfo().getProcessInfoText()}" }
+        (mainConfig.incrementAnalyze as? IncrementalAnalyzeImplByChangeFiles)?.update(scene, locator)
+        logger.info { "After Rewrite Classes: ${ProcessInfoView.globalProcessInfo.processInfoText}" }
     }
 
     open fun configureSoot() {
         Companion.restAll()
         mainConfig.validate()
         val options = Options.v().apply {
-            configure(options)
+            configure(this)
             require(instance_soot_Scene == null) {
                 "Soot should not be initialized in clinit or init. check your plugins"
             }
@@ -709,13 +690,13 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
     }
 
     open fun onBeforeCallGraphConstruction() {
-        mainConfig.getSaConfig()?.sootConfig?.onBeforeCallGraphConstruction(Scene.v(), Options.v())
+        mainConfig.saConfig?.sootConfig?.onBeforeCallGraphConstruction(Scene.v(), Options.v())
     }
 
     open fun onAfterCallGraphConstruction() {
-        mainConfig.getSaConfig()?.sootConfig?.onAfterCallGraphConstruction(callGraph, Scene.v(), Options.v())
+        mainConfig.saConfig?.sootConfig?.onAfterCallGraphConstruction(callGraph, Scene.v(), Options.v())
 
-        LoggingKt.info(logger).run {
+        logger.info {
             val startTime = LocalDateTime.now()
             var alreadyLogged = false
             val res = ObjectRef<Maybe<*>>().apply { element = Maybe.empty() }
@@ -723,20 +704,20 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
             try {
                 res.element = Maybe(Unit)
                 if (res.element.hasValue) {
-                    logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}: Rewrite soot scene " }
+                    logger.info { "Finished (in ${elapsedSecFrom(startTime)}: Rewrite soot scene " }
                 } else {
-                    logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}: Rewrite soot scene <Nothing>" }
+                    logger.info { "Finished (in ${elapsedSecFrom(startTime)}: Rewrite soot scene <Nothing>" }
                 }
             } catch (t: Throwable) {
-                logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}: Rewrite soot scene :: EXCEPTION :: " }
+                logger.info { "Finished (in ${elapsedSecFrom(startTime)}: Rewrite soot scene :: EXCEPTION :: " }
                 alreadyLogged = true
                 throw t
             } finally {
                 if (!alreadyLogged) {
                     if (res.element.hasValue) {
-                        logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}: Rewrite soot scene " }
+                        logger.info { "Finished (in ${elapsedSecFrom(startTime)}: Rewrite soot scene " }
                     } else {
-                        logMethod.invoke { "Finished (in ${LoggingKt.elapsedSecFrom(startTime)}: Rewrite soot scene <Nothing>" }
+                        logger.info { "Finished (in ${elapsedSecFrom(startTime)}: Rewrite soot scene <Nothing>" }
                     }
                 }
             }
@@ -744,11 +725,11 @@ open class SootCtx(mainConfig: MainConfig) : ISootInitializeHandler {
     }
 
     override fun onBeforeCallGraphConstruction(scene: Scene, options: Options) {
-        ISootInitializeHandler.DefaultImpls.onBeforeCallGraphConstruction(this, scene, options)
+        mainConfig.saConfig?.sootConfig?.onBeforeCallGraphConstruction( scene, options)
     }
 
     override fun onAfterCallGraphConstruction(cg: CallGraph, scene: Scene, options: Options) {
-        ISootInitializeHandler.DefaultImpls.onAfterCallGraphConstruction(this, cg, scene, options)
+        mainConfig.saConfig?.sootConfig?.onAfterCallGraphConstruction(cg, scene, options)
     }
 
     companion object {

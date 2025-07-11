@@ -5,6 +5,7 @@ import com.feysh.corax.config.api.ICheckPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import mu.KotlinLogging
+import kotlin.coroutines.coroutineContext
 
 /**
  * Executes analyzer logic *safely*: exceptions below [errorLimit] are logged & swallowed.
@@ -33,7 +34,7 @@ class SafeAnalyzeUtil(private val errorLimit: Int, private var errorCount: Int =
         logger.error(t) { msg() }
         if (++errorCount > errorLimit) {
             logger.error { "Error‑limit $errorLimit exceeded – cancelling analysis scope" }
-            kotlin.coroutines.coroutineContext[CoroutineScope]?.cancel()
+            coroutineContext[CoroutineScope]?.cancel()
         }
     }
 }

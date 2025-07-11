@@ -130,6 +130,7 @@ class ReportConverter(
     /* -------------------------------------------------------------------- */
 
     suspend fun flush(
+        mainConfig: MainConfig,
         locator:    IProjectFileLocator,
         coverage:   JacocoCompoundCoverage,
         consumers:  List<IReportConsumer>,
